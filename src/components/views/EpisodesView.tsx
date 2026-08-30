@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ArrowUpDown, Search, X } from "lucide-react";
+import { ArrowLeft, ArrowUpDown, MonitorPlay, Search, X } from "lucide-react";
 import type { AnimeLite, EpisodesPayload } from "@/lib/types";
 import {
   fetchServerProgress,
@@ -16,6 +16,19 @@ function barWidth(p: { pos: number; dur: number; completed: boolean } | undefine
   if (p.completed) return 100;
   if (!p.dur || p.dur <= 0) return 0;
   return Math.min(100, Math.round((p.pos / p.dur) * 100));
+}
+
+/**
+ * NEW badge — only for a genuine "new episode dropped" batch. A backlog
+ * import (whole series / migration) re-stamps addedAt for hundreds of
+ * episodes, and none of those should be flagged. Real weekly drops are a
+ * handful of rows, so cap the badge to small recent batches.
+ */
+function computeNewEpisodes(episodes: Array<{ number: number; addedAt: string }>): Set<number> {
+  const cutoff = Date.now() - 24 * 3600_000;
+  const recent = episodes.filter((e) => Date.now() - Date.parse(e.addedAt) < cutoff);
+  if (recent.length === 0 || recent.length > 15) return new Set();
+  return new Set(recent.map((e) => e.number));
 }
 
 export default function EpisodesView({
@@ -71,9 +84,14 @@ export default function EpisodesView({
 
   const epProgress = progressVersion >= 0 ? getEpProgressAll(anime.malId) : {};
 
+  const newEpisodes = useMemo(
+    () => computeNewEpisodes(episodesData?.episodes ?? []),
+    [episodesData],
+  );
+
   const openServerSheet = (n: number) => setPicked(n);
-  const play = (lang: Lang) => {
-    if (picked != null) onWatchEpisode(picked, "zoko", lang);
+  const play = (lang: Lang, server: "zoko" | "kiwi") => {
+    if (picked != null) onWatchEpisode(picked, server, lang);
     setPicked(null);
   };
 
@@ -105,6 +123,8 @@ export default function EpisodesView({
             <Search className="w-5 h-5" />
           </button>
         </div>
+        {/* red loading line while the episode list is being fetched */}
+        {!episodesData ? <div className="load-line h-[2px] mx-3 mb-1.5 rounded-full bg-white/10" /> : null}
         {filter !== null ? (
           <div className="px-4 pb-2.5">
             <div className="flex items-center bg-[#1c1c1c] rounded-md px-3">
@@ -144,7 +164,6 @@ export default function EpisodesView({
           {numbers.map((n) => {
             const pr = epProgress[String(n)];
             const pct = barWidth(pr);
-            const isNew = episodesData.episodes.find((e) => e.number === n && Date.now() - Date.parse(e.addedAt) < 36e5);
             return (
               <button
                 key={n}
@@ -153,7 +172,7 @@ export default function EpisodesView({
                 title={episodesData.episodes.find((e) => e.number === n)?.title ?? `Episode ${n}${pct ? ` — ${pct}% watched` : ""}`}
               >
                 {n}
-                {isNew ? (
+                {newEpisodes.has(n) ? (
                   <span className="absolute -top-1 -right-1 bg-[#d32f2f] text-[8px] font-bold px-1 py-[1px] rounded-full">
                     NEW
                   </span>
@@ -174,14 +193,15 @@ export default function EpisodesView({
         <p className="px-4 mt-10 text-center text-gray-400 text-sm">No episodes match &ldquo;{filter}&rdquo;.</p>
       ) : null}
 
-      {/* server picker sheet — plain SUB / DUB buttons */}
+      {/* server picker sheet — mirrors the reference: "Choose a server & a
+          server doesn't work, please choose another" + SUB/DUB Server #1/#2 */}
       {picked != null ? (
-        <div className="fixed inset-0 z-[60] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setPicked(null)}>
+        <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-end sm:items-center justify-center" onClick={() => setPicked(null)}>
           <div
-            className="w-full sm:max-w-[400px] bg-[#151515] border-t sm:border sm:border-[#242424] sm:rounded-xl rounded-t-xl shadow-2xl overflow-hidden"
+            className="w-full sm:max-w-[400px] bg-[#151515] border-t sm:border sm:border-[#242424] sm:rounded-xl rounded-t-xl shadow-2xl overflow-hidden anim-sheet-up"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
-            aria-label="Select audio"
+            aria-label="Choose a server"
           >
             <div className="px-4 pt-4 pb-1 flex items-center justify-between">
               <h3 className="font-slab text-[16px] font-bold">Episode {picked}</h3>
@@ -196,19 +216,24 @@ export default function EpisodesView({
                 <p className="px-4 text-[11.5px] text-[#ff8a80] pb-1">
                   {pr?.completed ? "Episode finished — replay from the start" : `You were ${pct}% through — it will resume automatically`}
                 </p>
-              ) : (
-                <p className="px-4 text-[11.5px] text-gray-500 pb-2">Pick an audio track to start watching</p>
-              );
+              ) : null;
             })()}
-            <div className="px-3 pb-4">
+            <p className="px-4 pb-3 text-[11.5px] text-gray-400">Choose a server &amp; a server doesn&apos;t work, please choose another</p>
+            <div className="px-3 pb-5">
               <div className="grid grid-cols-2 gap-2">
-                {(["sub", "dub"] as Lang[]).map((l) => (
+                {([
+                  { lang: "sub" as Lang, n: 1 },
+                  { lang: "sub" as Lang, n: 2 },
+                  { lang: "dub" as Lang, n: 1 },
+                  { lang: "dub" as Lang, n: 2 },
+                ]).map(({ lang, n }) => (
                   <button
-                    key={l}
-                    onClick={() => play(l)}
-                    className="rounded-md bg-[#2a2a2a] hover:bg-[#d32f2f] active:scale-[0.98] transition text-[13px] font-bold py-3 text-center"
+                    key={`${lang}-${n}`}
+                    onClick={() => play(lang, n === 1 ? "zoko" : "kiwi")}
+                    className="flex items-center justify-center gap-2 rounded-lg bg-white hover:bg-gray-200 active:scale-[0.98] transition text-[13px] font-bold py-3 text-black text-center"
                   >
-                    {l.toUpperCase()}
+                    <MonitorPlay className="w-4 h-4 text-[#d32f2f]" />
+                    {lang.toUpperCase()} Server #{n}
                   </button>
                 ))}
               </div>

@@ -5,7 +5,9 @@ import type { AnimeLite } from "@/lib/types";
 import { useMyList } from "@/lib/client-store";
 
 interface HeroBannerProps {
-  anime: AnimeLite | null;
+  /** All hero slides; `index` is the active one. Backdrops crossfade between slides. */
+  items: AnimeLite[];
+  index: number;
   ctaLabel: "Details" | "Watch";
   onCta: () => void;
   onShare: () => void;
@@ -21,8 +23,9 @@ function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children
   return <span className={`${cls} px-1.5 py-[1px] rounded text-[10px] font-bold tracking-wide`}>{children}</span>;
 }
 
-export default function HeroBanner({ anime, ctaLabel, onCta, onShare }: HeroBannerProps) {
+export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: HeroBannerProps) {
   const { has, toggle } = useMyList();
+  const anime = items[index] ?? null;
   if (!anime) {
     return <div className="h-[470px] bg-black animate-pulse" />;
   }
@@ -30,15 +33,21 @@ export default function HeroBanner({ anime, ctaLabel, onCta, onShare }: HeroBann
 
   return (
     <div className="relative w-full h-[470px] overflow-hidden bg-[#0a0a0a]">
-      {/* backdrop */}
-      {anime.banner || anime.image ? (
-        <img
-          src={(anime.banner || anime.image) as string}
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-          draggable={false}
-        />
-      ) : null}
+      {/* backdrop — all slides stacked, opacity crossfades between them */}
+      {items.map((it, i) => {
+        const src = it.banner || it.image;
+        if (!src) return null;
+        return (
+          <img
+            key={`${it.malId}-${i}`}
+            src={src}
+            alt=""
+            draggable={false}
+            className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out"
+            style={{ opacity: i === index ? 1 : 0 }}
+          />
+        );
+      })}
       <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/35 to-black" />
 
       {/* content */}

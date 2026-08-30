@@ -70,7 +70,8 @@ export default function HomeView({
   return (
     <div className="pb-24">
       <HeroBanner
-        anime={hero}
+        items={data?.hero ?? []}
+        index={heroIdx}
         ctaLabel="Details"
         onCta={() => hero && onDetails(hero)}
         onShare={() => {

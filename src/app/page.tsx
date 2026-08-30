@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnimeLite, ContinueItem } from "@/lib/types";
 import BottomNav, { type TabKey } from "@/components/anime/BottomNav";
 import HomeView from "@/components/views/HomeView";
@@ -26,6 +26,14 @@ type View =
   | { name: "search" }
   | { name: "mylist" }
   | { name: "profile" };
+
+type NavDir = "push" | "pop" | "fade";
+
+interface ScreenAnim {
+  dir: NavDir;
+  prev: View;
+  nonce: number;
+}
 
 /** Build a minimal AnimeLite from a Continue Watching row so the player can start instantly. */
 function animeFromContinue(item: ContinueItem): AnimeLite {
@@ -56,19 +64,65 @@ function animeFromContinue(item: ContinueItem): AnimeLite {
 export default function Page() {
   const [stack, setStack] = useState<View[]>([{ name: "home" }]);
   const [tab, setTab] = useState<TabKey>("home");
+  const [anim, setAnim] = useState<ScreenAnim | null>(null);
 
   const view = stack[stack.length - 1];
 
-  const push = useCallback((v: View) => setStack((s) => [...s, v]), []);
-  const pop = useCallback(() => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s)), []);
+  const navKind = useRef<"push" | "pop" | "tab">("push");
+  const nonceRef = useRef(0);
+  const prevTopRef = useRef<View>(stack[0]);
+  const prevLenRef = useRef(1);
 
-  const goTab = useCallback(
-    (t: TabKey) => {
-      setTab(t);
-      setStack([{ name: t === "home" ? "home" : t } as View]);
-    },
-    [],
-  );
+  const push = useCallback((v: View) => {
+    navKind.current = "push";
+    setStack((s) => [...s, v]);
+  }, []);
+  const pop = useCallback(() => {
+    navKind.current = "pop";
+    setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  }, []);
+
+  const goTab = useCallback((t: TabKey) => {
+    setTab(t);
+    navKind.current = "tab";
+    setStack((s) => {
+      const next: View = { name: t === "home" ? "home" : t } as View;
+      // tapping the tab you are already on (single view) — no animation
+      const top = s[s.length - 1];
+      if (s.length === 1 && top.name === next.name) {
+        prevTopRef.current = next; // skip effect animation
+        return s;
+      }
+      return [next];
+    });
+  }, []);
+
+  /* Derive the transition (direction + leaving pane) whenever the stack top changes. */
+  useEffect(() => {
+    const top = stack[stack.length - 1];
+    const prev = prevTopRef.current;
+    const prevLen = prevLenRef.current;
+    prevTopRef.current = top;
+    prevLenRef.current = stack.length;
+    if (prev === top) return;
+
+    // episode/lang/server change inside the player — swap content, don't slide
+    if (prev.name === "watch" && top.name === "watch" && prev.anime.malId === top.anime.malId) return;
+    // same single page re-selected — nothing to animate
+    if (prev.name === top.name && stack.length === 1 && prevLen === 1) return;
+
+    let dir: NavDir;
+    if (prev.name === "watch" || top.name === "watch") dir = "fade"; // player: fade through black
+    else if (navKind.current === "tab") dir = "fade";
+    else dir = stack.length > prevLen ? "push" : "pop";
+
+    const nonce = ++nonceRef.current;
+    setAnim({ dir, prev, nonce });
+    const t = window.setTimeout(() => {
+      setAnim((a) => (a && a.nonce === nonce ? null : a));
+    }, 340);
+    return () => window.clearTimeout(t);
+  }, [stack]);
 
   // Android-style hardware back support
   useEffect(() => {
@@ -103,60 +157,93 @@ export default function Page() {
     [push],
   );
 
-  return (
-    <div className="min-h-screen bg-black">
-      <div className="max-w-[560px] mx-auto min-h-screen bg-black border-x border-[#141414]">
-        {view.name === "home" ? (
+  const renderView = (v: View) => {
+    switch (v.name) {
+      case "home":
+        return (
           <HomeView
             onSelect={openAnime}
             onDetails={openAnime}
             onWatch={(a) => push({ name: "episodes", anime: a })}
             onResume={resumeWatching}
           />
-        ) : null}
-
-        {view.name === "details" ? (
+        );
+      case "details":
+        return (
           <DetailsView
-            anime={view.anime}
+            anime={v.anime}
             onBack={pop}
             onSelect={openAnime}
             onWatch={(a) => push({ name: "episodes", anime: a })}
             onEpisodes={(a) => push({ name: "episodes", anime: a })}
           />
-        ) : null}
-
-        {view.name === "episodes" ? (
+        );
+      case "episodes":
+        return (
           <EpisodesView
-            anime={view.anime}
+            anime={v.anime}
             onBack={pop}
-            onWatchEpisode={(ep, server, lang) => push({ name: "watch", anime: view.anime, ep, lang, server })}
+            onWatchEpisode={(ep, server, lang) => push({ name: "watch", anime: v.anime, ep, lang, server })}
           />
-        ) : null}
-
-        {view.name === "watch" ? (
+        );
+      case "watch":
+        return (
           <WatchView
-            anime={view.anime}
-            episode={view.ep}
-            lang={view.lang}
-            server={view.server}
+            anime={v.anime}
+            episode={v.ep}
+            lang={v.lang}
+            server={v.server}
             onBack={pop}
             onEpisodeChange={(ep, lang, server) =>
-              setStack((s) => [...s.slice(0, -1), { name: "watch", anime: view.anime, ep, lang, server }])
+              setStack((s) => [...s.slice(0, -1), { name: "watch", anime: v.anime, ep, lang, server }])
             }
           />
+        );
+      case "genres":
+        return <GenresView onSelect={(genre) => push({ name: "genre", genre })} />;
+      case "genre":
+        return <GenreView genre={v.genre} onBack={pop} onSelect={openAnime} />;
+      case "latest":
+        return <LatestView onSelect={openAnime} />;
+      case "search":
+        return <SearchView onSelect={openAnime} />;
+      case "mylist":
+        return <MyListView onSelect={openAnime} />;
+      case "profile":
+        return <ProfileView onResume={resumeWatching} />;
+    }
+  };
+
+  // pane keys stay stable across the animation so scroll positions survive
+  const topKey = `${stack.length}-${view.name}`;
+  const inClass =
+    anim?.dir === "push" ? "anim-push-in" : anim?.dir === "pop" ? "anim-pop-under" : anim ? "anim-fade-in" : "";
+  const outClass =
+    anim?.dir === "push" ? "anim-push-under" : anim?.dir === "pop" ? "anim-pop-out" : "anim-fade-out";
+  const inZ = anim?.dir === "pop" ? "z-10" : "z-20";
+
+  return (
+    <div className="min-h-screen bg-black">
+      <div className="max-w-[560px] mx-auto h-[100dvh] bg-black border-x border-[#141414] relative overflow-hidden">
+        {/* current (incoming) pane */}
+        <div
+          key={topKey}
+          className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${inClass} ${inZ}`}
+        >
+          {renderView(view)}
+        </div>
+
+        {/* leaving pane (only during a transition) */}
+        {anim ? (
+          <div
+            key={`out-${anim.nonce}`}
+            className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${outClass} pointer-events-none ${
+              anim.dir === "pop" ? "z-20" : "z-10"
+            }`}
+          >
+            {renderView(anim.prev)}
+          </div>
         ) : null}
-
-        {view.name === "genres" ? <GenresView onSelect={(genre) => push({ name: "genre", genre })} /> : null}
-
-        {view.name === "genre" ? <GenreView genre={view.genre} onBack={pop} onSelect={openAnime} /> : null}
-
-        {view.name === "latest" ? <LatestView onSelect={openAnime} /> : null}
-
-        {view.name === "search" ? <SearchView onSelect={openAnime} /> : null}
-
-        {view.name === "mylist" ? <MyListView onSelect={openAnime} /> : null}
-
-        {view.name === "profile" ? <ProfileView onResume={resumeWatching} /> : null}
       </div>
 
       {view.name !== "watch" ? <BottomNav active={tab} onNavigate={goTab} /> : null}

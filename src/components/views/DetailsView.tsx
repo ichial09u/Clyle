@@ -103,7 +103,8 @@ export default function DetailsView({
       </div>
 
       <HeroBanner
-        anime={anime}
+        items={[anime]}
+        index={0}
         ctaLabel="Watch"
         onCta={() => onWatch(anime)}
         onShare={() => {

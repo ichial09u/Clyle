@@ -67,6 +67,8 @@ export default function WatchView({
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
   const [castState, setCastState] = useState<CastState>(getCastState());
   const [castMsg, setCastMsg] = useState<string | null>(null);
+  // in-player overlay visibility (controls live INSIDE the player surface)
+  const [uiVisible, setUiVisible] = useState(true);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -75,6 +77,37 @@ export default function WatchView({
   const resumeAtRef = useRef(0);
   const castStateRef = useRef<CastState>(getCastState());
   const castMediaUrlRef = useRef("");
+  const hideTimerRef = useRef<number | null>(null);
+  const panelRef = useRef<Panel>(null);
+  panelRef.current = panel;
+  const lockedRef = useRef(false);
+  lockedRef.current = locked;
+
+  /* -------- auto-hide the in-player controls (like a real video app) -------- */
+  const showUi = useCallback((autoHide = true) => {
+    setUiVisible(true);
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    if (autoHide) {
+      hideTimerRef.current = window.setTimeout(() => {
+        const v = videoRef.current;
+        if (v && !v.paused && !v.ended && !panelRef.current && !lockedRef.current) setUiVisible(false);
+      }, 3200);
+    }
+  }, []);
+
+  useEffect(() => {
+    // always show controls while paused, a panel is open, or locked
+    if (!playing || panel || locked || streamError || castMsg) {
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+      setUiVisible(true);
+    } else {
+      showUi();
+    }
+  }, [playing, panel, locked, streamError, castMsg, showUi]);
+
+  useEffect(() => () => {
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+  }, []);
 
   const total = anime.totalEpisodes || episode;
   const downloadUrl = zokoDownloadUrl(anime.malId, episode, lang);
@@ -414,32 +447,25 @@ export default function WatchView({
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
   const casting = castState === "casting";
   const castUsable = castState !== "unavailable";
+  const ui = uiVisible; // shorthand for JSX below
 
   return (
-    <div className="fixed inset-0 z-50 bg-black flex flex-col select-none" ref={shellRef}>
-      {/* top bar */}
-      <div className="flex items-center gap-1 px-2 pt-3 pb-2 bg-gradient-to-b from-black to-transparent z-10">
-        <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Back">
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <button
-          onClick={() => {
-            const next: Lang = lang === "sub" ? "dub" : "sub";
-            setLang(next);
-          }}
-          className="font-slab text-[16px] font-bold truncate"
-          title="Toggle SUB/DUB"
-        >
-          Episode {episode} {lang.toUpperCase()}
-        </button>
-        <div className="flex-1" />
-        <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">
-          <Download className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* player surface */}
-      <div className={`relative flex-1 flex items-center justify-center overflow-hidden bg-black ${resizeMode === 2 ? "" : "py-2"}`}>
+    <div className="fixed inset-0 z-50 bg-black select-none" ref={shellRef}>
+      {/* player surface — full screen; every control is overlaid INSIDE it */}
+      <div
+        className={`relative w-full h-full flex items-center justify-center overflow-hidden bg-black ${resizeMode === 2 ? "" : "py-2"}`}
+        onClick={() => {
+          // tap the video to show/hide the in-player controls
+          if (!playing || panel || locked || streamError) {
+            showUi(false);
+          } else if (ui) {
+            setUiVisible(false);
+            if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+          } else {
+            showUi();
+          }
+        }}
+      >
         {!iframeFallback ? (
           <>
             <video
@@ -447,7 +473,6 @@ export default function WatchView({
               playsInline
               poster={anime.banner ?? anime.image ?? undefined}
               className={`w-full h-full border-0 bg-black object-contain ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
-              onClick={togglePlay}
             >
               {subTrack && subsOn ? (
                 <track
@@ -463,7 +488,7 @@ export default function WatchView({
 
             {/* casting overlay — playback lives on the TV now */}
             {casting ? (
-              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-10">
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-30">
                 <span className="w-14 h-14 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
                   <Cast className="w-7 h-7 text-[#ff5252]" />
                 </span>
@@ -472,7 +497,10 @@ export default function WatchView({
                   {anime.title} · Episode {episode} ({lang.toUpperCase()})
                 </p>
                 <button
-                  onClick={stopCasting}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    stopCasting();
+                  }}
                   className="mt-1 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-5 py-2 transition active:scale-95"
                 >
                   Stop casting
@@ -483,8 +511,11 @@ export default function WatchView({
             {/* center play overlay */}
             {ready && !playing && !casting ? (
               <button
-                onClick={togglePlay}
-                className="absolute inset-0 flex items-center justify-center"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  togglePlay();
+                }}
+                className={`absolute inset-0 flex items-center justify-center z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                 aria-label="Play"
               >
                 <span className="w-16 h-16 rounded-full bg-black/55 backdrop-blur flex items-center justify-center">
@@ -495,111 +526,8 @@ export default function WatchView({
 
             {/* buffering spinner */}
             {!ready && !streamError && !casting ? (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                 <div className="w-9 h-9 border-2 border-[#d32f2f] border-t-transparent rounded-full animate-spin" />
-              </div>
-            ) : null}
-
-            {/* resumed pill — "picked up where you left off" */}
-            {resumedFrom != null && !casting ? (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5">
-                <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
-                <button
-                  onClick={() => {
-                    seekTo(0);
-                    setResumedFrom(null);
-                  }}
-                  className="text-[11px] font-bold text-[#ff8a80] hover:text-white bg-white/10 hover:bg-[#d32f2f] rounded-full px-2.5 py-1 transition"
-                >
-                  Start over
-                </button>
-              </div>
-            ) : null}
-
-            {/* skip intro */}
-            {showSkip && !casting ? (
-              <button
-                onClick={() => seekTo(skip!.end)}
-                className="absolute bottom-24 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
-              >
-                <Zap className="w-4 h-4 text-[#35d5bf]" /> Skip Intro
-              </button>
-            ) : null}
-
-            {/* cast failure toast */}
-            {castMsg ? (
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-full px-3.5 py-1.5 whitespace-nowrap">
-                {castMsg}
-              </div>
-            ) : null}
-
-            {streamError && !casting ? (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
-                <p className="text-[13px] text-gray-300">Our player couldn&apos;t load this stream.</p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      setStreamError(false);
-                      setStream(null);
-                      fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
-                        .then((r) => (r.ok ? r.json() : null))
-                        .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip }))
-                        .catch(() => setStreamError(true));
-                    }}
-                    className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
-                  >
-                    Retry
-                  </button>
-                  <button
-                    onClick={() => setIframeFallback(true)}
-                    className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
-                  >
-                    Use Zoko player
-                  </button>
-                </div>
-              </div>
-            ) : null}
-
-            {/* seek bar + inline controls */}
-            {!locked && !panel && !casting ? (
-              <div className="absolute bottom-0 inset-x-0 px-3 pb-2 pt-6 bg-gradient-to-t from-black/85 to-transparent z-10">
-                <div className="relative h-4 flex items-center">
-                  <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full overflow-hidden">
-                    <div className="h-full bg-white/25" style={{ width: `${bufPct}%` }} />
-                  </div>
-                  <div className="absolute h-[3px] bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
-                  <input
-                    ref={seekRef}
-                    type="range"
-                    min={0}
-                    max={duration || 0}
-                    step={0.5}
-                    value={currentTime}
-                    onChange={(e) => seekTo(parseFloat(e.target.value))}
-                    className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
-                    aria-label="Seek"
-                  />
-                </div>
-                <div className="flex items-center gap-3 mt-1">
-                  <button onClick={togglePlay} aria-label={playing ? "Pause" : "Play"} className="text-white hover:opacity-80">
-                    {playing ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
-                  </button>
-                  <span className="text-[11px] text-gray-300 tabular-nums">
-                    {fmtTime(currentTime)} / {fmtTime(duration)}
-                  </span>
-                  <div className="flex-1" />
-                  <button
-                    onClick={() => toggleSubs(!subsOn)}
-                    className={`hover:opacity-80 ${subsOn ? "text-white" : "text-gray-500"}`}
-                    aria-label="Toggle subtitles"
-                    title="Subtitles"
-                  >
-                    <Subtitles className="w-[18px] h-[18px]" />
-                  </button>
-                  <button onClick={fullscreen} className="text-white hover:opacity-80" aria-label="Fullscreen">
-                    <Maximize className="w-[18px] h-[18px]" />
-                  </button>
-                </div>
               </div>
             ) : null}
           </>
@@ -615,127 +543,250 @@ export default function WatchView({
             sandbox="allow-scripts allow-same-origin allow-presentation"
           />
         )}
-      </div>
 
-      {/* bottom control bar */}
-      {!locked && !panel ? (
-        <div className="flex items-center justify-around bg-[#101010] px-1 py-2.5 z-10">
-          <ControlButton icon={SkipBack} label="Previous" onClick={() => go(episode - 1)} disabled={episode <= 1} />
-          <ControlButton icon={Lock} label="Lock" onClick={() => setLocked(true)} />
-          <ControlButton icon={SlidersHorizontal} label="Quality" onClick={() => setPanel("quality")} />
-          <ControlButton icon={Gauge} label="Speed" onClick={() => setPanel("speed")} />
-          <ControlButton
-            icon={Scan}
-            label="Resize"
-            onClick={() => setResizeMode((m) => (((m + 1) % 3) as 0 | 1 | 2))}
-          />
-          {castUsable ? (
-            <ControlButton
-              icon={Cast}
-              label={casting ? "Stop" : "Cast"}
-              active={casting}
-              onClick={() => (casting ? stopCasting() : void startCasting())}
-            />
-          ) : null}
-          <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
-        </div>
-      ) : null}
-
-      {locked ? (
-        <button
-          onClick={() => setLocked(false)}
-          className="fixed top-16 right-4 z-20 flex items-center gap-2 bg-black/70 text-gray-300 hover:text-white rounded-full px-3 py-2 text-[12px] transition"
-        >
-          <Unlock className="w-4 h-4" /> Unlock
-        </button>
-      ) : null}
-
-      {/* quality panel — real hls levels */}
-      {panel === "quality" ? (
-        <div className="bg-[#0d0d0d] border-t border-[#222] px-4 py-3 z-10 max-h-[42vh] overflow-y-auto">
-          <div className="flex items-center justify-between pb-2">
-            <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
-              <ChevronLeft className="w-4 h-4" /> Back
-            </button>
-            <span className="text-[12px] text-gray-400">Quality & Subtitles</span>
-            <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white" aria-label="Close panel">
-              ✕
+        {/* resumed pill — "picked up where you left off" */}
+        {resumedFrom != null && !casting ? (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 player-layer" style={{ top: "3.25rem" }}>
+            <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                seekTo(0);
+                setResumedFrom(null);
+              }}
+              className="text-[11px] font-bold text-[#ff8a80] hover:text-white bg-white/10 hover:bg-[#d32f2f] rounded-full px-2.5 py-1 transition"
+            >
+              Start over
             </button>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <h4 className="font-slab font-bold text-[14px] mb-2">Quality</h4>
-              <ul className="space-y-2">
-                <li>
-                  <button onClick={() => applyQuality("auto")} className={`flex items-center gap-2 text-[13px] ${quality === "auto" ? "text-[#ff5252]" : "text-gray-300"}`}>
-                    {quality === "auto" ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
-                    Auto
-                  </button>
-                </li>
-                {[...levels]
-                  .map((l, i) => ({ l, i }))
-                  .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0))
-                  .slice(0, 5)
-                  .map(({ l, i }) => (
-                    <li key={i}>
-                      <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
-                        {quality === i ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
-                        {l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`}
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-slab font-bold text-[14px] mb-2">Subtitles</h4>
-              <ul className="space-y-2 text-[13px]">
-                <li>
-                  <button onClick={() => toggleSubs(true)} className={`flex items-center gap-2 ${subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
-                    {subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
-                    {subTrack?.label || "English"}
-                  </button>
-                </li>
-                <li>
-                  <button onClick={() => toggleSubs(false)} className={`flex items-center gap-2 ${!subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
-                    {!subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
-                    Off
-                  </button>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      ) : null}
+        ) : null}
 
-      {/* speed panel */}
-      {panel === "speed" ? (
-        <div className="bg-[#0d0d0d] border-t border-[#222] px-4 py-3 z-10">
-          <div className="flex items-center justify-between pb-2">
-            <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
-              <ChevronLeft className="w-4 h-4" /> Back
-            </button>
-            <h4 className="font-slab font-bold text-[14px]">Speed</h4>
-            <span className="w-10" />
+        {/* skip intro */}
+        {showSkip && !casting ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              seekTo(skip!.end);
+            }}
+            className="absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
+          >
+            <Zap className="w-4 h-4 text-[#35d5bf]" /> Skip Intro
+          </button>
+        ) : null}
+
+        {/* cast failure toast */}
+        {castMsg ? (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-full px-3.5 py-1.5 whitespace-nowrap">
+            {castMsg}
           </div>
-          <div className="flex flex-wrap gap-2 justify-center pb-1">
-            {SPEEDS.map((s) => (
+        ) : null}
+
+        {streamError && !casting && !iframeFallback ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
+            <p className="text-[13px] text-gray-300">Our player couldn&apos;t load this stream.</p>
+            <div className="flex gap-2">
               <button
-                key={s}
-                onClick={() => applySpeed(s)}
-                className={`px-3 py-1.5 rounded-full text-[12.5px] transition ${s === speed ? "bg-white text-black font-bold" : "bg-[#1c1c1c] text-gray-300"}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setStreamError(false);
+                  setStream(null);
+                  fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
+                    .then((r) => (r.ok ? r.json() : null))
+                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip }))
+                    .catch(() => setStreamError(true));
+                }}
+                className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
               >
-                {s}×
+                Retry
               </button>
-            ))}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIframeFallback(true);
+                }}
+                className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+              >
+                Use Zoko player
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* ---- in-player TOP bar: back / title / download ---- */}
+        <div
+          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 pt-3 pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Back">
+            <ChevronLeft className="w-6 h-6" />
+          </button>
+          <button
+            onClick={() => {
+              const next: Lang = lang === "sub" ? "dub" : "sub";
+              setLang(next);
+            }}
+            className="font-slab text-[16px] font-bold truncate"
+            title="Toggle SUB/DUB"
+          >
+            Episode {episode} {lang.toUpperCase()}
+          </button>
+          <div className="flex-1" />
+          <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">
+            <Download className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
+        <div
+          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {!iframeFallback ? (
+            <div className="flex items-center gap-2">
+              <span className="text-[10.5px] text-gray-200 tabular-nums w-11 text-right shrink-0">{fmtTime(currentTime)}</span>
+              <div className="relative h-4 flex items-center flex-1">
+                <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full overflow-hidden">
+                  <div className="h-full bg-white/25" style={{ width: `${bufPct}%` }} />
+                </div>
+                <div className="absolute h-[3px] bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
+                <input
+                  ref={seekRef}
+                  type="range"
+                  min={0}
+                  max={duration || 0}
+                  step={0.5}
+                  value={currentTime}
+                  onChange={(e) => seekTo(parseFloat(e.target.value))}
+                  className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
+                  aria-label="Seek"
+                />
+              </div>
+              <span className="text-[10.5px] text-gray-200 tabular-nums w-11 shrink-0">{fmtTime(duration)}</span>
+            </div>
+          ) : null}
+
+          <div className="mt-1 flex items-center justify-around">
+            <ControlButton icon={SkipBack} label="Previous" onClick={() => go(episode - 1)} disabled={episode <= 1} />
+            <ControlButton icon={Lock} label="Lock" onClick={() => setLocked(true)} />
+            <ControlButton icon={SlidersHorizontal} label="Quality & Subtitles" onClick={() => setPanel("quality")} />
+            <ControlButton icon={Gauge} label="Speed" onClick={() => setPanel("speed")} />
+            <ControlButton
+              icon={Scan}
+              label="Resize"
+              onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
+            />
+            {castUsable ? (
+              <ControlButton
+                icon={Cast}
+                label={casting ? "Stop" : "Cast"}
+                active={casting}
+                onClick={() => (casting ? stopCasting() : void startCasting())}
+              />
+            ) : null}
+            <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
           </div>
         </div>
-      ) : null}
+
+        {/* locked — single unlock chip */}
+        {locked ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setLocked(false);
+            }}
+            className="absolute top-16 right-4 z-30 flex items-center gap-2 bg-black/70 text-gray-300 hover:text-white rounded-full px-3 py-2 text-[12px] transition"
+          >
+            <Unlock className="w-4 h-4" /> Unlock
+          </button>
+        ) : null}
+
+        {/* quality panel — real hls levels, slides up inside the player */}
+        {panel === "quality" ? (
+          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 max-h-[46vh] overflow-y-auto anim-sheet-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-2">
+              <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+              <span className="text-[12px] text-gray-400">Quality & Subtitles</span>
+              <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white" aria-label="Close panel">
+                ✕
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <h4 className="font-slab font-bold text-[14px] mb-2">Quality</h4>
+                <ul className="space-y-2">
+                  <li>
+                    <button onClick={() => applyQuality("auto")} className={`flex items-center gap-2 text-[13px] ${quality === "auto" ? "text-[#ff5252]" : "text-gray-300"}`}>
+                      {quality === "auto" ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                      Auto
+                    </button>
+                  </li>
+                  {[...levels]
+                    .map((l, i) => ({ l, i }))
+                    .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0))
+                    .slice(0, 5)
+                    .map(({ l, i }) => (
+                      <li key={i}>
+                        <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
+                          {quality === i ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                          {l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`}
+                        </button>
+                      </li>
+                    ))}
+                </ul>
+              </div>
+              <div>
+                <h4 className="font-slab font-bold text-[14px] mb-2">Subtitles</h4>
+                <ul className="space-y-2 text-[13px]">
+                  <li>
+                    <button onClick={() => toggleSubs(true)} className={`flex items-center gap-2 ${subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
+                      {subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                      {subTrack?.label || "English"}
+                    </button>
+                  </li>
+                  <li>
+                    <button onClick={() => toggleSubs(false)} className={`flex items-center gap-2 ${!subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
+                      {!subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                      Off
+                    </button>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {/* speed panel */}
+        {panel === "speed" ? (
+          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 anim-sheet-up" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-2">
+              <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
+                <ChevronLeft className="w-4 h-4" /> Back
+              </button>
+              <h4 className="font-slab font-bold text-[14px]">Speed</h4>
+              <span className="w-10" />
+            </div>
+            <div className="flex flex-wrap gap-2 justify-center pb-1">
+              {SPEEDS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => applySpeed(s)}
+                  className={`px-3 py-1.5 rounded-full text-[12.5px] transition ${s === speed ? "bg-white text-black font-bold" : "bg-[#1c1c1c] text-gray-300"}`}
+                >
+                  {s}×
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       {/* download format dialog */}
       {downloadOpen ? (
-        <div className="fixed inset-0 z-[60] bg-black/60 flex items-center justify-center px-6" onClick={() => setDownloadOpen(false)}>
+        <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-center justify-center px-6" onClick={() => setDownloadOpen(false)}>
           <div
-            className="w-full max-w-[340px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden"
+            className="w-full max-w-[340px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden anim-sheet-up"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-label="Select Download Format"
