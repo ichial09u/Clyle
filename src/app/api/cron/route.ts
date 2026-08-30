@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { syncCatalog, lastSync } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 /**
  * GET /api/cron — Vercel Cron entry point.

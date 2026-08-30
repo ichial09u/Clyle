@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { syncCatalog, lastSync, syncInProgress } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 120;
+export const maxDuration = 60;
 
 /** GET /api/sync — status of the last sync. */
 export async function GET() {
