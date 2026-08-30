@@ -112,6 +112,38 @@ async function diskWrite(key: string, entry: CacheEntry): Promise<void> {
   }
 }
 
+/**
+ * Does Zoko have a DUB stream for this anime at all?
+ *   true  = the dub page resolves to a real stream
+ *   false = Zoko answered "no" (404 / no payload)
+ *   null  = couldn't ask right now (network) — caller should not cache a verdict
+ */
+export async function probeDubAvailable(malId: number, ep = 1): Promise<boolean | null> {
+  try {
+    const pageUrl = zokoStreamPageUrl(malId, ep, "dub", "zoko");
+    const res = await fetch(pageUrl, {
+      headers: {
+        "User-Agent": UA,
+        Origin: ZOKO_ORIGIN,
+        Referer: `${ZOKO_ORIGIN}/`,
+        Accept: "text/html,application/xhtml+xml",
+      },
+      cache: "no-store",
+      signal: AbortSignal.timeout(12_000),
+      redirect: "follow",
+    });
+    if (!res.ok) return false;
+    const html = await res.text();
+    const m = html.match(/window\.__P="([^"]+)"/);
+    if (!m) return false;
+    const decoded = decodeStreamPayload(m[1]);
+    if (!decoded) return false;
+    return !!decoded.src;
+  } catch {
+    return null;
+  }
+}
+
 async function fetchStream(malId: number, ep: number, lang: Lang, server: ServerId): Promise<ZokoStream | null> {
   const pageUrl = zokoStreamPageUrl(malId, ep, lang, server);
   const res = await fetch(pageUrl, {

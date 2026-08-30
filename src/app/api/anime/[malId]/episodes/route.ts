@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { freshMediaByMal, airedEpisodeCount } from "@/lib/anilist";
 import { importEpisodes, importEpisodesFromList } from "@/lib/sync";
+import { probeDubAvailable } from "@/lib/zoko-stream";
 
 export const dynamic = "force-dynamic";
 
@@ -51,13 +52,24 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // fall back to the stored count if the episode table has not caught up yet
   const total = episodes.length > 0 ? episodes[episodes.length - 1].number : anime.totalEpisodes;
 
+  // does Zoko even have a DUB for this show? probe once, remember the verdict
+  let hasDub = anime.hasDub;
+  if (hasDub == null) {
+    const verdict = await probeDubAvailable(malId, 1);
+    if (verdict != null) {
+      hasDub = verdict;
+      await db.anime.update({ where: { malId }, data: { hasDub } }).catch(() => undefined);
+    }
+  }
+
   return NextResponse.json({
     malId,
-    title: anime.title,
+    title: anime.titleEnglish?.trim() || anime.title,
     type: anime.type,
     airing: anime.airing,
     durationMin: anime.durationMin,
     total,
+    hasDub: hasDub != null ? hasDub : true,
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
   });

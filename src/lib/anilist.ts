@@ -475,7 +475,7 @@ export function anilistToJikan(m: AniListMedia): JikanAnime | null {
   const poster = m.coverImage?.extraLarge ?? m.coverImage?.large ?? null;
   return {
     mal_id: malId,
-    title: m.title?.romaji ?? m.title?.english ?? `Unknown (${malId})`,
+    title: m.title?.english ?? m.title?.romaji ?? `Unknown (${malId})`,
     title_english: m.title?.english ?? null,
     images: { jpg: { image_url: m.coverImage?.large ?? null, large_image_url: poster } },
     banner_image: m.bannerImage ?? null,

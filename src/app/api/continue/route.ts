@@ -42,7 +42,7 @@ export async function GET(req: Request) {
     const duration = r.duration || 0;
     return {
       malId: r.malId,
-      title: c?.title ?? r.title ?? "Unknown title",
+      title: c?.titleEnglish?.trim() || c?.title || r.title || "Unknown title",
       image: c?.image ?? r.image ?? null,
       banner: c?.banner ?? null,
       totalEpisodes: c?.totalEpisodes ?? 0,

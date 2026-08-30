@@ -34,6 +34,7 @@ model Anime {
   trailerYt    String?
   totalEpisodes Int     @default(0) // known episode count from MAL
   inCatalog     Boolean @default(true) // "Zoko has it"
+  hasDub        Boolean? // Zoko probe result: does a DUB stream exist? (null = not probed yet)
   source        String  @default("seed") // seed | season-import | manual
   lastSyncedAt  DateTime?
   createdAt     DateTime @default(now())

@@ -50,6 +50,7 @@ export interface EpisodesPayload {
   airing: boolean;
   durationMin: number | null;
   total: number;
+  hasDub: boolean;
   episodes: EpisodeInfo[];
   newlyAdded: number;
 }

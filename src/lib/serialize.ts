@@ -12,7 +12,8 @@ export function lite(row: Anime): AnimeLite {
   }
   return {
     malId: row.malId,
-    title: row.title,
+    // display titles are ENGLISH ONLY (fall back to the romaji/main title)
+    title: row.titleEnglish?.trim() || row.title,
     titleEnglish: row.titleEnglish,
     image: row.image,
     banner: row.banner,

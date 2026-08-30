@@ -58,7 +58,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       const node = edge.node;
       const relatedMal = node?.idMal ?? null;
       if (!node || !relatedMal) continue;
-      await pushRelated(rel, relatedMal, node.title?.romaji ?? node.title?.english ?? `#${relatedMal}`, node.coverImage?.extraLarge ?? node.coverImage?.large ?? null);
+      await pushRelated(rel, relatedMal, node.title?.english ?? node.title?.romaji ?? `#${relatedMal}`, node.coverImage?.extraLarge ?? node.coverImage?.large ?? null);
     }
   } else {
     // Jikan fallback for the relations graph
@@ -97,7 +97,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     );
     const list = recEntries.map((e, i) => ({
       malId: e.mal_id,
-      name: e.title,
+      name: e.title_english ?? e.title,
       image: recRows[i]?.image ?? e.images?.webp?.large_image_url ?? e.images?.jpg?.large_image_url ?? e.images?.jpg?.image_url ?? null,
       inCatalog: recRows[i]?.inCatalog ?? false,
     }));

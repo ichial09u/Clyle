@@ -508,7 +508,7 @@ export default function WatchView({
               </div>
             ) : null}
 
-            {/* center play overlay */}
+            {/* center play overlay — big white circle like the reference player */}
             {ready && !playing && !casting ? (
               <button
                 onClick={(e) => {
@@ -518,8 +518,8 @@ export default function WatchView({
                 className={`absolute inset-0 flex items-center justify-center z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
                 aria-label="Play"
               >
-                <span className="w-16 h-16 rounded-full bg-black/55 backdrop-blur flex items-center justify-center">
-                  <Play className="w-8 h-8 text-white ml-1" />
+                <span className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center">
+                  <Play className="w-7 h-7 text-black ml-0.5 fill-black" />
                 </span>
               </button>
             ) : null}
@@ -532,16 +532,24 @@ export default function WatchView({
             ) : null}
           </>
         ) : (
-          /* hard-sandboxed Zoko iframe fallback (no popups, no top navigation) */
-          <iframe
-            key={`zoko-${episode}-${lang}`}
-            src={zokoPlayerUrl(anime.malId, episode, lang)}
-            title={`${anime.title} — Episode ${episode} (${lang})`}
-            className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : resizeMode === 2 ? "" : "aspect-video max-h-full"}`}
-            allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-            referrerPolicy="no-referrer"
-            sandbox="allow-scripts allow-same-origin allow-presentation"
-          />
+          /* hard-sandboxed Zoko iframe fallback (no popups, no top navigation).
+             Cross-origin internals can't be recolored, so the fallback gets a
+             red-themed frame + our own red chrome around it. */
+          <div className={`w-full h-full flex items-center justify-center ${resizeMode === 2 ? "" : "px-2"}`}>
+            <div className="relative w-full h-full rounded-md overflow-hidden ring-2 ring-[#d32f2f]/80 shadow-[0_0_24px_rgba(211,47,47,0.35)] bg-black">
+              <iframe
+                key={`zoko-${episode}-${lang}`}
+                src={zokoPlayerUrl(anime.malId, episode, lang)}
+                title={`${anime.title} — Episode ${episode} (${lang})`}
+                className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
+                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                referrerPolicy="no-referrer"
+                sandbox="allow-scripts allow-same-origin allow-presentation"
+              />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-[#d32f2f]/25 to-transparent" />
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#d32f2f]/25 to-transparent" />
+            </div>
+          </div>
         )}
 
         {/* resumed pill — "picked up where you left off" */}
@@ -665,26 +673,26 @@ export default function WatchView({
             </div>
           ) : null}
 
-          <div className="mt-1 flex items-center justify-around">
-            <ControlButton icon={SkipBack} label="Previous" onClick={() => go(episode - 1)} disabled={episode <= 1} />
-            <ControlButton icon={Lock} label="Lock" onClick={() => setLocked(true)} />
-            <ControlButton icon={SlidersHorizontal} label="Quality & Subtitles" onClick={() => setPanel("quality")} />
-            <ControlButton icon={Gauge} label="Speed" onClick={() => setPanel("speed")} />
-            <ControlButton
-              icon={Scan}
-              label="Resize"
-              onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
-            />
-            {castUsable ? (
-              <ControlButton
-                icon={Cast}
-                label={casting ? "Stop" : "Cast"}
-                active={casting}
-                onClick={() => (casting ? stopCasting() : void startCasting())}
-              />
-            ) : null}
-            <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
-          </div>
+      <div className="mt-1 flex items-center justify-between">
+        <ControlButton icon={SkipBack} label="Previous" onClick={() => go(episode - 1)} disabled={episode <= 1} />
+        <ControlButton icon={Lock} label="Lock" onClick={() => setLocked(true)} />
+        <ControlButton icon={SlidersHorizontal} label="Quality" onClick={() => setPanel("quality")} />
+        <ControlButton icon={Gauge} label="Speed" onClick={() => setPanel("speed")} />
+        <ControlButton
+          icon={Scan}
+          label="Resize"
+          onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
+        />
+        {castUsable ? (
+          <ControlButton
+            icon={Cast}
+            label={casting ? "Stop" : "Cast"}
+            active={casting}
+            onClick={() => (casting ? stopCasting() : void startCasting())}
+          />
+        ) : null}
+        <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
+      </div>
         </div>
 
         {/* locked — single unlock chip */}
@@ -828,14 +836,15 @@ function ControlButton({
   disabled?: boolean;
   active?: boolean;
 }) {
+  // reference style: icon and label side-by-side in one row inside the player
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex flex-col items-center gap-1 disabled:opacity-30 active:scale-95 transition px-1 ${active ? "text-[#ff5252]" : "text-gray-300 hover:text-white"}`}
+      className={`flex items-center gap-1 disabled:opacity-30 active:scale-95 transition px-0.5 py-1 ${active ? "text-[#ff5252]" : "text-gray-200 hover:text-white"}`}
     >
-      <Icon className="w-[18px] h-[18px]" />
-      <span className="text-[9.5px] leading-none whitespace-nowrap">{label}</span>
+      <Icon className="w-3 h-3 shrink-0" />
+      <span className="text-[10.5px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );
 }

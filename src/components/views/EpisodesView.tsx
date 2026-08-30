@@ -224,8 +224,13 @@ export default function EpisodesView({
                 {([
                   { lang: "sub" as Lang, n: 1 },
                   { lang: "sub" as Lang, n: 2 },
-                  { lang: "dub" as Lang, n: 1 },
-                  { lang: "dub" as Lang, n: 2 },
+                  // anime without a DUB yet — no DUB buttons at all
+                  ...(episodesData?.hasDub === false
+                    ? []
+                    : [
+                        { lang: "dub" as Lang, n: 1 },
+                        { lang: "dub" as Lang, n: 2 },
+                      ]),
                 ]).map(({ lang, n }) => (
                   <button
                     key={`${lang}-${n}`}
@@ -237,6 +242,9 @@ export default function EpisodesView({
                   </button>
                 ))}
               </div>
+              {episodesData?.hasDub === false ? (
+                <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>
+              ) : null}
             </div>
           </div>
         </div>
