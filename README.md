@@ -8,8 +8,16 @@ screen recording as a **Next.js 16** web app.
   included, so hero cards and posters load in milliseconds from AniList's fast CDN.
   [Jikan](https://jikan.moe) (unofficial MyAnimeList API) remains as the fallback source and powers
   episode titles. No scraping.
-- **Playback**: Zoko's own player only — `https://zokoanime.video/download/mal/{malId}/{episode}/{sub|dub}`
-  (e.g. `.../download/mal/21/1/sub` = One Piece episode 1, SUB).
+- **Playback**: OUR OWN ad-free player (hls.js). The app resolves Zoko's stream
+  server-side (`/api/stream`), decodes the direct HLS playlist + subtitle tracks +
+  skip-intro data, and streams it through a rewriting proxy (`/api/stream/proxy`) —
+  so playback happens inside the app with zero ads and zero redirects. Quality
+  levels, subtitles, speed and Skip Intro are real, and a hard-sandboxed Zoko
+  iframe remains as a fallback. Zoko's download page is still offered at
+  `https://zokoanime.video/download/mal/{malId}/{episode}/{sub|dub}`.
+- **Servers**: the episode sheet offers **Zoko** and **Kiwi**, each with SUB and
+  DUB (exactly like the app in the recording). Tapping Watch opens the episode
+  list; tapping an episode opens the server sheet.
 - **Catalog scope**: only anime Zoko carries. The seed list ships the staples; anything newer
   is imported automatically (see *Auto-import* below) or with one tap from search / genre pages.
 
@@ -20,7 +28,7 @@ screen recording as a **Next.js 16** web app.
 | **Home** | Spotlight hero (TV / rating / score badges, season • status • runtime • ★score, genres, Share / Details / My List) + carousels: Spotlight, Trending, Most Popular, Most Watched, Top Airing, Most Favorite, New Episodes, Top 10 Today |
 | **Details** | Full hero, synopsis, Other Seasons (sequels / side stories / summaries), You May Also Like, Episodes shortcut |
 | **Episodes** | Numbered grid (5-across), oldest/newest sort, jump-to-number, red progress underline on your current episode, NEW badges |
-| **Watch** | Zoko player embedded, `Episode N SUB/DUB` toggle, download format dialog (360p/720p/1080p with size estimates), Previous / Lock / Quality & Subtitles / Speed / Resize / Next control bar |
+| **Watch** | **Our own hls.js player** streaming Zoko's feed through our proxy (no ads/redirects): real quality levels, subtitle toggle, Skip Intro, seek bar, `Episode N SUB/DUB` + server label, download format dialog (360p/720p/1080p with size estimates), Previous / Lock / Quality / Speed / Resize / Next control bar, hard-sandboxed Zoko iframe as fallback |
 | **Genres** | The full MAL genre & theme grid; each genre shows catalog titles + importable MAL suggestions |
 | **Search** | Instant catalog hits + MAL-wide results with one-tap import |
 | **My List** | Local favorites (stored in your browser) |

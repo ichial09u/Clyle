@@ -17,7 +17,26 @@ export const ZOKO_BASE = "https://zokoanime.video";
 
 export type Lang = "sub" | "dub";
 
-/** Embeddable player page for one episode. */
+/** Playback servers, as shown in the app's episode sheet. */
+export type ServerId = "zoko" | "kiwi";
+
+export const SERVERS: Array<{ id: ServerId; name: string; note: string }> = [
+  { id: "zoko", name: "Zoko", note: "Zoko player" },
+  { id: "kiwi", name: "Kiwi", note: "Kiwi server" },
+];
+
+/**
+ * Zoko's stream page. `server` selects the backend stream; today both map to
+ * the same source, but the app passes the flag through so new backends are
+ * picked up automatically.
+ */
+export function zokoStreamPageUrl(malId: number, episode: number, lang: Lang, server: ServerId = "zoko"): string {
+  return server === "kiwi"
+    ? `${ZOKO_BASE}/stream/mal/${malId}/${episode}/${lang}?server=kiwi`
+    : `${ZOKO_BASE}/stream/mal/${malId}/${episode}/${lang}`;
+}
+
+/** Embeddable player page for one episode (used as the iframe fallback). */
 export function zokoPlayerUrl(malId: number, episode: number, lang: Lang = "sub"): string {
   return `${ZOKO_BASE}/stream/mal/${malId}/${episode}/${lang}`;
 }

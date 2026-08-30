@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowUpDown, Search, X } from "lucide-react";
 import type { AnimeLite, EpisodesPayload } from "@/lib/types";
 import { getProgress, useProgressVersion } from "@/lib/client-store";
+import { SERVERS, type Lang, type ServerId } from "@/lib/zoko";
 
 export default function EpisodesView({
   anime,
@@ -12,12 +13,13 @@ export default function EpisodesView({
 }: {
   anime: AnimeLite;
   onBack: () => void;
-  onWatchEpisode: (ep: number) => void;
+  onWatchEpisode: (ep: number, server: ServerId, lang: Lang) => void;
 }) {
   const [data, setData] = useState<EpisodesPayload | null>(null);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
   const [desc, setDesc] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
+  const [picked, setPicked] = useState<number | null>(null); // episode awaiting server choice
   const progressVersion = useProgressVersion();
 
   useEffect(() => {
@@ -51,6 +53,12 @@ export default function EpisodesView({
   }, [episodesData, anime.totalEpisodes, desc, filter]);
 
   const progress = progressVersion >= 0 ? getProgress(anime.malId) : null;
+
+  const openServerSheet = (n: number) => setPicked(n);
+  const play = (server: ServerId, lang: Lang) => {
+    if (picked != null) onWatchEpisode(picked, server, lang);
+    setPicked(null);
+  };
 
   return (
     <div className="pb-24 min-h-screen">
@@ -102,7 +110,7 @@ export default function EpisodesView({
         ) : null}
         {episodesData?.newlyAdded ? (
           <p className="px-4 pb-2 text-[11.5px] text-[#ff8a80]">
-            {episodesData.newlyAdded} new episode{episodesData.newlyAdded > 1 ? "s" : ""} imported from MAL just now
+            {episodesData.newlyAdded} new episode{episodesData.newlyAdded > 1 ? "s" : ""} imported just now
           </p>
         ) : null}
       </header>
@@ -122,7 +130,7 @@ export default function EpisodesView({
             return (
               <button
                 key={n}
-                onClick={() => onWatchEpisode(n)}
+                onClick={() => openServerSheet(n)}
                 className={`relative h-[46px] rounded-md bg-[#1c1c1c] hover:bg-[#282828] active:scale-95 transition text-[14px] font-medium ${isCurrent ? "ep-progress" : ""}`}
                 title={episodesData.episodes.find((e) => e.number === n)?.title ?? `Episode ${n}`}
               >
@@ -140,6 +148,47 @@ export default function EpisodesView({
 
       {episodesData && numbers.length === 0 ? (
         <p className="px-4 mt-10 text-center text-gray-400 text-sm">No episodes match “{filter}”.</p>
+      ) : null}
+
+      {/* server picker sheet — Zoko & Kiwi, SUB & DUB */}
+      {picked != null ? (
+        <div className="fixed inset-0 z-[60] bg-black/60 flex items-end sm:items-center justify-center" onClick={() => setPicked(null)}>
+          <div
+            className="w-full sm:max-w-[400px] bg-[#151515] border-t sm:border sm:border-[#242424] sm:rounded-xl rounded-t-xl shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-label="Select server"
+          >
+            <div className="px-4 pt-4 pb-1 flex items-center justify-between">
+              <h3 className="font-slab text-[16px] font-bold">Episode {picked}</h3>
+              <button onClick={() => setPicked(null)} className="text-gray-400 hover:text-white" aria-label="Close">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="px-4 text-[11.5px] text-gray-500 pb-2">Choose a server to start watching</p>
+            <div className="px-3 pb-4 space-y-2">
+              {SERVERS.map((s) => (
+                <div key={s.id} className="rounded-lg bg-[#1c1c1c] px-3 py-2.5">
+                  <div className="flex items-center gap-2 pb-2">
+                    <span className="font-slab text-[13.5px] font-bold">{s.name}</span>
+                    <span className="text-[10px] text-gray-500">{s.note}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(["sub", "dub"] as Lang[]).map((l) => (
+                      <button
+                        key={l}
+                        onClick={() => play(s.id, l)}
+                        className="rounded-md bg-[#2a2a2a] hover:bg-[#d32f2f] active:scale-[0.98] transition text-[12.5px] font-bold py-2 text-center"
+                      >
+                        {l.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

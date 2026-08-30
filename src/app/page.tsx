@@ -12,12 +12,13 @@ import GenreView from "@/components/views/GenreView";
 import SearchView from "@/components/views/SearchView";
 import MyListView from "@/components/views/MyListView";
 import LatestView from "@/components/views/LatestView";
+import type { Lang, ServerId } from "@/lib/zoko";
 
 type View =
   | { name: "home" }
   | { name: "details"; anime: AnimeLite }
   | { name: "episodes"; anime: AnimeLite }
-  | { name: "watch"; anime: AnimeLite; ep: number; lang: "sub" | "dub" }
+  | { name: "watch"; anime: AnimeLite; ep: number; lang: Lang; server: ServerId }
   | { name: "genres" }
   | { name: "genre"; genre: string }
   | { name: "latest" }
@@ -66,7 +67,7 @@ export default function Page() {
           <HomeView
             onSelect={openAnime}
             onDetails={openAnime}
-            onWatch={(a) => push({ name: "watch", anime: a, ep: 1, lang: "sub" })}
+            onWatch={(a) => push({ name: "episodes", anime: a })}
           />
         ) : null}
 
@@ -75,7 +76,7 @@ export default function Page() {
             anime={view.anime}
             onBack={pop}
             onSelect={openAnime}
-            onWatch={(a) => push({ name: "watch", anime: a, ep: 1, lang: "sub" })}
+            onWatch={(a) => push({ name: "episodes", anime: a })}
             onEpisodes={(a) => push({ name: "episodes", anime: a })}
           />
         ) : null}
@@ -84,7 +85,7 @@ export default function Page() {
           <EpisodesView
             anime={view.anime}
             onBack={pop}
-            onWatchEpisode={(ep) => push({ name: "watch", anime: view.anime, ep, lang: "sub" })}
+            onWatchEpisode={(ep, server, lang) => push({ name: "watch", anime: view.anime, ep, lang, server })}
           />
         ) : null}
 
@@ -93,8 +94,11 @@ export default function Page() {
             anime={view.anime}
             episode={view.ep}
             lang={view.lang}
+            server={view.server}
             onBack={pop}
-            onEpisodeChange={(ep, lang) => setStack((s) => [...s.slice(0, -1), { name: "watch", anime: view.anime, ep, lang }])}
+            onEpisodeChange={(ep, lang, server) =>
+              setStack((s) => [...s.slice(0, -1), { name: "watch", anime: view.anime, ep, lang, server }])
+            }
           />
         ) : null}
 
