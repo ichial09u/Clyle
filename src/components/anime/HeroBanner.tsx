@@ -25,7 +25,9 @@ function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children
 
 export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: HeroBannerProps) {
   const { has, toggle } = useMyList();
-  const anime = items[index] ?? null;
+  // defensive: props can arrive unsettled during fast-refresh/dev transitions
+  const list = Array.isArray(items) ? items : [];
+  const anime = list[index] ?? null;
   if (!anime) {
     return <div className="h-[470px] bg-black animate-pulse" />;
   }
@@ -34,7 +36,7 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
   return (
     <div className="relative w-full h-[470px] overflow-hidden bg-[#0a0a0a]">
       {/* backdrop — all slides stacked, opacity crossfades between them */}
-      {items.map((it, i) => {
+      {list.map((it, i) => {
         const src = it.banner || it.image;
         if (!src) return null;
         return (

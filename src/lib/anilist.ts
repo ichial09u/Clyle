@@ -347,7 +347,7 @@ function currentMediaSeason(): { season: "WINTER" | "SPRING" | "SUMMER" | "FALL"
   return { season, year: now.getFullYear() };
 }
 
-function pageMedia(res: PageResponse | undefined): AniListMedia[] {
+function pageMedia(res: PageResponse | null | undefined): AniListMedia[] {
   return (res?.Page?.media ?? []).filter((m): m is AniListMedia => !!m);
 }
 
@@ -477,7 +477,7 @@ export function anilistToJikan(m: AniListMedia): JikanAnime | null {
     mal_id: malId,
     title: m.title?.english ?? m.title?.romaji ?? `Unknown (${malId})`,
     title_english: m.title?.english ?? null,
-    images: { jpg: { image_url: m.coverImage?.large ?? null, large_image_url: poster } },
+    images: { jpg: { image_url: m.coverImage?.large ?? undefined, large_image_url: poster ?? undefined } },
     banner_image: m.bannerImage ?? null,
     synopsis: stripHtml(m.description),
     type: m.format ? FORMAT_MAP[m.format] ?? null : null,

@@ -16,5 +16,5 @@ export const maxDuration = 60;
 export async function GET() {
   const result = await syncCatalog();
   const sync = await lastSync();
-  return NextResponse.json({ ok: true, ...result, lastSync: sync.at });
+  return NextResponse.json({ ...result, ok: true, lastSync: sync.at });
 }

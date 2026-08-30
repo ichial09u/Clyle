@@ -82,7 +82,7 @@ export function decodeStreamPayload(blob: string): Omit<ZokoStream, "resolvedFro
   }
 }
 
-type CacheEntry = { data: ZokoStream; expires: number };
+type CacheEntry = { data: ZokoStream | null; expires: number };
 const cache = new Map<string, CacheEntry>();
 const revalidating = new Set<string>();
 

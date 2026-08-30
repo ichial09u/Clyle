@@ -41,7 +41,7 @@ function hostAllowed(hostname: string): boolean {
 
 /** Remember every host mentioned by a resolved stream (called on resolve). */
 async function primeAllowlist(malId: number, ep: number, lang: string, server: string) {
-  const stream = await resolveStream(malId, ep, Number.isFinite(+ep) ? +ep : 1, lang === "dub" ? "dub" : "sub", server === "kiwi" ? "kiwi" : "zoko").catch(() => null);
+  const stream = await resolveStream(malId, ep, lang === "dub" ? "dub" : "sub", server === "kiwi" ? "kiwi" : "zoko").catch(() => null);
   if (!stream) return;
   const hosts: string[] = [];
   try { hosts.push(new URL(stream.src).hostname); } catch { /* ignore */ }
