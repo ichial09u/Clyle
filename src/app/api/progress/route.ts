@@ -87,6 +87,9 @@ export async function POST(req: Request) {
   const title = typeof b.title === "string" ? b.title.slice(0, 200) : null;
   const image = typeof b.image === "string" && b.image.length <= 2000 ? b.image : null;
 
+  // the User row must exist first (WatchProgress.userId is a foreign key to it)
+  await db.user.upsert({ where: { id: userId }, update: {}, create: { id: userId } });
+
   await db.watchProgress.upsert({
     where: { userId_malId_episode: { userId, malId, episode } },
     update: {
@@ -111,9 +114,6 @@ export async function POST(req: Request) {
       image,
     },
   });
-
-  // keep the User row around (avatar/nickname source for comments)
-  await db.user.upsert({ where: { id: userId }, update: {}, create: { id: userId } });
 
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

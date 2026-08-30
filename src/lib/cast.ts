@@ -189,9 +189,10 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     setState("casting");
     return { ok: true };
   } catch (err: any) {
-    const msg = String(err?.message || err?.description || err?.code || "Cast failed");
+    const raw = String(err?.message || err?.description || err?.code || "Cast failed");
+    const msg = raw.toLowerCase().startsWith("cast") ? raw : `Cast failed: ${raw}`;
     if (!refs.session) setState("idle");
-    return { ok: false, error: msg.includes("cancel") ? "Cast cancelled" : `Cast failed: ${msg}` };
+    return { ok: false, error: msg.includes("cancel") ? "Cast cancelled" : msg };
   }
 }
 
