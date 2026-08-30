@@ -10,11 +10,16 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const BASE = "https://api.jikan.moe/v4";
 const MIN_INTERVAL_MS = 700; // stay inside Jikan's published 3 req/s budget
-const DISK_CACHE_DIR = join(process.cwd(), "db", "jikan-cache");
+// On Vercel the bundle filesystem is read-only — cache in /tmp there.
+const DISK_CACHE_DIR =
+  process.env.VERCEL === "1"
+    ? join(tmpdir(), "jikan-cache")
+    : join(process.cwd(), "db", "jikan-cache");
 
 type CacheEntry = { data: unknown; expires: number };
 const cache = new Map<string, CacheEntry>();

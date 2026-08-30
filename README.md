@@ -53,10 +53,36 @@ bun scripts/seed-catalog.ts --sync     # also import episodes + current season n
 
 The app self-seeds at runtime as well — first loads fetch details from Jikan in the background.
 
-## Deploy anywhere (Vercel, VPS, …)
+## Deploy to Vercel (no GitHub login needed)
 
-Any Node host works. After deploying, optionally add the `REPO_URL` secret so the
-GitHub Action can keep the catalog warm.
+The repo is pre-configured for Vercel: the seeded SQLite catalog ships inside the
+bundle, gets copied to `/tmp` on boot (Vercel's filesystem is read-only), and a
+daily cron (`vercel.json` → `/api/cron`) keeps new episodes importing even when
+nobody has the app open.
+
+**Option A — Vercel CLI (fastest, zero git hosting):**
+
+```bash
+npm i -g vercel
+vercel login          # email or GitHub — whatever works for you
+vercel --prod         # from this folder; first run asks 3 questions, then ships
+```
+
+**Option B — deploy with a token (one command, no prompts):**
+
+Create a token at `vercel.com/account/settings/tokens`, then:
+
+```bash
+vercel --prod --yes --token=YOUR_TOKEN
+```
+
+**Option C — GitHub (when login works again):** push this repo as `AnimeTest123`,
+then in Vercel: *Add New → Project → Import*. The included
+`.github/workflows/sync.yml` can then keep the catalog warm via the `REPO_URL` secret.
+
+> Note: on serverless hosts the SQLite file (My List sync logs, imported-episode
+> rows) resets when instances recycle — that is fine, because the live catalog
+> always re-imports itself from the Jikan API and My List lives in your browser.
 
 ## Project layout
 

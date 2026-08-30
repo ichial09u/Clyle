@@ -13,9 +13,7 @@ next-env.d.ts
 .env
 .env*.local
 
-# runtime data — delete these two lines if you want to ship a pre-seeded catalog
-db/*.db
-db/*.db-journal
+# runtime data — jikan disk cache is rebuilt automatically
 db/jikan-cache/
 
 # logs
