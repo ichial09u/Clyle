@@ -1,0 +1,47 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# env
+.env
+.env*.local
+
+# runtime data — delete these two lines if you want to ship a pre-seeded catalog
+db/*.db
+db/*.db-journal
+db/jikan-cache/
+
+# logs
+dev.log
+server.log
+*.log
+!logs/.gitkeep
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.lockb
+
+# internal scratch
+.zscripts/
+frames/
+upload/
+scripts/seed.log
+scripts/seed-loop.log
+agent-ctx/
+tests/
+skills/
+Caddyfile
+mini-services/
+worklog.md
+download/

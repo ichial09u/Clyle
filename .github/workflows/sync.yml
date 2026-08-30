@@ -1,0 +1,22 @@
+name: Sync Zoko catalog
+
+# Keeps the catalog fresh without anyone opening the app:
+# imports new episodes for airing shows + any new-season anime.
+# Set REPO_URL secret (e.g. https://your-deploy.example.com) to enable.
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping catalog sync endpoint
+        run: |
+          if [ -z "${{ secrets.REPO_URL }}" ]; then
+            echo "REPO_URL secret not set — skipping (self-hosted apps sync automatically on open)."
+            exit 0
+          fi
+          curl -sS --max-time 300 -X POST "${{ secrets.REPO_URL }}/api/sync"

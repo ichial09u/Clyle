@@ -1,0 +1,79 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// An anime in the Zoko catalog (identified by its MyAnimeList ID,
+// which is what Zoko's player URLs are keyed on:
+// https://zokoanime.video/download/mal/{malId}/{episode}/{sub|dub})
+model Anime {
+  malId        Int      @id
+  title        String
+  titleEnglish String?
+  image        String?
+  banner       String?
+  synopsis     String?
+  type         String?  // TV, Movie, OVA, ONA, Special
+  rating       String?  // e.g. "PG-13 - Teens 13 or older"
+  ratingShort  String?  // e.g. "PG-13"
+  status       String?  // "Currently Airing" | "Finished Airing" ...
+  airing       Boolean  @default(false)
+  season       String?  // Fall, Spring...
+  year         Int?
+  durationMin  Int?
+  score        Float?
+  rank         Int?
+  popularity   Int?
+  members      Int?
+  genres       String   @default("[]") // JSON array of genre names
+  studios      String   @default("[]") // JSON array
+  trailerYt    String?
+  totalEpisodes Int     @default(0) // known episode count from MAL
+  inCatalog     Boolean @default(true) // "Zoko has it"
+  source        String  @default("seed") // seed | season-import | manual
+  lastSyncedAt  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  episodes Episode[]
+
+  @@index([inCatalog, popularity])
+  @@index([airing])
+  @@index([updatedAt])
+}
+
+// One playable episode (for one audio track) of an anime.
+// Playback itself always goes through Zoko's player URL.
+model Episode {
+  id        String   @id @default(cuid())
+  animeId   Int
+  number    Int
+  title     String?
+  aired     String?  // ISO date string when it aired
+  lang      String   @default("sub") // "sub" | "dub"
+  filler    Boolean  @default(false)
+  recap     Boolean  @default(false)
+  addedAt   DateTime @default(now())
+
+  anime Anime @relation(fields: [animeId], references: [malId], onDelete: Cascade)
+
+  @@unique([animeId, number, lang])
+  @@index([animeId, lang, number])
+  @@index([addedAt])
+}
+
+// Log of each catalog sync run (episode import / new anime import)
+model SyncLog {
+  id            String   @id @default(cuid())
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  ok            Boolean  @default(false)
+  episodesAdded Int      @default(0)
+  animeAdded    Int      @default(0)
+  animeChecked  Int      @default(0)
+  detail        String?  // JSON summary or error
+}

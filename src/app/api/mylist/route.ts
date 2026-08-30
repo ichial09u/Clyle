@@ -1,0 +1,63 @@
+import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { jikan, jikanOne, type JikanAnime } from "@/lib/jikan";
+import { lite } from "@/lib/serialize";
+
+export const dynamic = "force-dynamic";
+
+/** POST /api/mylist  body: { malIds: number[] } — hydrate My List entries from the client's localStorage. */
+export async function POST(req: Request) {
+  let body: { malIds?: number[] };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "bad body" }, { status: 400 });
+  }
+  const ids = (body.malIds ?? []).filter((n) => Number.isFinite(n)).slice(0, 100);
+  if (!ids.length) return NextResponse.json({ items: [] });
+
+  const rows = await db.anime.findMany({ where: { malId: { in: ids } } });
+  const byId = new Map(rows.map((r) => [r.malId, lite(r)]));
+
+  // anything not in the DB yet gets a quick MAL lookup
+  for (const id of ids) {
+    if (byId.has(id)) continue;
+    const full = await jikanOne<JikanAnime>(`/anime/${id}/full`);
+    if (!full) continue;
+    const row = await db.anime.upsert({
+      where: { malId: id },
+      create: {
+        malId: id,
+        title: full.title,
+        titleEnglish: full.title_english ?? null,
+        image: full.images?.webp?.large_image_url ?? full.images?.jpg?.image_url ?? null,
+        banner: full.trailer?.images?.maximum_image_url ?? null,
+        synopsis: full.synopsis ?? null,
+        type: full.type ?? null,
+        rating: full.rating ?? null,
+        ratingShort: full.rating?.split(" - ")[0] ?? null,
+        status: full.status ?? null,
+        airing: !!full.airing,
+        season: full.season ?? null,
+        year: full.year ?? null,
+        durationMin: full.duration ? parseInt(full.duration.match(/(\d+)\s*min/)?.[1] ?? "0", 10) || null : null,
+        score: full.score ?? null,
+        rank: full.rank ?? null,
+        popularity: full.popularity ?? null,
+        members: full.members ?? null,
+        genres: JSON.stringify([...(full.genres ?? []), ...(full.themes ?? [])].map((g) => g.name)),
+        studios: JSON.stringify((full.studios ?? []).map((s) => s.name)),
+        trailerYt: full.trailer?.youtube_id ?? null,
+        totalEpisodes: full.episodes ?? 0,
+        inCatalog: false,
+        source: "mylist",
+        lastSyncedAt: new Date(),
+      },
+      update: { lastSyncedAt: new Date() },
+    });
+    byId.set(id, lite(row));
+  }
+
+  const items = ids.map((id) => byId.get(id)).filter((x): x is NonNullable<typeof x> => !!x);
+  return NextResponse.json({ items });
+}
