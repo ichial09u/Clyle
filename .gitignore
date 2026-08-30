@@ -43,3 +43,4 @@ Caddyfile
 mini-services/
 worklog.md
 download/
+.vercel
