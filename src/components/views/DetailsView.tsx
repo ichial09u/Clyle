@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { AnimeLite, DetailsPayload, RelatedCard } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import PosterCard from "@/components/anime/PosterCard";
+import CommentsSection from "@/components/anime/CommentsSection";
 import { useMyList } from "@/lib/client-store";
 
 export default function DetailsView({
@@ -180,6 +181,9 @@ export default function DetailsView({
           </section>
         ) : null}
       </div>
+
+      {/* community comments */}
+      <CommentsSection malId={anime.malId} />
     </div>
   );
 }

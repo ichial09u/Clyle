@@ -77,3 +77,56 @@ model SyncLog {
   animeChecked  Int      @default(0)
   detail        String?  // JSON summary or error
 }
+
+// A viewer profile. No passwords — the client generates an id (UUID) that is
+// kept in localStorage; nickname + avatar live here so comments can show them.
+model User {
+  id        String   @id
+  nickname  String   @default("Otaku")
+  avatar    String? // small data-URL (client resizes to 160x160 JPEG)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progress WatchProgress[]
+  comments Comment[]
+}
+
+// Precise resume point for one (user, anime, episode): seconds watched out of
+// total seconds. Powers Continue Watching, the red bars on episode buttons and
+// "start where you were last".
+model WatchProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  malId     Int
+  episode   Int
+  lang      String   @default("sub")
+  server    String   @default("zoko")
+  position  Float    @default(0) // seconds watched
+  duration  Float    @default(0) // total seconds
+  completed Boolean  @default(false)
+  title     String? // snapshot so Continue Watching survives catalog churn
+  image     String? // snapshot poster
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, malId, episode])
+  @@index([userId, updatedAt])
+  @@index([userId, malId])
+}
+
+// Community comment on an anime (shows nickname + avatar snapshot at post time).
+model Comment {
+  id        String   @id @default(cuid())
+  malId     Int
+  userId    String
+  nickname  String
+  avatar    String?
+  text      String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([malId, createdAt])
+}

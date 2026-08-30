@@ -1,8 +1,8 @@
 "use client";
 
-import { Home, Search, Heart, MonitorPlay, Drama } from "lucide-react";
+import { Home, Search, Heart, MonitorPlay, Drama, User } from "lucide-react";
 
-export type TabKey = "home" | "genres" | "latest" | "search" | "mylist";
+export type TabKey = "home" | "genres" | "latest" | "search" | "mylist" | "profile";
 
 const TABS: Array<{ key: TabKey; label: string; icon: React.ComponentType<{ className?: string; fill?: string }> }> = [
   { key: "home", label: "Home", icon: Home },
@@ -10,6 +10,7 @@ const TABS: Array<{ key: TabKey; label: string; icon: React.ComponentType<{ clas
   { key: "latest", label: "Latest", icon: MonitorPlay },
   { key: "search", label: "Search", icon: Search },
   { key: "mylist", label: "My List", icon: Heart },
+  { key: "profile", label: "Profile", icon: User },
 ];
 
 export default function BottomNav({ active, onNavigate }: { active: TabKey; onNavigate: (tab: TabKey) => void }) {
@@ -19,7 +20,7 @@ export default function BottomNav({ active, onNavigate }: { active: TabKey; onNa
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
       aria-label="Primary"
     >
-      <div className="max-w-[560px] mx-auto grid grid-cols-5">
+      <div className="max-w-[560px] mx-auto grid grid-cols-6">
         {TABS.map(({ key, label, icon: Icon }) => {
           const isActive = active === key;
           return (

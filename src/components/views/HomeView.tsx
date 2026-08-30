@@ -1,24 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { AnimeLite, HomePayload } from "@/lib/types";
+import { useCallback, useEffect, useState } from "react";
+import type { AnimeLite, ContinueItem, HomePayload } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import Row from "@/components/anime/Row";
 import PosterCard from "@/components/anime/PosterCard";
-import { timeAgo } from "@/lib/client-store";
+import ContinueRow from "@/components/anime/ContinueRow";
+import { loadContinueItems, removeProgress, timeAgo, useProgressVersion } from "@/lib/client-store";
 
 export default function HomeView({
   onSelect,
   onDetails,
   onWatch,
+  onResume,
 }: {
   onSelect: (a: AnimeLite) => void;
   onDetails: (a: AnimeLite) => void;
   onWatch: (a: AnimeLite) => void;
+  onResume: (item: ContinueItem) => void;
 }) {
   const [data, setData] = useState<HomePayload | null>(null);
   const [heroIdx, setHeroIdx] = useState(0);
   const [error, setError] = useState(false);
+  const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
+  const progressVersion = useProgressVersion();
+
+  const refreshContinue = useCallback(() => {
+    loadContinueItems().then(setContinueItems).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refreshContinue();
+  }, [refreshContinue, progressVersion]);
 
   useEffect(() => {
     let cancelled = false;
@@ -67,6 +80,18 @@ export default function HomeView({
           else navigator.clipboard?.writeText(url).catch(() => undefined);
         }}
       />
+
+      {/* Continue Watching — resumes the exact episode + second */}
+      {continueItems.length ? (
+        <ContinueRow
+          items={continueItems.slice(0, 12)}
+          onResume={onResume}
+          onRemove={(malId) => {
+            removeProgress(malId);
+            setContinueItems((items) => items.filter((i) => i.malId !== malId));
+          }}
+        />
+      ) : null}
 
       {error ? (
         <p className="px-4 mt-8 text-center text-gray-400 text-sm">

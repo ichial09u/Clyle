@@ -88,3 +88,45 @@ export interface GenreInfo {
   name: string;
   count: number;
 }
+
+/* ---------------- continue watching / progress / comments / profile ---------------- */
+
+export interface ContinueItem {
+  malId: number;
+  title: string;
+  image: string | null;
+  banner: string | null;
+  totalEpisodes: number;
+  type: string | null;
+  episode: number;
+  lang: "sub" | "dub";
+  server: string;
+  position: number;
+  duration: number;
+  percent: number;
+  completed: boolean;
+  updatedAt: string;
+}
+
+export interface EpisodeBar {
+  episode: number;
+  position: number;
+  duration: number;
+  percent: number;
+  completed: boolean;
+}
+
+export interface CommentItem {
+  id: string;
+  userId?: string;
+  nickname: string;
+  avatar: string | null;
+  text: string;
+  createdAt: string;
+}
+
+export interface ProfileInfo {
+  id: string;
+  nickname: string;
+  avatar: string | null;
+}

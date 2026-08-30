@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { AnimeLite } from "@/lib/types";
+import type { AnimeLite, ContinueItem } from "@/lib/types";
 import BottomNav, { type TabKey } from "@/components/anime/BottomNav";
 import HomeView from "@/components/views/HomeView";
 import DetailsView from "@/components/views/DetailsView";
@@ -12,6 +12,7 @@ import GenreView from "@/components/views/GenreView";
 import SearchView from "@/components/views/SearchView";
 import MyListView from "@/components/views/MyListView";
 import LatestView from "@/components/views/LatestView";
+import ProfileView from "@/components/views/ProfileView";
 import type { Lang, ServerId } from "@/lib/zoko";
 
 type View =
@@ -23,7 +24,34 @@ type View =
   | { name: "genre"; genre: string }
   | { name: "latest" }
   | { name: "search" }
-  | { name: "mylist" };
+  | { name: "mylist" }
+  | { name: "profile" };
+
+/** Build a minimal AnimeLite from a Continue Watching row so the player can start instantly. */
+function animeFromContinue(item: ContinueItem): AnimeLite {
+  return {
+    malId: item.malId,
+    title: item.title,
+    titleEnglish: null,
+    image: item.image,
+    banner: item.banner,
+    synopsis: null,
+    type: item.type,
+    ratingShort: null,
+    status: null,
+    airing: false,
+    season: null,
+    year: null,
+    durationMin: null,
+    score: null,
+    rank: null,
+    popularity: null,
+    totalEpisodes: item.totalEpisodes || item.episode,
+    genres: [],
+    inCatalog: true,
+    source: "seed",
+  };
+}
 
 export default function Page() {
   const [stack, setStack] = useState<View[]>([{ name: "home" }]);
@@ -60,6 +88,21 @@ export default function Page() {
     [push],
   );
 
+  /** Continue Watching tap — straight into the episode at the saved second. */
+  const resumeWatching = useCallback(
+    (item: ContinueItem) => {
+      const ep = Math.max(1, item.episode);
+      push({
+        name: "watch",
+        anime: animeFromContinue(item),
+        ep,
+        lang: item.lang === "dub" ? "dub" : "sub",
+        server: item.server === "kiwi" ? "kiwi" : "zoko",
+      });
+    },
+    [push],
+  );
+
   return (
     <div className="min-h-screen bg-black">
       <div className="max-w-[560px] mx-auto min-h-screen bg-black border-x border-[#141414]">
@@ -68,6 +111,7 @@ export default function Page() {
             onSelect={openAnime}
             onDetails={openAnime}
             onWatch={(a) => push({ name: "episodes", anime: a })}
+            onResume={resumeWatching}
           />
         ) : null}
 
@@ -111,6 +155,8 @@ export default function Page() {
         {view.name === "search" ? <SearchView onSelect={openAnime} /> : null}
 
         {view.name === "mylist" ? <MyListView onSelect={openAnime} /> : null}
+
+        {view.name === "profile" ? <ProfileView onResume={resumeWatching} /> : null}
       </div>
 
       {view.name !== "watch" ? <BottomNav active={tab} onNavigate={goTab} /> : null}

@@ -4,11 +4,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls, { type Level } from "hls.js";
 import {
   ChevronLeft, Download, Lock, Unlock, SlidersHorizontal, Gauge, Scan, SkipBack, SkipForward,
-  ExternalLink, Check, Play, Pause, Maximize, Subtitles, Zap,
+  Check, Play, Pause, Maximize, Subtitles, Zap, Cast,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
-import { setProgress, getProgress } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed } from "@/lib/client-store";
+import {
+  ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
+  getCastState, onCastStateChange, type CastState,
+} from "@/lib/cast";
 
 type Panel = null | "quality" | "speed" | "subs";
 type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } };
@@ -59,16 +63,72 @@ export default function WatchView({
   const [resizeMode, setResizeMode] = useState<0 | 1 | 2>(0);
   const [ready, setReady] = useState(false);
 
+  // resume + cast state
+  const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+  const [castState, setCastState] = useState<CastState>(getCastState());
+  const [castMsg, setCastMsg] = useState<string | null>(null);
+
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLInputElement>(null);
+  const resumeAtRef = useRef(0);
+  const castStateRef = useRef<CastState>(getCastState());
+  const castMediaUrlRef = useRef("");
 
   const total = anime.totalEpisodes || episode;
   const downloadUrl = zokoDownloadUrl(anime.malId, episode, lang);
-  const saved = typeof window !== "undefined" ? getProgress(anime.malId) : null;
-  const resumeAt = useRef<number>(saved && saved.ep === episode && saved.lang === lang && (saved as { pos?: number }).pos ? (saved as { pos?: number }).pos as number : 0);
 
+  /* -------- Chromecast: load the CAF sender SDK + track session state -------- */
+  useEffect(() => {
+    ensureCastSdk();
+    setCastState(getCastState());
+    const off = onCastStateChange((s) => {
+      castStateRef.current = s;
+      setCastState(s);
+    });
+    return off;
+  }, []);
+
+  /* -------- figure out where to resume (local first, server fallback) -------- */
+  useEffect(() => {
+    let cancelled = false;
+    resumeAtRef.current = 0;
+    setResumedFrom(null);
+
+    const apply = (pos: number, dur: number) => {
+      if (cancelled) return;
+      // only resume when it makes sense: >15s in, and not effectively finished
+      if (pos >= 15 && (dur <= 0 || pos < dur * 0.95)) {
+        resumeAtRef.current = pos;
+        setResumedFrom(pos);
+        // if playback already started (server answer arrived late), jump now
+        const v = videoRef.current;
+        if (v && v.currentTime < 5 && !iframeFallback) v.currentTime = pos;
+      }
+    };
+
+    const local = getEpProgress(anime.malId, episode);
+    if (local && local.pos >= 15) apply(local.pos, local.dur);
+    else {
+      fetchServerProgress(anime.malId).then((map) => {
+        const e = map[String(episode)];
+        if (e && e.pos >= 15) apply(e.pos, e.dur);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [anime.malId, episode, lang, server, iframeFallback]);
+
+  // auto-hide the "Resumed" pill
+  useEffect(() => {
+    if (resumedFrom == null) return;
+    const t = window.setTimeout(() => setResumedFrom(null), 9000);
+    return () => window.clearTimeout(t);
+  }, [resumedFrom]);
+
+  /* -------- keep the "last watched" marker fresh for Details badges -------- */
   useEffect(() => {
     setProgress(anime.malId, episode, lang);
   }, [anime.malId, episode, lang]);
@@ -86,7 +146,11 @@ export default function WatchView({
         const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}`);
         if (!res.ok) throw new Error("unavailable");
         const data = (await res.json()) as Resolved;
-        if (!cancelled) setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip });
+        if (!cancelled) {
+          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip });
+          // absolute public URL the Chromecast receiver can fetch through our proxy
+          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=m3u8&u=${encodeURIComponent(data.src)}`;
+        }
       } catch {
         if (!cancelled) setStreamError(true);
       }
@@ -95,6 +159,72 @@ export default function WatchView({
       cancelled = true;
     };
   }, [anime.malId, episode, lang, server]);
+
+  /* -------- persist watch progress (heartbeat / pause / exit / ended) -------- */
+  const saveNow = useCallback(
+    (opts?: { keepalive?: boolean; completed?: boolean }) => {
+      const v = videoRef.current;
+      if (!v || iframeFallback) return;
+      const pos = v.currentTime;
+      const dur = v.duration || 0;
+      saveProgressDetailed(
+        {
+          malId: anime.malId,
+          episode,
+          lang,
+          server,
+          position: pos,
+          duration: dur,
+          completed: opts?.completed,
+          title: anime.title,
+          image: anime.image,
+          total: anime.totalEpisodes || episode,
+        },
+        opts,
+      );
+    },
+    [anime.malId, anime.title, anime.image, anime.totalEpisodes, episode, lang, server, iframeFallback],
+  );
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const v = videoRef.current;
+      if (v && !v.paused && !v.ended) saveNow();
+    }, 10_000);
+
+    const onHide = () => {
+      if (document.visibilityState === "hidden") saveNow({ keepalive: true });
+    };
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.clearInterval(id);
+      saveNow({ keepalive: true });
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [saveNow]);
+
+  /* -------- cast progress heartbeat (positions come from the TV) -------- */
+  useEffect(() => {
+    if (castState !== "casting") return;
+    const id = window.setInterval(() => {
+      const pos = castPosition();
+      if (pos == null) return;
+      saveProgressDetailed({
+        malId: anime.malId,
+        episode,
+        lang,
+        server,
+        position: pos,
+        duration: castDuration() || 0,
+        title: anime.title,
+        image: anime.image,
+        total: anime.totalEpisodes || episode,
+      });
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [castState, anime.malId, anime.title, anime.image, anime.totalEpisodes, episode, lang, server]);
 
   /* -------- attach hls.js -------- */
   useEffect(() => {
@@ -108,8 +238,20 @@ export default function WatchView({
     const startPlayback = () => {
       if (destroyed) return;
       setReady(true);
-      if (resumeAt.current > 0 && Math.abs(video.currentTime - resumeAt.current) > 5) {
-        video.currentTime = resumeAt.current;
+
+      // casting already? hand this episode straight to the TV, keep phone quiet
+      if (castStateRef.current === "casting") {
+        void castLoadNext({
+          src: castMediaUrlRef.current,
+          title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+          imageUrl: anime.image,
+          startTime: resumeAtRef.current,
+        });
+        return;
+      }
+
+      if (resumeAtRef.current > 0 && Math.abs(video.currentTime - resumeAtRef.current) > 5) {
+        video.currentTime = resumeAtRef.current;
       }
       video.play().catch(() => undefined);
     };
@@ -164,13 +306,21 @@ export default function WatchView({
     };
     const onMeta = () => setDuration(video.duration || 0);
     const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const onPause = () => {
+      setPlaying(false);
+      saveNow();
+    };
+    const onEnded = () => {
+      setPlaying(false);
+      saveNow({ completed: true });
+    };
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("progress", onTime);
     video.addEventListener("loadedmetadata", onMeta);
     video.addEventListener("durationchange", onMeta);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
+    video.addEventListener("ended", onEnded);
     return () => {
       video.removeEventListener("timeupdate", onTime);
       video.removeEventListener("progress", onTime);
@@ -178,25 +328,9 @@ export default function WatchView({
       video.removeEventListener("durationchange", onMeta);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
+      video.removeEventListener("ended", onEnded);
     };
-  }, [stream, iframeFallback]);
-
-  /* -------- persist resume position -------- */
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const id = window.setInterval(() => {
-      if (video.currentTime > 10) {
-        try {
-          const map = JSON.parse(window.localStorage.getItem("animetest123.progress") ?? "{}");
-          const key = String(anime.malId);
-          map[key] = { ep: episode, lang, pos: Math.floor(video.currentTime), updatedAt: Date.now() };
-          window.localStorage.setItem("animetest123.progress", JSON.stringify(map));
-        } catch { /* ignore */ }
-      }
-    }, 5000);
-    return () => window.clearInterval(id);
-  }, [anime.malId, episode, lang]);
+  }, [stream, iframeFallback, saveNow]);
 
   const go = useCallback((ep: number) => {
     if (ep >= 1 && ep <= total) onEpisodeChange(ep, lang, server);
@@ -204,14 +338,14 @@ export default function WatchView({
 
   const togglePlay = () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || castStateRef.current === "casting") return;
     if (video.paused) video.play().catch(() => undefined);
     else video.pause();
   };
 
   const seekTo = (s: number) => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || castStateRef.current === "casting") return;
     video.currentTime = Math.max(0, Math.min(duration || s, s));
     setCurrentTime(video.currentTime);
   };
@@ -240,12 +374,46 @@ export default function WatchView({
     else el.requestFullscreen?.().catch(() => undefined);
   };
 
+  /* -------- Chromecast actions -------- */
+  const startCasting = async () => {
+    if (!stream) return;
+    const res = await castLoad({
+      src: castMediaUrlRef.current,
+      title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+      imageUrl: anime.image,
+      startTime: videoRef.current ? videoRef.current.currentTime : resumeAtRef.current,
+    });
+    if (res.ok) {
+      videoRef.current?.pause();
+      setCastMsg(null);
+    } else {
+      setCastMsg(res.error ?? "Cast failed");
+      window.setTimeout(() => setCastMsg(null), 4000);
+    }
+  };
+
+  const stopCasting = () => {
+    // save the TV's position before handing playback back
+    const pos = castPosition();
+    const dur = castDuration();
+    if (pos != null) {
+      saveProgressDetailed({
+        malId: anime.malId, episode, lang, server,
+        position: pos, duration: dur || 0,
+        title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+      });
+    }
+    castStop();
+  };
+
   const skip = stream?.skip?.intro;
   const showSkip = skip && currentTime >= skip.start && currentTime <= skip.end;
   const subTrack = stream?.subtitles?.[0];
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
+  const casting = castState === "casting";
+  const castUsable = castState !== "unavailable";
 
   return (
     <div className="fixed inset-0 z-50 bg-black flex flex-col select-none" ref={shellRef}>
@@ -262,19 +430,9 @@ export default function WatchView({
           className="font-slab text-[16px] font-bold truncate"
           title="Toggle SUB/DUB"
         >
-          Episode {episode} {server === "kiwi" ? "• Kiwi " : ""}{lang.toUpperCase()}
+          Episode {episode} {lang.toUpperCase()}
         </button>
         <div className="flex-1" />
-        <a
-          href={downloadUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1 text-[11px] text-gray-300 hover:text-white bg-[#161616] rounded-full px-2.5 py-1 mr-1 transition"
-          title="Open directly in Zoko"
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          Zoko
-        </a>
         <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">
           <Download className="w-5 h-5" />
         </button>
@@ -303,8 +461,27 @@ export default function WatchView({
               ) : null}
             </video>
 
+            {/* casting overlay — playback lives on the TV now */}
+            {casting ? (
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-10">
+                <span className="w-14 h-14 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
+                  <Cast className="w-7 h-7 text-[#ff5252]" />
+                </span>
+                <p className="text-[14px] font-bold">Casting to your TV</p>
+                <p className="text-[11.5px] text-gray-400 max-w-[260px] text-center truncate">
+                  {anime.title} · Episode {episode} ({lang.toUpperCase()})
+                </p>
+                <button
+                  onClick={stopCasting}
+                  className="mt-1 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-5 py-2 transition active:scale-95"
+                >
+                  Stop casting
+                </button>
+              </div>
+            ) : null}
+
             {/* center play overlay */}
-            {ready && !playing ? (
+            {ready && !playing && !casting ? (
               <button
                 onClick={togglePlay}
                 className="absolute inset-0 flex items-center justify-center"
@@ -317,14 +494,30 @@ export default function WatchView({
             ) : null}
 
             {/* buffering spinner */}
-            {!ready && !streamError ? (
+            {!ready && !streamError && !casting ? (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                 <div className="w-9 h-9 border-2 border-[#d32f2f] border-t-transparent rounded-full animate-spin" />
               </div>
             ) : null}
 
+            {/* resumed pill — "picked up where you left off" */}
+            {resumedFrom != null && !casting ? (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5">
+                <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
+                <button
+                  onClick={() => {
+                    seekTo(0);
+                    setResumedFrom(null);
+                  }}
+                  className="text-[11px] font-bold text-[#ff8a80] hover:text-white bg-white/10 hover:bg-[#d32f2f] rounded-full px-2.5 py-1 transition"
+                >
+                  Start over
+                </button>
+              </div>
+            ) : null}
+
             {/* skip intro */}
-            {showSkip ? (
+            {showSkip && !casting ? (
               <button
                 onClick={() => seekTo(skip!.end)}
                 className="absolute bottom-24 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
@@ -333,7 +526,14 @@ export default function WatchView({
               </button>
             ) : null}
 
-            {streamError ? (
+            {/* cast failure toast */}
+            {castMsg ? (
+              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-full px-3.5 py-1.5 whitespace-nowrap">
+                {castMsg}
+              </div>
+            ) : null}
+
+            {streamError && !casting ? (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center">
                 <p className="text-[13px] text-gray-300">Our player couldn&apos;t load this stream.</p>
                 <div className="flex gap-2">
@@ -361,7 +561,7 @@ export default function WatchView({
             ) : null}
 
             {/* seek bar + inline controls */}
-            {!locked && !panel ? (
+            {!locked && !panel && !casting ? (
               <div className="absolute bottom-0 inset-x-0 px-3 pb-2 pt-6 bg-gradient-to-t from-black/85 to-transparent z-10">
                 <div className="relative h-4 flex items-center">
                   <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full overflow-hidden">
@@ -429,6 +629,14 @@ export default function WatchView({
             label="Resize"
             onClick={() => setResizeMode((m) => (((m + 1) % 3) as 0 | 1 | 2))}
           />
+          {castUsable ? (
+            <ControlButton
+              icon={Cast}
+              label={casting ? "Stop" : "Cast"}
+              active={casting}
+              onClick={() => (casting ? stopCasting() : void startCasting())}
+            />
+          ) : null}
           <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
         </div>
       ) : null}
@@ -561,17 +769,19 @@ function ControlButton({
   label,
   onClick,
   disabled,
+  active,
 }: {
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   onClick: () => void;
   disabled?: boolean;
+  active?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className="flex flex-col items-center gap-1 text-gray-300 hover:text-white disabled:opacity-30 active:scale-95 transition px-1"
+      className={`flex flex-col items-center gap-1 disabled:opacity-30 active:scale-95 transition px-1 ${active ? "text-[#ff5252]" : "text-gray-300 hover:text-white"}`}
     >
       <Icon className="w-[18px] h-[18px]" />
       <span className="text-[9.5px] leading-none whitespace-nowrap">{label}</span>
