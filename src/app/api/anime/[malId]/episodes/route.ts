@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { jikanOneFresh, type JikanAnime } from "@/lib/jikan";
+import { freshMediaByMal, airedEpisodeCount } from "@/lib/anilist";
 import { importEpisodes, importEpisodesFromList } from "@/lib/sync";
 
 export const dynamic = "force-dynamic";
@@ -10,8 +10,13 @@ export const dynamic = "force-dynamic";
  *
  * Episodes are materialised locally (numbers + dates) so the app can show
  * the grid instantly and badge new arrivals; playback itself always uses
- * Zoko's player URL. If MAL knows more episodes than we do (a new episode
- * just aired), they are imported here and now — "import immediately".
+ * Zoko's player URL. If more episodes have aired than we know of, they are
+ * imported here and now — "import immediately".
+ *
+ * Freshness source: AniList (single lightweight request; its
+ * nextAiringEpisode pinpoints exactly how many episodes have aired, which
+ * even covers long-runners like One Piece). Falls back to probing MAL's
+ * paginated episode list when AniList has no schedule for the show.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ malId: string }> }) {
   const { malId: malIdStr } = await params;
@@ -21,17 +26,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   const anime = await db.anime.findUnique({ where: { malId } });
   if (!anime) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // freshness check for airing shows — pulls the current episode count from MAL
+  // freshness check for airing shows — pulls the aired episode count from AniList
   let newlyAdded = 0;
   if (anime.airing) {
-    const fresh = await jikanOneFresh<JikanAnime>(`/anime/${malId}/full`);
-    if (fresh?.episodes) {
-      if (fresh.episodes > anime.totalEpisodes) {
-        await db.anime.update({ where: { malId }, data: { totalEpisodes: fresh.episodes } });
-        newlyAdded = await importEpisodes(malId, fresh.episodes);
+    const media = await freshMediaByMal(malId);
+    const aired = airedEpisodeCount(media);
+    if (aired != null) {
+      if (aired > anime.totalEpisodes) {
+        await db.anime.update({ where: { malId }, data: { totalEpisodes: aired } });
+        newlyAdded = await importEpisodes(malId, aired);
       }
     } else {
-      // long-runner with hidden count — probe the episode list for new arrivals
+      // no schedule yet (or AniList unreachable) — probe MAL's episode list
       newlyAdded = await importEpisodesFromList(malId);
     }
   }

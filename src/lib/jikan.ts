@@ -212,6 +212,8 @@ export interface JikanAnime {
   title: string;
   title_english?: string | null;
   images?: JikanImageSet;
+  /** Direct banner URL (set by the AniList mapper; Jikan derives one from the trailer). */
+  banner_image?: string | null;
   synopsis?: string | null;
   type?: string | null;
   rating?: string | null;
@@ -245,7 +247,7 @@ export function posterUrl(a: JikanAnime | null | undefined): string | null {
 }
 
 export function bannerUrl(a: JikanAnime | null | undefined): string | null {
-  return a?.trailer?.images?.maximum_image_url ?? posterUrl(a);
+  return a?.banner_image ?? a?.trailer?.images?.maximum_image_url ?? posterUrl(a);
 }
 
 export function durationToMinutes(d: string | null | undefined): number | null {

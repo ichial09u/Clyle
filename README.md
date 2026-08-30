@@ -3,7 +3,11 @@
 A mobile-first anime streaming front-end in the style of the Zoko app — rebuilt from a
 screen recording as a **Next.js 16** web app.
 
-- **Catalog / metadata**: [Jikan API](https://jikan.moe) (unofficial MyAnimeList API). No scraping.
+- **Catalog / metadata**: [AniList GraphQL API](https://docs.anilist.co) — the whole home feed
+  (trending / popular / airing / favorites / current season) arrives in **one request** with MAL ids
+  included, so hero cards and posters load in milliseconds from AniList's fast CDN.
+  [Jikan](https://jikan.moe) (unofficial MyAnimeList API) remains as the fallback source and powers
+  episode titles. No scraping.
 - **Playback**: Zoko's own player only — `https://zokoanime.video/download/mal/{malId}/{episode}/{sub|dub}`
   (e.g. `.../download/mal/21/1/sub` = One Piece episode 1, SUB).
 - **Catalog scope**: only anime Zoko carries. The seed list ships the staples; anything newer
@@ -91,7 +95,8 @@ src/app/page.tsx            single-page app shell (view stack, bottom nav)
 src/components/anime/*      hero banner, poster card, section row, bottom nav
 src/components/views/*      home, details, episodes, watch, genres, genre, search, my list, latest
 src/app/api/*               home, anime, episodes, search, genres, latest, sync, import, mylist
-src/lib/jikan.ts            rate-limited Jikan client (memory + disk cache, stale-while-revalidate)
+src/lib/anilist.ts          AniList GraphQL client (primary: one-request home feed, search, details)
+src/lib/jikan.ts            rate-limited Jikan client (fallback + episode titles; memory + disk cache)
 src/lib/sync.ts             episode & season import engine
 src/lib/zoko.ts             Zoko player URL builder + download size estimates
 prisma/schema.prisma        Anime / Episode / SyncLog (SQLite)

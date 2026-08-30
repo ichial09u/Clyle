@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
-import { jikan, jikanOne, jikanOneFresh, posterUrl, bannerUrl, durationToMinutes, shortRating, type JikanAnime } from "@/lib/jikan";
+import { jikan, posterUrl, bannerUrl, durationToMinutes, shortRating, type JikanAnime } from "@/lib/jikan";
+import { anilistToJikan, freshMediaByMal, seasonNow, airedEpisodeCount, type AniListMedia } from "@/lib/anilist";
 
 /**
  * Catalog sync — keeps the Zoko catalog up to date:
@@ -66,15 +67,44 @@ function toRow(a: JikanAnime) {
   };
 }
 
-/** Insert or update an anime row from a Jikan payload. Returns the malId. */
+/**
+ * Insert or update an anime row from a Jikan-shaped payload. Returns the malId.
+ *
+ * AniList does not carry MAL's age-rating string, MAL rank, members count or
+ * popularity RANK — those arrive as null from the mapper, so on update we
+ * simply omit them instead of wiping good data that earlier MAL fetches stored.
+ */
 export async function upsertAnime(a: JikanAnime, opts: { inCatalog: boolean; source: string }): Promise<number> {
   const row = toRow(a);
   await db.anime.upsert({
     where: { malId: a.mal_id },
     create: { malId: a.mal_id, ...row, inCatalog: opts.inCatalog, source: opts.source, lastSyncedAt: new Date() },
-    update: { ...row, lastSyncedAt: new Date(), ...(opts.inCatalog ? { inCatalog: true } : {}) },
+    update: {
+      ...row,
+      ...(row.rating ? {} : { rating: undefined, ratingShort: undefined }),
+      ...(row.rank ? {} : { rank: undefined }),
+      ...(row.members ? {} : { members: undefined }),
+      ...(row.popularity ? {} : { popularity: undefined }),
+      lastSyncedAt: new Date(),
+      ...(opts.inCatalog ? { inCatalog: true } : {}),
+    },
   });
   return a.mal_id;
+}
+
+/**
+ * Insert or update from an AniList media, optionally overriding the stored
+ * popularity with an explicit rank position (the app sorts by ascending
+ * popularity; AniList's raw popularity is a user count, not a rank).
+ */
+export async function upsertAniListMedia(
+  m: AniListMedia,
+  opts: { inCatalog: boolean; source: string; popularityRank?: number },
+): Promise<number | null> {
+  const conv = anilistToJikan(m);
+  if (!conv) return null;
+  if (opts.popularityRank) conv.popularity = opts.popularityRank;
+  return upsertAnime(conv, opts);
 }
 
 /** Create any episode rows (1..count) the anime does not have yet. Returns how many were added. */
@@ -168,36 +198,38 @@ async function runSync(_force = false): Promise<SyncResult> {
 
     for (const a of airing) {
       // fresh (cache-bypassing) fetch so brand-new episodes are caught immediately
-      const full = await jikanOneFresh<JikanAnime>(`/anime/${a.malId}/full`, { retries: 1 });
-      if (!full) continue;
+      const media = await freshMediaByMal(a.malId);
+      const aired = airedEpisodeCount(media);
+      if (!media || aired == null) {
+        // AniList has no schedule for this show yet — probe MAL's episode list
+        episodesAdded += await importEpisodesFromList(a.malId);
+        continue;
+      }
       animeChecked++;
       await db.anime.update({
         where: { malId: a.malId },
         data: { lastSyncedAt: new Date() },
       });
-      if (full.episodes) {
-        await db.anime.update({ where: { malId: a.malId }, data: { totalEpisodes: full.episodes } });
-        episodesAdded += await importEpisodes(a.malId, full.episodes);
-      } else {
-        // ongoing long-runner: MAL hides the count — probe the episode list
-        episodesAdded += await importEpisodesFromList(a.malId);
+      if (aired > a.totalEpisodes) {
+        await db.anime.update({ where: { malId: a.malId }, data: { totalEpisodes: aired } });
+        episodesAdded += await importEpisodes(a.malId, aired);
       }
     }
 
     // ---------------------------------------------------------------
     // 2) New anime import — current season TV shows we do not carry yet
     // ---------------------------------------------------------------
-    const season = await jikan<{ data: JikanAnime[] }>("/seasons/now?limit=25&sfw=true");
-    if (season?.data) {
-      for (const a of season.data) {
-        if (a.type && a.type !== "TV") continue;
-        if (a.rating?.startsWith("Rx")) continue; // skip hentai
-        const known = await db.anime.findUnique({ where: { malId: a.mal_id }, select: { inCatalog: true } });
-        if (known?.inCatalog) continue;
-        await upsertAnime(a, { inCatalog: true, source: "season-import" });
-        await importEpisodes(a.mal_id, a.episodes ?? 0);
-        animeAdded++;
-      }
+    const season = await seasonNow();
+    for (const media of season) {
+      if (media.format && media.format !== "TV") continue;
+      if (media.isAdult) continue; // skip hentai
+      const malId = media.idMal ?? null;
+      if (!malId) continue; // no MAL mapping -> no Zoko player
+      const known = await db.anime.findUnique({ where: { malId }, select: { inCatalog: true } });
+      if (known?.inCatalog) continue;
+      await upsertAniListMedia(media, { inCatalog: true, source: "season-import" });
+      await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
+      animeAdded++;
     }
 
     await db.syncLog.update({
