@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Check, Pencil, Trash2, Tv } from "lucide-react";
+import { Camera, Check, Download, Pencil, Trash2, Tv } from "lucide-react";
 import type { ContinueItem } from "@/lib/types";
 import { loadContinueItems, removeProgress, timeAgo, useProgressVersion } from "@/lib/client-store";
 import { fileToAvatarDataUrl, useProfile, useSaveProfile } from "@/lib/profile-store";
@@ -175,6 +175,9 @@ export default function ProfileView({
         />
       </section>
 
+      {/* install to home screen (PWA) */}
+      <InstallAppCard />
+
       {/* continue watching management */}
       <section className="mt-6">
         <h2 className="font-slab text-[19px] font-bold px-4 mb-2 flex items-center gap-2">
@@ -235,6 +238,119 @@ function Stat({ label, value }: { label: string; value: number }) {
       <div className="font-slab text-[20px] font-extrabold text-[#ff5252] tabular-nums">{value}</div>
       <div className="text-[10.5px] text-gray-400 mt-0.5">{label}</div>
     </div>
+  );
+}
+
+/**
+ * "Install app" — turns the site into a home-screen app (standalone window,
+ * its own icon, no browser bars). Android/Chrome get a real one-tap install
+ * via beforeinstallprompt; iOS Safari has no programmatic install, so we show
+ * the exact manual steps instead.
+ */
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+function InstallAppCard() {
+  const [deferred, setDeferred] = useState<InstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    // window-only detection (SSR has no navigator/matchMedia) — setState in an
+    // effect is intentional and safe here; it runs once after mount.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const ios = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    setIsIOS(ios);
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (standalone) setInstalled(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+
+    const onPrompt = (e: Event) => {
+      e.preventDefault(); // Chrome requires us to decide later
+      setDeferred(e as InstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setDeferred(null);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  if (installed) {
+    return (
+      <section className="mx-4 mt-4 rounded-xl bg-[#121212] border border-[#1f3a1f] p-3.5 flex items-center gap-2.5">
+        <Check className="w-[18px] h-[18px] text-[#4caf50] shrink-0" />
+        <p className="text-[12.5px] text-gray-300">
+          <span className="font-bold text-white">Installed</span> — you&apos;re running the home-screen app.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mx-4 mt-4 rounded-xl bg-[#121212] border border-[#242424] p-3.5">
+      <div className="flex items-start gap-2.5">
+        <span className="w-9 h-9 rounded-lg bg-[#d32f2f]/15 border border-[#d32f2f]/40 flex items-center justify-center shrink-0">
+          <Download className="w-[18px] h-[18px] text-[#ff5252]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold text-gray-100">Install AnimeTest123</p>
+          <p className="text-[11.5px] text-gray-400 mt-0.5 leading-relaxed">
+            Add it to your home screen — full-screen playback, its own icon, like a real app.
+          </p>
+
+          {deferred ? (
+            <button
+              onClick={async () => {
+                try {
+                  await deferred.prompt();
+                  const choice = await deferred.userChoice;
+                  if (choice.outcome === "accepted") setInstalled(true);
+                  setDeferred(null);
+                } catch {
+                  /* user dismissed the native dialog */
+                }
+              }}
+              className="mt-2.5 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12px] font-bold rounded-full px-4 py-2 transition active:scale-95"
+            >
+              Install now
+            </button>
+          ) : (
+            <ol className="mt-2 text-[11px] text-gray-400 leading-relaxed list-decimal ml-4 space-y-0.5">
+              {isIOS ? (
+                <>
+                  <li>
+                    Tap the <span className="text-gray-200 font-bold">Share</span> button in Safari&apos;s toolbar
+                  </li>
+                  <li>
+                    Choose <span className="text-gray-200 font-bold">&ldquo;Add to Home Screen&rdquo;</span>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    Open the browser menu <span className="text-gray-200 font-bold">(⋮)</span>
+                  </li>
+                  <li>
+                    Choose <span className="text-gray-200 font-bold">&ldquo;Add to Home screen&rdquo;</span> / &ldquo;Install
+                    app&rdquo;
+                  </li>
+                </>
+              )}
+            </ol>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 

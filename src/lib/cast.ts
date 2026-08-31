@@ -190,9 +190,21 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     return { ok: true };
   } catch (err: any) {
     const raw = String(err?.message || err?.description || err?.code || "Cast failed");
-    const msg = raw.toLowerCase().startsWith("cast") ? raw : `Cast failed: ${raw}`;
+    // map the common failure modes to something a viewer can act on
+    let msg: string;
+    const low = raw.toLowerCase();
+    if (low.includes("cancel")) msg = "Cast cancelled";
+    else if (low.includes("no device") || low.includes("not found") || low.includes("no compatible")) {
+      msg = "No cast device found — make sure your TV/Chromecast is on the same Wi-Fi, then try again";
+    } else if (low.includes("session error") || low.includes("timeout")) {
+      msg = "Couldn't reach the cast device — check the Wi-Fi and try again";
+    } else if (low.includes("load") || low.includes("media")) {
+      msg = "The TV couldn't load this stream — try another server for this episode";
+    } else {
+      msg = raw.toLowerCase().startsWith("cast") ? raw : `Cast failed: ${raw}`;
+    }
     if (!refs.session) setState("idle");
-    return { ok: false, error: msg.includes("cancel") ? "Cast cancelled" : msg };
+    return { ok: false, error: msg };
   }
 }
 

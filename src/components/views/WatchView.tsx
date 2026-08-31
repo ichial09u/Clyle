@@ -75,6 +75,9 @@ export default function WatchView({
   const shellRef = useRef<HTMLDivElement>(null);
   const seekRef = useRef<HTMLInputElement>(null);
   const resumeAtRef = useRef(0);
+  // set when the user switches stream server mid-play so the new source
+  // resumes at the exact second instead of restarting
+  const pendingSeekRef = useRef<number | null>(null);
   const castStateRef = useRef<CastState>(getCastState());
   const castMediaUrlRef = useRef("");
   const hideTimerRef = useRef<number | null>(null);
@@ -372,13 +375,18 @@ export default function WatchView({
           src: castMediaUrlRef.current,
           title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
           imageUrl: anime.image,
-          startTime: resumeAtRef.current,
+          startTime: pendingSeekRef.current ?? resumeAtRef.current,
         });
+        pendingSeekRef.current = null;
         return;
       }
 
-      if (resumeAtRef.current > 0 && Math.abs(video.currentTime - resumeAtRef.current) > 5) {
-        video.currentTime = resumeAtRef.current;
+      // mid-play source switch (quality-server change) resumes exactly where
+      // the user was; otherwise fall back to the saved resume point
+      const target = pendingSeekRef.current ?? resumeAtRef.current;
+      pendingSeekRef.current = null;
+      if (target > 0 && Math.abs(video.currentTime - target) > 0.5) {
+        video.currentTime = target;
       }
       video.play().catch(() => undefined);
     };
@@ -479,7 +487,21 @@ export default function WatchView({
 
   const applyQuality = (q: "auto" | number) => {
     setQuality(q);
+    // save the spot immediately so nothing (network blip, app kill) can lose
+    // it across the switch — hls.currentLevel changes are seamless and do
+    // NOT restart playback
+    saveNow();
     if (hlsRef.current) hlsRef.current.currentLevel = q === "auto" ? -1 : q;
+  };
+
+  /** Switch stream server mid-playback without losing the spot. */
+  const switchServer = (next: "zoko" | "kiwi") => {
+    if (next === server || castStateRef.current === "casting") return;
+    const pos = videoRef.current?.currentTime ?? 0;
+    saveNow(); // save your spot RIGHT NOW
+    pendingSeekRef.current = pos; // the new source resumes exactly here
+    setPanel(null);
+    onEpisodeChange(episode, lang, next);
   };
 
   const applySpeed = (s: number) => {
@@ -515,7 +537,7 @@ export default function WatchView({
       setCastMsg(null);
     } else {
       setCastMsg(res.error ?? "Cast failed");
-      window.setTimeout(() => setCastMsg(null), 4000);
+      window.setTimeout(() => setCastMsg(null), 6500);
     }
   };
 
@@ -566,6 +588,8 @@ export default function WatchView({
             <video
               ref={videoRef}
               playsInline
+              // AirPlay on iOS Safari (Chromecast is Chrome/Android-only)
+              {...({ "x-webkit-airplay": "allow" } as Record<string, string>)}
               poster={anime.banner ?? anime.image ?? undefined}
               className={`w-full h-full border-0 bg-black object-contain ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
             >
@@ -858,10 +882,12 @@ export default function WatchView({
                       Auto
                     </button>
                   </li>
+                  {/* ALL levels the stream offers — highest first. Switching is
+                      seamless: hls jumps rendition without restarting the
+                      video, and the spot is saved the moment you tap. */}
                   {[...levels]
                     .map((l, i) => ({ l, i }))
-                    .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0))
-                    .slice(0, 5)
+                    .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0) || (b.l.bitrate ?? 0) - (a.l.bitrate ?? 0))
                     .map(({ l, i }) => (
                       <li key={i}>
                         <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
@@ -870,6 +896,9 @@ export default function WatchView({
                         </button>
                       </li>
                     ))}
+                  {levels.length === 0 ? (
+                    <li className="text-[11.5px] text-gray-500">Single quality for this episode</li>
+                  ) : null}
                 </ul>
               </div>
               <div>
@@ -889,6 +918,29 @@ export default function WatchView({
                   </li>
                 </ul>
               </div>
+            </div>
+
+            {/* stream server — switch mid-episode, playback resumes at the same second */}
+            <div className="mt-4 pt-3 border-t border-[#242424]">
+              <h4 className="font-slab font-bold text-[14px] mb-2">Server</h4>
+              <div className="flex gap-2">
+                {(["zoko", "kiwi"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => switchServer(s)}
+                    disabled={s === server}
+                    className={`flex-1 rounded-lg py-2 text-[12.5px] font-bold transition active:scale-[0.98] ${
+                      s === server
+                        ? "bg-[#d32f2f] text-white cursor-default"
+                        : "bg-[#1c1c1c] hover:bg-[#282828] text-gray-200"
+                    }`}
+                  >
+                    {s === "zoko" ? "Zoko (Server #1)" : "Kiwi (Server #2)"}
+                    {s === server ? <span className="ml-1.5 text-[10px] font-normal">· in use</span> : null}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-1.5 text-[10.5px] text-gray-500">Switching server keeps your exact spot — no restart.</p>
             </div>
           </div>
         ) : null}

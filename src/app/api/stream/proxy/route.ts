@@ -55,6 +55,104 @@ function proxied(abs: URL, type: "m3u8" | "seg" | "vtt"): string {
   return `/api/stream/proxy?type=${type}&u=${encodeURIComponent(abs.toString())}`;
 }
 
+/* ------------------------------------------------------------------ *
+ * Hidden-quality discovery.
+ *
+ * Zoko's master playlists advertise only ONE variant (usually 1080p),
+ * but the CDN also hosts the standard ladder at the same path:
+ *   {base}/360/index.m3u8, {base}/480/..., {base}/720/..., {base}/1080/...
+ * We probe the siblings and synthesize a proper multi-variant master so
+ * hls.js gets real levels -> the quality panel lists everything and the
+ * Auto setting can actually adapt between qualities mid-episode.
+ * ------------------------------------------------------------------ */
+
+const VARIANT_HEIGHTS = [360, 480, 720, 1080] as const;
+const VARIANT_META: Record<number, { bandwidth: number; resolution: string }> = {
+  360: { bandwidth: 800_000, resolution: "640x360" },
+  480: { bandwidth: 1_300_000, resolution: "854x480" },
+  720: { bandwidth: 2_600_000, resolution: "1280x720" },
+  1080: { bandwidth: 5_300_000, resolution: "1920x1080" },
+};
+
+// Probe results per master base path (the token dirs rotate with the tokens,
+// so a fresh upload naturally re-probes).
+const probeCache = new Map<string, { expires: number; heights: number[] }>();
+
+async function probeVariant(url: URL): Promise<boolean> {
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/`, Accept: "*/*" },
+      cache: "no-store",
+      redirect: "follow",
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!res.ok) return false;
+    const head = await res.text();
+    return head.includes("#EXTM3U");
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * If `text` is a single-variant master playlist, probe the sibling quality
+ * dirs and return a synthesized multi-variant master (still upstream-absolute;
+ * the normal rewrite pass proxies it afterwards). Otherwise return null.
+ */
+async function enrichMaster(text: string, target: URL): Promise<string | null> {
+  if (!text.includes("#EXT-X-STREAM-INF")) return null;
+  const lines = text.split(/\r?\n/);
+  const variantUris = lines.filter((l) => l.trim() && !l.startsWith("#"));
+  if (variantUris.length !== 1) return null; // already multi-variant (or odd) — leave alone
+
+  const uri = variantUris[0].trim();
+  const abs = new URL(uri, target);
+  const m = abs.pathname.match(/\/(\d{3,4})\/index\.m3u8$/i);
+  if (!m) return null;
+  const current = parseInt(m[1], 10);
+  if (!VARIANT_HEIGHTS.includes(current as (typeof VARIANT_HEIGHTS)[number])) return null;
+
+  const dir = abs.pathname.slice(0, abs.pathname.lastIndexOf("/")) .replace(/\/\d{3,4}$/, ""); // .../token-dirs
+  const cacheKey = `${abs.origin}${dir}`;
+  const cached = probeCache.get(cacheKey);
+  let heights: number[];
+
+  if (cached && cached.expires > Date.now()) {
+    heights = cached.heights;
+  } else {
+    const siblings = VARIANT_HEIGHTS.filter((h) => h !== current);
+    const results = await Promise.all(
+      siblings.map(async (h) => {
+        const u = new URL(`${abs.origin}${dir}/${h}/index.m3u8`);
+        return (await probeVariant(u)) ? h : null;
+      }),
+    );
+    heights = [current, ...(results.filter((h) => h != null) as number[])];
+    heights.sort((a, b) => a - b);
+    probeCache.set(cacheKey, { expires: Date.now() + TTL_30MIN, heights });
+  }
+
+  if (heights.length <= 1) return null; // genuinely single-quality source
+
+  // keep the original line's bandwidth/resolution for the current variant when present
+  const infLine = lines.find((l) => l.startsWith("#EXT-X-STREAM-INF")) ?? "";
+  const curBw = Number(/BANDWIDTH=(\d+)/.exec(infLine)?.[1] ?? VARIANT_META[current].bandwidth);
+  const curRes = /RESOLUTION=(\S+)/.exec(infLine)?.[1] ?? VARIANT_META[current].resolution;
+
+  const out: string[] = ["#EXTM3U", "#EXT-X-VERSION:4"];
+  for (const h of heights) {
+    const meta = VARIANT_META[h] ?? { bandwidth: 2_000_000, resolution: `${h}p` };
+    const isCurrent = h === current;
+    out.push(
+      `#EXT-X-STREAM-INF:BANDWIDTH=${isCurrent ? curBw : meta.bandwidth},RESOLUTION=${isCurrent ? curRes : meta.resolution}`,
+    );
+    out.push(`${abs.origin}${dir}/${h}/index.m3u8`);
+  }
+  return out.join("\n");
+}
+
+const TTL_30MIN = 30 * 60 * 1000;
+
 function rewritePlaylist(text: string, baseUrl: URL): string {
   const out: string[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
@@ -132,7 +230,9 @@ export async function GET(req: Request) {
       if (!l || l.startsWith("#")) continue;
       try { allowHost(new URL(l, target).hostname); } catch { /* ignore */ }
     }
-    return new NextResponse(rewritePlaylist(text, target), {
+    // single-variant master? add the CDN's hidden quality siblings (360/480/720/1080)
+    const enriched = await enrichMaster(text, target).catch(() => null);
+    return new NextResponse(rewritePlaylist(enriched ?? text, target), {
       headers: {
         "Content-Type": "application/vnd.apple.mpegurl",
         "Cache-Control": "no-store",

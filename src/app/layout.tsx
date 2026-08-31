@@ -18,6 +18,19 @@ export const metadata: Metadata = {
   title: "AnimeTest123 — Zoko Anime",
   description:
     "Anime catalog powered by the MyAnimeList (Jikan) API with playback through Zoko's player. New anime and episodes are imported automatically.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/apple-touch-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: "AnimeTest123",
+    statusBarStyle: "black-translucent",
+  },
 };
 
 export const viewport: Viewport = {

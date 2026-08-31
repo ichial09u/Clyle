@@ -142,13 +142,17 @@ export default function Page() {
     [push],
   );
 
-  /** Continue Watching tap — straight into the episode at the saved second. */
+  /** Continue Watching tap — straight into the episode at the saved second.
+   *  The episode list is pushed UNDER the player so Back (arrow, top-left)
+   *  lands on that anime's episode grid instead of dumping you home. */
   const resumeWatching = useCallback(
     (item: ContinueItem) => {
       const ep = Math.max(1, item.episode);
+      const mini = animeFromContinue(item);
+      push({ name: "episodes", anime: mini });
       push({
         name: "watch",
-        anime: animeFromContinue(item),
+        anime: mini,
         ep,
         lang: item.lang === "dub" ? "dub" : "sub",
         server: item.server === "kiwi" ? "kiwi" : "zoko",
