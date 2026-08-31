@@ -82,6 +82,12 @@ export default function WatchView({
   panelRef.current = panel;
   const lockedRef = useRef(false);
   lockedRef.current = locked;
+  const playingRef = useRef(false);
+  playingRef.current = playing;
+  const streamErrorRef = useRef(false);
+  streamErrorRef.current = streamError;
+  const downloadOpenRef = useRef(false);
+  downloadOpenRef.current = downloadOpen;
 
   /* -------- auto-hide the in-player controls (like a real video app) -------- */
   const showUi = useCallback((autoHide = true) => {
@@ -107,6 +113,35 @@ export default function WatchView({
 
   useEffect(() => () => {
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+  }, []);
+
+  /* -------- desktop: moving the mouse wakes / keeps the controls visible -------- */
+  const lastMoveRef = useRef(0);
+  const handlePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.pointerType !== "mouse") return; // touch uses tap-to-toggle
+      if (panelRef.current || lockedRef.current || streamErrorRef.current) return;
+      if (!playingRef.current) return; // paused already forces controls visible
+      const now = Date.now();
+      if (now - lastMoveRef.current < 250) return; // throttle the timer churn
+      lastMoveRef.current = now;
+      showUi();
+    },
+    [showUi],
+  );
+
+  /* -------- Escape closes any open panel (then the download dialog) -------- */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (panelRef.current) {
+        setPanel(null);
+        return;
+      }
+      if (downloadOpenRef.current) setDownloadOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const total = anime.totalEpisodes || episode;
@@ -454,6 +489,7 @@ export default function WatchView({
       {/* player surface — full screen; every control is overlaid INSIDE it */}
       <div
         className={`relative w-full h-full flex items-center justify-center overflow-hidden bg-black ${resizeMode === 2 ? "" : "py-2"}`}
+        onPointerMove={handlePointerMove}
         onClick={() => {
           // tap the video to show/hide the in-player controls
           if (!playing || panel || locked || streamError) {

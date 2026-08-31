@@ -8,6 +8,45 @@ import { getUserId, useProfile } from "@/lib/profile-store";
 
 const MAX_LEN = 500;
 
+/**
+ * Local mirror of this device's own comments.
+ *
+ * On serverless hosting the comment DB lives in a per-instance temp copy, so
+ * posts can disappear when the platform recycles an instance. Mirroring every
+ * comment you post (and merging it back into the list) means your own words
+ * never visibly vanish — they survive until the server copy catches up.
+ */
+const LOCAL_COMMENTS_KEY = "animetest123.localcomments";
+type LocalCommentMap = Record<string, CommentItem[]>;
+
+function readLocalComments(malId: number): CommentItem[] {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_COMMENTS_KEY);
+    if (!raw) return [];
+    const map = JSON.parse(raw) as LocalCommentMap;
+    const list = map[String(malId)];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveLocalComment(malId: number, comment: CommentItem) {
+  try {
+    const raw = window.localStorage.getItem(LOCAL_COMMENTS_KEY);
+    const map = (raw ? JSON.parse(raw) : {}) as LocalCommentMap;
+    const key = String(malId);
+    const list = Array.isArray(map[key]) ? map[key] : [];
+    map[key] = [comment, ...list.filter((c) => c.id !== comment.id)].slice(0, 50);
+    window.localStorage.setItem(LOCAL_COMMENTS_KEY, JSON.stringify(map));
+  } catch {
+    /* storage unavailable/full — server copy is still the source of truth */
+  }
+}
+
+/** de-dupe key so a comment that already reached the server isn't shown twice */
+const fingerprint = (c: CommentItem) => `${c.userId ?? ""}|${c.text}`;
+
 /** Community comments on an anime — nickname + avatar from your profile. */
 export default function CommentsSection({ malId }: { malId: number }) {
   const { profile } = useProfile();
@@ -27,9 +66,17 @@ export default function CommentsSection({ malId }: { malId: number }) {
         const res = await fetch(`/api/comments?malId=${malId}`);
         if (!res.ok) throw new Error("failed");
         const data = (await res.json()) as { comments: CommentItem[] };
-        if (!cancelled) setComments(data.comments ?? []);
+        // merge: server list + local-only mirror entries (newest first)
+        const server = data.comments ?? [];
+        const seen = new Set(server.map(fingerprint));
+        const localOnly = readLocalComments(malId).filter((c) => !seen.has(fingerprint(c)));
+        const merged = [...server, ...localOnly].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        if (!cancelled) setComments(merged);
       } catch {
-        /* keep empty list */
+        /* server unreachable — still show the local mirror so nothing is lost */
+        if (!cancelled) setComments(readLocalComments(malId));
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -44,8 +91,8 @@ export default function CommentsSection({ malId }: { malId: number }) {
     if (!body || posting) return;
     setPosting(true);
     setError(null);
+    const userId = getUserId(); // identity exists even if the request fails
     try {
-      const userId = getUserId();
       const res = await fetch("/api/comments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,12 +104,25 @@ export default function CommentsSection({ malId }: { malId: number }) {
           text: body,
         }),
       });
-      if (!res.ok) throw new Error("failed");
       const data = (await res.json()) as { comment: CommentItem };
+      if (!res.ok || !data.comment?.id) throw new Error("failed");
+      saveLocalComment(malId, data.comment); // mirror so it survives server resets
       setComments((c) => [data.comment, ...c]);
       setText("");
     } catch {
-      setError("Could not post — try again in a moment.");
+      // server didn't take it — keep it on this device instead of losing the words
+      const localOnly: CommentItem = {
+        id: `local-${Date.now()}`,
+        userId,
+        nickname: profile?.nickname ?? "Otaku",
+        avatar: profile?.avatar ?? null,
+        text: body,
+        createdAt: new Date().toISOString(),
+      };
+      saveLocalComment(malId, localOnly);
+      setComments((c) => [localOnly, ...c]);
+      setText("");
+      setError("Couldn't reach the server — kept on this device.");
     } finally {
       setPosting(false);
     }
