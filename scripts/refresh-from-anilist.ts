@@ -29,7 +29,7 @@ async function main() {
         continue;
       }
       await upsertAnime(conv, { inCatalog: true, source: "seed" });
-      eps += await importEpisodes(r.malId, airedEpisodeCount(media) ?? 0);
+      eps += (await importEpisodes(r.malId, airedEpisodeCount(media) ?? 0)).length;
       ok++;
       console.log(`  + ${r.malId} ${conv.title}`);
     } catch (err) {

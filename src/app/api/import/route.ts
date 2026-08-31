@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { jikanOne, type JikanAnime } from "@/lib/jikan";
 import { anilistToJikan, airedEpisodeCount, mediaByMal } from "@/lib/anilist";
 import { upsertAnime, importEpisodes, importEpisodesFromList } from "@/lib/sync";
+import { prefetchSkipTimes } from "@/lib/skip-times";
 import { lite } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -27,19 +28,29 @@ export async function POST(req: Request) {
   const media = await mediaByMal(malId);
   const conv = media ? anilistToJikan(media) : null;
   let episodesAdded = 0;
+  const newEpisodes: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
 
   if (conv) {
     await upsertAnime(conv, { inCatalog: true, source: "manual" });
-    episodesAdded = await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
+    const added = await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
+    episodesAdded = added.length;
+    const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
+    newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
   } else {
     // AniList has no MAL mapping (or is unreachable) — fall back to Jikan
     const full = await jikanOne<JikanAnime>(`/anime/${malId}/full`);
     if (!full) return NextResponse.json({ error: "anime not found" }, { status: 404 });
     await upsertAnime(full, { inCatalog: true, source: "manual" });
-    episodesAdded = full.airing && !full.episodes
+    const added = full.airing && !full.episodes
       ? await importEpisodesFromList(malId)
       : await importEpisodes(malId, full.episodes ?? 0);
+    episodesAdded = added.length;
+    const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
+    newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
   }
+
+  // imported episodes bring their skip intro/ending along (background, rate-limited)
+  if (newEpisodes.length) after(() => prefetchSkipTimes(newEpisodes, 40));
 
   const row = await db.anime.findUnique({ where: { malId } });
   return NextResponse.json({ anime: row ? lite(row) : null, episodesAdded });

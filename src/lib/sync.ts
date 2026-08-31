@@ -25,6 +25,8 @@ export interface SyncResult {
   durationMs: number;
   skipped?: boolean;
   error?: string;
+  /** the (malId, ep) pairs this sync imported — used to prefetch skip times */
+  newEpisodes: Array<{ malId: number; ep: number; lenMin?: number | null }>;
 }
 
 let running: Promise<SyncResult> | null = null;
@@ -107,9 +109,13 @@ export async function upsertAniListMedia(
   return upsertAnime(conv, opts);
 }
 
-/** Create any episode rows (1..count) the anime does not have yet. Returns how many were added. */
-export async function importEpisodes(malId: number, count: number): Promise<number> {
-  if (!count || count <= 0) return 0;
+/**
+ * Create any episode rows (1..count) the anime does not have yet.
+ * Returns the episode numbers that were added (so their skip times can be
+ * imported along with them).
+ */
+export async function importEpisodes(malId: number, count: number): Promise<number[]> {
+  if (!count || count <= 0) return [];
   const existing = await db.episode.findMany({
     where: { animeId: malId, lang: "sub" },
     select: { number: true },
@@ -117,11 +123,11 @@ export async function importEpisodes(malId: number, count: number): Promise<numb
   const have = new Set(existing.map((e) => e.number));
   const missing: number[] = [];
   for (let n = 1; n <= count; n++) if (!have.has(n)) missing.push(n);
-  if (missing.length === 0) return 0;
+  if (missing.length === 0) return [];
   await db.episode.createMany({
     data: missing.map((n) => ({ animeId: malId, number: n, lang: "sub" })),
   });
-  return missing.length;
+  return missing;
 }
 
 interface JikanEpisodeEntry {
@@ -137,11 +143,11 @@ interface JikanEpisodeEntry {
  * The paginated episode list still knows — its last page holds the newest
  * episodes (with titles + air dates). First page covers episodes 1-100.
  */
-export async function importEpisodesFromList(malId: number): Promise<number> {
+export async function importEpisodesFromList(malId: number): Promise<number[]> {
   const first = await jikan<{ data: JikanEpisodeEntry[]; pagination?: { last_visible_page?: number } }>(
     `/anime/${malId}/episodes?page=1`,
   );
-  if (!first?.data?.length) return 0;
+  if (!first?.data?.length) return [];
 
   const pages: JikanEpisodeEntry[][] = [first.data];
   const lastPage = first.pagination?.last_visible_page ?? 1;
@@ -152,7 +158,7 @@ export async function importEpisodesFromList(malId: number): Promise<number> {
 
   const existing = await db.episode.findMany({ where: { animeId: malId, lang: "sub" }, select: { number: true } });
   const have = new Set(existing.map((e) => e.number));
-  let added = 0;
+  const added: number[] = [];
   for (const page of pages) {
     const fresh = page.filter((e) => !have.has(e.mal_id));
     if (!fresh.length) continue;
@@ -168,7 +174,7 @@ export async function importEpisodesFromList(malId: number): Promise<number> {
       })),
     });
     for (const e of fresh) have.add(e.mal_id);
-    added += fresh.length;
+    added.push(...fresh.map((e) => e.mal_id));
   }
 
   // keep the stored total in sync with what we discovered
@@ -184,6 +190,7 @@ async function runSync(_force = false): Promise<SyncResult> {
   let animeAdded = 0;
   let animeChecked = 0;
   let error: string | undefined;
+  const newEpisodes: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
 
   try {
     // ---------------------------------------------------------------
@@ -191,7 +198,7 @@ async function runSync(_force = false): Promise<SyncResult> {
     // ---------------------------------------------------------------
     const airing = await db.anime.findMany({
       where: { inCatalog: true, airing: true },
-      select: { malId: true, totalEpisodes: true },
+      select: { malId: true, totalEpisodes: true, durationMin: true },
       orderBy: { popularity: "asc" },
       take: 12, // keep the run inside Jikan's per-minute budget
     });
@@ -202,7 +209,9 @@ async function runSync(_force = false): Promise<SyncResult> {
       const aired = airedEpisodeCount(media);
       if (!media || aired == null) {
         // AniList has no schedule for this show yet — probe MAL's episode list
-        episodesAdded += await importEpisodesFromList(a.malId);
+        const added = await importEpisodesFromList(a.malId);
+        episodesAdded += added.length;
+        newEpisodes.push(...added.map((ep) => ({ malId: a.malId, ep, lenMin: a.durationMin })));
         continue;
       }
       animeChecked++;
@@ -212,7 +221,9 @@ async function runSync(_force = false): Promise<SyncResult> {
       });
       if (aired > a.totalEpisodes) {
         await db.anime.update({ where: { malId: a.malId }, data: { totalEpisodes: aired } });
-        episodesAdded += await importEpisodes(a.malId, aired);
+        const added = await importEpisodes(a.malId, aired);
+        episodesAdded += added.length;
+        newEpisodes.push(...added.map((ep) => ({ malId: a.malId, ep, lenMin: a.durationMin })));
       }
     }
 
@@ -228,7 +239,9 @@ async function runSync(_force = false): Promise<SyncResult> {
       const known = await db.anime.findUnique({ where: { malId }, select: { inCatalog: true } });
       if (known?.inCatalog) continue;
       await upsertAniListMedia(media, { inCatalog: true, source: "season-import" });
-      await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
+      const added = await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
+      const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
+      newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
       animeAdded++;
     }
 
@@ -259,6 +272,7 @@ async function runSync(_force = false): Promise<SyncResult> {
     animeChecked,
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     error,
+    newEpisodes,
   };
 }
 

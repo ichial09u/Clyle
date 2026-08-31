@@ -1,6 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { syncCatalog, lastSync } from "@/lib/sync";
+import { prefetchSkipTimes } from "@/lib/skip-times";
+import { runSkipAudit } from "@/lib/skip-audit";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -56,6 +58,9 @@ export async function GET(req: Request) {
     if (syncResult.episodesAdded > 0 || syncResult.animeAdded > 0) {
       fixes.push(`catalog sync imported ${syncResult.episodesAdded} episodes / ${syncResult.animeAdded} anime`);
     }
+    // import skip intro/ending for every newly imported episode (background,
+    // rate-limited) — new episodes arrive with their skip data already cached
+    if (syncResult.newEpisodes.length) after(() => prefetchSkipTimes(syncResult.newEpisodes));
     checks.push({ name: "catalog-sync", ok: syncResult.ok !== false, detail: `checked ${syncResult.animeChecked} anime · last run ${sync.at ?? "n/a"}` });
   } catch (err) {
     // upstream (Jikan) failures are not fatal for the app — record and move on
@@ -115,6 +120,26 @@ export async function GET(req: Request) {
     checks.push({ name: "user-data", ok: true, detail: `${progressCount} progress rows / ${commentCount} comments` });
   } catch (err) {
     checks.push({ name: "user-data", ok: false, detail: String(err).slice(0, 200) });
+  }
+
+  // ---- 7) skip intro audit — the bot walks EVERY anime and verifies a
+  // Skip Intro button will appear (exact dataset row / consensus / live tier
+  // / TV-length heuristic). `probe` asks AniSkip live for gaps and caches
+  // the answers, which heals them in place.
+  try {
+    const audit = await runSkipAudit(true, 5);
+    const t = audit.totals;
+    checks.push({
+      name: "skip-intro-audit",
+      ok: audit.ok,
+      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.heuristic} heuristic / ${t.uncovered} uncovered, probed ${t.probed})`,
+    });
+    if (!audit.ok) {
+      const bad = audit.anime.filter((a) => !a.ok).slice(0, 5).map((a) => `${a.title} (${a.episodes.filter((e) => e.source === "uncovered").map((e) => `ep${e.ep}`).join(",")})`);
+      fixes.push(`skip intro still uncovered after probing: ${bad.join("; ")}`);
+    }
+  } catch (err) {
+    checks.push({ name: "skip-intro-audit", ok: false, detail: String(err).slice(0, 200) });
   }
 
   const report = {

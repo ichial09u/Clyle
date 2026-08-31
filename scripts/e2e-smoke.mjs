@@ -95,6 +95,31 @@ async function expectJson(name, path, init, validate) {
     (r, b) => b?.skip?.intro && Number.isFinite(b.skip.intro.end) && b.skip.intro.end > b.skip.intro.start,
   );
 
+  // ---- 3c) skip-intro audit: the bot walks EVERY anime in the catalog and
+  // verifies a Skip Intro button will appear (exact AniSkip row, per-anime
+  // consensus, cached live tier, or the TV-length heuristic window). Any
+  // uncovered TV episode fails the run.
+  const audit = await expectJson(
+    "GET /api/skip-audit (every anime shows Skip Intro)",
+    "/api/skip-audit",
+    {},
+    (r, b) =>
+      b?.ok === true &&
+      typeof b?.totals?.coveragePct === "number" &&
+      b.totals.coveragePct >= 95 &&
+      b?.totals?.sampled > 0 &&
+      Array.isArray(b?.anime) &&
+      b.anime.length > 0,
+    60_000,
+  );
+  if (audit) {
+    const t = audit.totals;
+    console.log(
+      `      skip-intro coverage: ${t.coveragePct}% of ${t.sampled} sampled episodes across ${t.anime} anime` +
+        ` (exact ${t.exact} · consensus ${t.consensus} · live ${t.live} · heuristic ${t.heuristic} · uncovered ${t.uncovered})`,
+    );
+  }
+
   // ---- 4) comments: post -> like -> unlike -> reply -> verify -> delete ----
   const stamp = Date.now();
   const probeText = `[smoke-bot] probe ${stamp}`;

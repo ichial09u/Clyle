@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { freshMediaByMal, airedEpisodeCount } from "@/lib/anilist";
 import { importEpisodes, importEpisodesFromList } from "@/lib/sync";
+import { prefetchSkipTimes } from "@/lib/skip-times";
 import { probeDubAvailable } from "@/lib/zoko-stream";
 
 export const dynamic = "force-dynamic";
@@ -29,18 +30,26 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
 
   // freshness check for airing shows — pulls the aired episode count from AniList
   let newlyAdded = 0;
+  const freshEpisodes: number[] = [];
   if (anime.airing) {
     const media = await freshMediaByMal(malId);
     const aired = airedEpisodeCount(media);
     if (aired != null) {
       if (aired > anime.totalEpisodes) {
         await db.anime.update({ where: { malId }, data: { totalEpisodes: aired } });
-        newlyAdded = await importEpisodes(malId, aired);
+        const added = await importEpisodes(malId, aired);
+        newlyAdded = added.length;
+        freshEpisodes.push(...added);
       }
     } else {
       // no schedule yet (or AniList unreachable) — probe MAL's episode list
-      newlyAdded = await importEpisodesFromList(malId);
+      const added = await importEpisodesFromList(malId);
+      newlyAdded = added.length;
+      freshEpisodes.push(...added);
     }
+    // brand-new episodes import their skip intro/ending along with them
+    // (background, rate-limited, after the response is flushed)
+    if (freshEpisodes.length) after(() => prefetchSkipTimes(freshEpisodes.map((ep) => ({ malId, ep, lenMin: anime.durationMin })), 8));
   }
 
   const episodes = await db.episode.findMany({

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveStream } from "@/lib/zoko-stream";
-import { withSkipData } from "@/lib/skip-times";
+import { withSkipDataLive } from "@/lib/skip-times";
+import { db } from "@/lib/db";
 import type { Lang, ServerId } from "@/lib/zoko";
 
 export const dynamic = "force-dynamic";
@@ -27,8 +28,11 @@ export async function GET(req: Request) {
   if (!stream) {
     return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
-  // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip dataset
-  const enriched = withSkipData(malId, ep, stream);
+  // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip
+  // dataset + a cached live AniSkip query for brand-new/uncovered episodes
+  // (the live query wants the episode's length in minutes for its filters)
+  const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
+  const enriched = await withSkipDataLive(malId, ep, stream, { episodeLengthMin: meta?.durationMin });
   return NextResponse.json(enriched, {
     headers: { "Cache-Control": "no-store" },
   });

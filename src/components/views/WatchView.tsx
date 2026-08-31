@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   getCastState, onCastStateChange, type CastState,
@@ -466,6 +466,62 @@ export default function WatchView({
       video.removeEventListener("ended", onEnded);
     };
   }, [stream, iframeFallback, saveNow]);
+
+  /* -------- episode scene thumbnail (Crunchyroll-style Continue Watching art)
+     Once per episode session, at a random moment 8-28s in, grab whatever
+     frame is on screen and store it as this episode's thumbnail. Streams play
+     through our same-origin proxy via MSE, so the canvas stays untainted;
+     any failure is silently ignored (the poster art remains the fallback). */
+  useEffect(() => {
+    if (!ready || iframeFallback) return;
+    if (getEpThumb(anime.malId, episode, lang)) return; // this episode already has its scene
+    let tries = 0;
+    let timer = 0;
+    const capture = () => {
+      timer = 0;
+      const v = videoRef.current;
+      if (!v || streamErrorRef.current || castStateRef.current === "casting") return;
+      if (getEpThumb(anime.malId, episode, lang)) return; // captured meanwhile
+      // wait for real frames: decoded video, actually playing, a few seconds in
+      if (v.readyState < 2 || v.paused || v.ended || !v.videoWidth || v.currentTime < 3) {
+        if (++tries <= 12) timer = window.setTimeout(capture, 5000);
+        return;
+      }
+      try {
+        const W = 224;
+        const H = 126; // 16:9 card
+        const canvas = document.createElement("canvas");
+        canvas.width = W;
+        canvas.height = H;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        // center-crop the source frame to 16:9 so nothing looks squashed
+        const srcAspect = v.videoWidth / v.videoHeight;
+        let sx = 0;
+        let sy = 0;
+        let sw = v.videoWidth;
+        let sh = v.videoHeight;
+        if (srcAspect > W / H) {
+          sw = v.videoHeight * (W / H);
+          sx = (v.videoWidth - sw) / 2;
+        } else {
+          sh = v.videoWidth / (W / H);
+          sy = (v.videoHeight - sh) / 2;
+        }
+        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+        const url = canvas.toDataURL("image/jpeg", 0.62);
+        if (url.length > 64) saveEpThumb(anime.malId, episode, lang, url);
+      } catch {
+        /* tainted canvas / quota — poster stays the fallback */
+      }
+    };
+    // the "random scene": fire at a random moment 8-28s into the session,
+    // then poll every 5s until frames are really flowing (~1 min patience)
+    timer = window.setTimeout(capture, 8000 + Math.floor(Math.random() * 20000));
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [ready, iframeFallback, anime.malId, episode, lang]);
 
   const go = useCallback((ep: number) => {
     if (ep >= 1 && ep <= total) onEpisodeChange(ep, lang, server);

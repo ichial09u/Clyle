@@ -256,6 +256,7 @@ export function removeProgress(malId: number) {
   const map = readEpMap();
   delete map[String(malId)];
   writeJson(EP_PROGRESS_KEY, map);
+  removeEpThumbs(malId);
   try {
     const legacy = JSON.parse(window.localStorage.getItem(PROGRESS_KEY) ?? "{}");
     delete legacy[String(malId)];
@@ -376,6 +377,78 @@ export async function loadContinueItems(): Promise<ContinueItem[]> {
     /* offline / cold server — local only */
   }
   return mergeContinueItems(serverItems);
+}
+
+/* ---------------- Episode scene thumbnails ---------------- *
+ *
+ * Crunchyroll-style Continue Watching art: while an episode plays we grab a
+ * frame straight off the <video> surface (canvas -> JPEG data URL) and keep
+ * it per episode+lang. Streams play through our own same-origin proxy via
+ * MSE, so the canvas is never tainted and the capture virtually always
+ * succeeds; anything that fails just falls back to the poster art.
+ *
+ * Each episode captures ONCE (the first session it is watched — that frame
+ * is the "random scene"); stored thumbs are evicted LRU-style so the
+ * localStorage budget stays bounded.
+ */
+
+const EP_THUMBS_KEY = "animetest123.epthumbs";
+const EP_THUMBS_MAX = 80; // ~10-14KB each at 224x126 q0.62 -> well under quota
+
+type ThumbEntry = { t: string; at: number };
+type ThumbMap = Record<string, Record<string, ThumbEntry>>;
+
+function readThumbs(): ThumbMap {
+  return readJson<ThumbMap>(EP_THUMBS_KEY, {});
+}
+
+function writeThumbs(map: ThumbMap) {
+  // global LRU cap — evict the oldest captures first
+  const all: Array<{ malId: string; ep: string; at: number }> = [];
+  for (const [malId, eps] of Object.entries(map)) {
+    for (const [ep, entry] of Object.entries(eps)) all.push({ malId, ep, at: entry.at });
+  }
+  if (all.length > EP_THUMBS_MAX) {
+    all.sort((a, b) => a.at - b.at);
+    for (const victim of all.slice(0, all.length - EP_THUMBS_MAX)) delete map[victim.malId][victim.ep];
+  }
+  writeJson(EP_THUMBS_KEY, map);
+}
+
+/** Stored scene thumbnail for one episode (null when we have none yet). */
+export function getEpThumb(malId: number, episode: number, lang: "sub" | "dub"): string | null {
+  const entry = readThumbs()[String(malId)]?.[`${episode}:${lang}`];
+  return entry?.t ?? null;
+}
+
+/** Persist a captured frame. First capture wins; later sessions keep it. */
+export function saveEpThumb(malId: number, episode: number, lang: "sub" | "dub", dataUrl: string) {
+  try {
+    const map = readThumbs();
+    const key = String(malId);
+    const epKey = `${episode}:${lang}`;
+    if (map[key]?.[epKey]) return; // keep the original "random scene"
+    map[key] = map[key] ?? {};
+    map[key][epKey] = { t: dataUrl, at: Date.now() };
+    writeThumbs(map);
+    try {
+      window.dispatchEvent(new CustomEvent("epthumbs-changed"));
+    } catch {
+      /* ignore */
+    }
+  } catch {
+    /* quota / private mode — thumbnails are decorative, never fatal */
+  }
+}
+
+export function removeEpThumbs(malId: number) {
+  try {
+    const map = readThumbs();
+    delete map[String(malId)];
+    writeJson(EP_THUMBS_KEY, map);
+  } catch {
+    /* ignore */
+  }
 }
 
 /* ---------------- misc ---------------- */
