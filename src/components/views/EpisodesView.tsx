@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowUpDown, MonitorPlay, Search, X } from "lucide-react";
 import type { AnimeLite, EpisodesPayload } from "@/lib/types";
 import {
@@ -194,61 +195,69 @@ export default function EpisodesView({
       ) : null}
 
       {/* server picker sheet — mirrors the reference: "Choose a server & a
-          server doesn't work, please choose another" + SUB/DUB Server #1/#2 */}
-      {picked != null ? (
-        <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-end sm:items-center justify-center" onClick={() => setPicked(null)}>
-          <div
-            className="w-full sm:max-w-[400px] bg-[#151515] border-t sm:border sm:border-[#242424] sm:rounded-xl rounded-t-xl shadow-2xl overflow-hidden anim-sheet-up"
-            onClick={(e) => e.stopPropagation()}
-            role="dialog"
-            aria-label="Choose a server"
-          >
-            <div className="px-4 pt-4 pb-1 flex items-center justify-between">
-              <h3 className="font-slab text-[16px] font-bold">Episode {picked}</h3>
-              <button onClick={() => setPicked(null)} className="text-gray-400 hover:text-white" aria-label="Close">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            {(() => {
-              const pr = epProgress[String(picked)];
-              const pct = barWidth(pr);
-              return pct > 0 ? (
-                <p className="px-4 text-[11.5px] text-[#ff8a80] pb-1">
-                  {pr?.completed ? "Episode finished — replay from the start" : `You were ${pct}% through — it will resume automatically`}
-                </p>
-              ) : null;
-            })()}
-            <p className="px-4 pb-3 text-[11.5px] text-gray-400">Choose a server &amp; a server doesn&apos;t work, please choose another</p>
-            <div className="px-3 pb-5">
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  { lang: "sub" as Lang, n: 1 },
-                  { lang: "sub" as Lang, n: 2 },
-                  // anime without a DUB yet — no DUB buttons at all
-                  ...(episodesData?.hasDub === false
-                    ? []
-                    : [
-                        { lang: "dub" as Lang, n: 1 },
-                        { lang: "dub" as Lang, n: 2 },
-                      ]),
-                ]).map(({ lang, n }) => (
-                  <button
-                    key={`${lang}-${n}`}
-                    onClick={() => play(lang, n === 1 ? "zoko" : "kiwi")}
-                    className="flex items-center justify-center gap-2 rounded-lg bg-white hover:bg-gray-200 active:scale-[0.98] transition text-[13px] font-bold py-3 text-black text-center"
-                  >
-                    <MonitorPlay className="w-4 h-4 text-[#d32f2f]" />
-                    {lang.toUpperCase()} Server #{n}
-                  </button>
-                ))}
+          server doesn't work, please choose another" + SUB/DUB Server #1/#2.
+          Rendered through a portal to <body>: the view pane is a stacking
+          context (z-20), so a fixed z-[60] sheet inside it still painted UNDER
+          the z-40 bottom nav and the DUB row was cut off on phones. The portal
+          hoists the sheet to the root stacking context where z-[60] > z-40.
+          Safe-area padding keeps the buttons clear of the iOS home indicator. */}
+      {picked != null
+        ? createPortal(
+          <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-end sm:items-center justify-center" onClick={() => setPicked(null)}>
+            <div
+              className="w-full sm:max-w-[400px] bg-[#151515] border-t sm:border sm:border-[#242424] sm:rounded-xl rounded-t-xl shadow-2xl overflow-hidden anim-sheet-up"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-label="Choose a server"
+            >
+              <div className="px-4 pt-4 pb-1 flex items-center justify-between">
+                <h3 className="font-slab text-[16px] font-bold">Episode {picked}</h3>
+                <button onClick={() => setPicked(null)} className="text-gray-400 hover:text-white" aria-label="Close">
+                  <X className="w-5 h-5" />
+                </button>
               </div>
-              {episodesData?.hasDub === false ? (
-                <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>
-              ) : null}
+              {(() => {
+                const pr = epProgress[String(picked)];
+                const pct = barWidth(pr);
+                return pct > 0 ? (
+                  <p className="px-4 text-[11.5px] text-[#ff8a80] pb-1">
+                    {pr?.completed ? "Episode finished — replay from the start" : `You were ${pct}% through — it will resume automatically`}
+                  </p>
+                ) : null;
+              })()}
+              <p className="px-4 pb-3 text-[11.5px] text-gray-400">Choose a server &amp; a server doesn&apos;t work, please choose another</p>
+              <div className="px-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { lang: "sub" as Lang, n: 1 },
+                    { lang: "sub" as Lang, n: 2 },
+                    // anime without a DUB yet — no DUB buttons at all
+                    ...(episodesData?.hasDub === false
+                      ? []
+                      : [
+                          { lang: "dub" as Lang, n: 1 },
+                          { lang: "dub" as Lang, n: 2 },
+                        ]),
+                  ]).map(({ lang, n }) => (
+                    <button
+                      key={`${lang}-${n}`}
+                      onClick={() => play(lang, n === 1 ? "zoko" : "kiwi")}
+                      className="flex items-center justify-center gap-2 rounded-lg bg-white hover:bg-gray-200 active:scale-[0.98] transition text-[13px] font-bold py-3 text-black text-center"
+                    >
+                      <MonitorPlay className="w-4 h-4 text-[#d32f2f]" />
+                      {lang.toUpperCase()} Server #{n}
+                    </button>
+                  ))}
+                </div>
+                {episodesData?.hasDub === false ? (
+                  <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>
+                ) : null}
+              </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+          </div>,
+          document.body,
+          )
+        : null}
     </div>
   );
 }
