@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls, { type Level } from "hls.js";
 import {
   ChevronLeft, Download, Lock, Unlock, SlidersHorizontal, Gauge, Scan, SkipBack, SkipForward,
-  Check, Play, Pause, Maximize, Subtitles, Zap, Cast,
+  Check, Play, Pause, Maximize, Subtitles, Zap, Cast, RotateCcw, RotateCw,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
@@ -603,20 +603,53 @@ export default function WatchView({
               </div>
             ) : null}
 
-            {/* center play overlay — big white circle like the reference player */}
-            {ready && !playing && !casting ? (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  togglePlay();
-                }}
-                className={`absolute inset-0 flex items-center justify-center z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
-                aria-label="Play"
+            {/* center transport cluster — [back 10s] [play/pause] [forward 10s],
+                like the reference player. The wrapper is pointer-events-none so
+                taps between the buttons still fall through to the surface
+                (show/hide controls); only the three buttons capture taps. */}
+            {ready && !casting && !streamError && !locked ? (
+              <div
+                className={`absolute inset-0 flex items-center justify-center gap-8 z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
               >
-                <span className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center">
-                  <Play className="w-7 h-7 text-black ml-0.5 fill-black" />
-                </span>
-              </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    seekTo(Math.max(0, currentTime - 10));
+                    showUi();
+                  }}
+                  className="relative w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+                  aria-label="Back 10 seconds"
+                >
+                  <RotateCcw className="w-7 h-7 text-white" />
+                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    togglePlay();
+                  }}
+                  className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition pointer-events-auto"
+                  aria-label={playing ? "Pause" : "Play"}
+                >
+                  {playing ? (
+                    <Pause className="w-7 h-7 text-black fill-black" />
+                  ) : (
+                    <Play className="w-7 h-7 text-black ml-0.5 fill-black" />
+                  )}
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    seekTo(Math.min(duration || 0, currentTime + 10));
+                    showUi();
+                  }}
+                  className="relative w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+                  aria-label="Forward 10 seconds"
+                >
+                  <RotateCw className="w-7 h-7 text-white" />
+                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                </button>
+              </div>
             ) : null}
 
             {/* buffering spinner */}
