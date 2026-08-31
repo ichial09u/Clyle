@@ -237,6 +237,7 @@ export default function Page() {
         {anim ? (
           <div
             key={`out-${anim.nonce}`}
+            data-leaving="true"
             className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${outClass} pointer-events-none ${
               anim.dir === "pop" ? "z-20" : "z-10"
             }`}

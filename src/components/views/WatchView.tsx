@@ -115,6 +115,65 @@ export default function WatchView({
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
   }, []);
 
+  /* -------- auto-fullscreen on open (like the reference app): picking an
+     episode + server drops you straight into fullscreen playback. On leave,
+     EVERY exit path (back button, hardware back, tab switch) drops fullscreen
+     and the rotation lock again. -------- */
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    // the leaving pane renders a throwaway copy of this view for the exit
+    // animation — it must not (re-)enter fullscreen
+    if (shell.closest('[data-leaving="true"]')) return;
+
+    const doc = document as Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => void;
+    };
+    const el = shell as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+    const currentFs = doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
+    if (currentFs === shell) return;
+
+    const request = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+    if (request) {
+      try {
+        Promise.resolve(request())
+          .then(() => {
+            // phones/tablets: keep playback landscape like the reference player
+            if (window.matchMedia?.("(pointer: coarse)")?.matches) {
+              type Orient = ScreenOrientation & { lock?: (o: "landscape") => Promise<void> };
+              const so = screen.orientation as Orient | undefined;
+              try {
+                void so?.lock?.("landscape")?.catch?.(() => undefined);
+              } catch {
+                /* iOS Safari has no orientation lock — ignore */
+              }
+            }
+          })
+          .catch(() => undefined); // denied/expired — the fixed overlay still covers the screen
+      } catch {
+        /* e.g. iPhone Safari (no element fullscreen) — non-fatal */
+      }
+    }
+
+    return () => {
+      try {
+        screen.orientation?.unlock?.();
+      } catch {
+        /* unsupported — ignore */
+      }
+      const fsEl = doc.fullscreenElement ?? doc.webkitFullscreenElement;
+      if (fsEl) {
+        try {
+          if (doc.exitFullscreen) void doc.exitFullscreen().catch(() => undefined);
+          else doc.webkitExitFullscreen?.();
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+  }, []);
+
   /* -------- desktop: moving the mouse wakes / keeps the controls visible -------- */
   const lastMoveRef = useRef(0);
   const handlePointerMove = useCallback(
