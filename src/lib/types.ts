@@ -124,6 +124,9 @@ export interface CommentItem {
   avatar: string | null;
   text: string;
   createdAt: string;
+  parentId?: string | null; // set when this is a reply to another comment
+  likes?: number; // total like count
+  likedByMe?: boolean; // this device's identity has liked it
 }
 
 export interface ProfileInfo {

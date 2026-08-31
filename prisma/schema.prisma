@@ -118,6 +118,9 @@ model WatchProgress {
 }
 
 // Community comment on an anime (shows nickname + avatar snapshot at post time).
+// Supports one level of replies (parentId -> parent comment) and likes
+// (likedBy = JSON array of userIds; count = array length, so double-likes are
+// impossible per identity).
 model Comment {
   id        String   @id @default(cuid())
   malId     Int
@@ -125,9 +128,14 @@ model Comment {
   nickname  String
   avatar    String?
   text      String
+  parentId  String? // set when this comment is a reply
+  likedBy   String   @default("[]") // JSON array of userIds who liked it
   createdAt DateTime @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
 
   @@index([malId, createdAt])
+  @@index([parentId])
 }
