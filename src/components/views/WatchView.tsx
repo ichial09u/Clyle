@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls, { type Level } from "hls.js";
 import {
   ChevronLeft, Download, Lock, Unlock, SlidersHorizontal, Gauge, Scan, SkipBack, SkipForward,
-  Check, Play, Pause, Maximize, Subtitles, Zap, Cast, RotateCcw, RotateCw,
+  Check, Play, Pause, Maximize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
@@ -555,8 +555,14 @@ export default function WatchView({
     castStop();
   };
 
-  const skip = stream?.skip?.intro;
-  const showSkip = skip && currentTime >= skip.start && currentTime <= skip.end;
+  // Skip buttons — three-tier data: Zoko payload → AniSkip dataset (merged
+  // server-side in /api/stream) → last-resort heuristic window (~90s OP)
+  // for TV-length episodes only, so we never cut movies or shorts blindly.
+  const introSkip: { start: number; end: number } | undefined =
+    stream?.skip?.intro ?? (duration >= 300 && duration <= 1800 ? { start: 8, end: 90 } : undefined);
+  const outroSkip = stream?.skip?.outro;
+  const showSkipIntro = introSkip && currentTime >= introSkip.start && currentTime <= introSkip.end && !locked;
+  const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
   const subTrack = stream?.subtitles?.[0];
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -721,12 +727,26 @@ export default function WatchView({
           </div>
         ) : null}
 
-        {/* skip intro */}
-        {showSkip && !casting ? (
+        {/* skip intro / skip ending — stay visible even when controls hide,
+            exactly like the reference player in the screenshot */}
+        {showSkipOutro && !casting && !iframeFallback ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
-              seekTo(skip!.end);
+              seekTo(outroSkip!.end);
+              showUi();
+            }}
+            className="absolute bottom-44 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
+          >
+            <FastForward className="w-4 h-4 text-[#35d5bf]" /> Skip Ending
+          </button>
+        ) : null}
+        {showSkipIntro && !casting && !iframeFallback ? (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              seekTo(introSkip!.end);
+              showUi();
             }}
             className="absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
           >

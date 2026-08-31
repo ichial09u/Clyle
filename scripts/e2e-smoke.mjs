@@ -79,6 +79,22 @@ async function expectJson(name, path, init, validate) {
   if (!anime) record("catalog anime detail", false, "missing");
   if (!eps) record("catalog episodes", false, "missing");
 
+  // ---- 3b) skip-intro data (three-tier: Zoko payload -> AniSkip dataset) ----
+  // One Piece carries Zoko-native skip data; Frieren is covered by the vendored
+  // AniSkip dataset instead. Both must expose a usable intro interval.
+  await expectJson(
+    "GET /api/stream (skip intro: Zoko-native)",
+    "/api/stream?malId=21&ep=1&lang=sub&server=zoko",
+    {},
+    (r, b) => b?.skip?.intro && Number.isFinite(b.skip.intro.end) && b.skip.intro.end > b.skip.intro.start,
+  );
+  await expectJson(
+    "GET /api/stream (skip intro: AniSkip dataset)",
+    "/api/stream?malId=52991&ep=1&lang=sub&server=zoko",
+    {},
+    (r, b) => b?.skip?.intro && Number.isFinite(b.skip.intro.end) && b.skip.intro.end > b.skip.intro.start,
+  );
+
   // ---- 4) comments: post -> like -> unlike -> reply -> verify -> delete ----
   const stamp = Date.now();
   const probeText = `[smoke-bot] probe ${stamp}`;

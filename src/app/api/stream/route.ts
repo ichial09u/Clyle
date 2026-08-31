@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveStream } from "@/lib/zoko-stream";
+import { withSkipData } from "@/lib/skip-times";
 import type { Lang, ServerId } from "@/lib/zoko";
 
 export const dynamic = "force-dynamic";
@@ -26,7 +27,9 @@ export async function GET(req: Request) {
   if (!stream) {
     return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
-  return NextResponse.json(stream, {
+  // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip dataset
+  const enriched = withSkipData(malId, ep, stream);
+  return NextResponse.json(enriched, {
     headers: { "Cache-Control": "no-store" },
   });
 }
