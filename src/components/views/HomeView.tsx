@@ -180,13 +180,6 @@ export default function HomeView({
                     <span className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide">
                       NEW
                     </span>
-                  ) : a.weeksInTop10 && a.weeksInTop10 > 0 ? (
-                    <span
-                      title={`${a.weeksInTop10} week${a.weeksInTop10 > 1 ? "s" : ""} in the Top 10`}
-                      className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide"
-                    >
-                      {a.weeksInTop10}w in Top 10
-                    </span>
                   ) : null}
                   <span className="text-gray-500 truncate">{fmtWatched(a.seconds)}</span>
                 </p>

@@ -1,14 +1,18 @@
 /**
- * Deterministic API test for Top 10 notifications + streaks (Task 13).
+ * Deterministic API test for Top 10 notifications + streaks (Task 13/15).
  *
  * Phases:
  *   1. baseline: yesterday has {A, B} -> watching A today does NOT notify (streak continues)
  *   2. newcomer: watching C today (not in yesterday's list) -> live "enter" event, isNew
- *   3. seal: rewind the cursor 3 days -> publishing D-2/D-1 emits enters AND leaves
+ *   3. seal: rewind the cursor 3 days -> publishing D-2/D-1 emits enters AND leaves;
+ *      C's leave (1 day up) carries weeks = 0 — the count starts at 0 until a full 7 days
  *   4. weeks: 9 prior days of A + today -> streakDays 10 -> weeksInTop10 1, isNew false
+ *   5. idempotence: re-sealing never duplicates events
+ *   6. leave-weeks: C up 7 straight days (D-10..D-4) then gone -> leave carries weeks = 1
  *
  * Uses scratch malIds picked from the real catalog; resets Top10Event/Meta and
- * the scratch days' WatchStat rows first. Run against the dev server.
+ * ALL WatchStat rows first (hermetic — old traffic can't inflate streaks).
+ * Run against the dev server.
  */
 import { PrismaClient } from "@prisma/client";
 
@@ -53,10 +57,10 @@ const picks = await db.anime.findMany({ select: { malId: true, title: true }, ta
 const [A, B, C] = picks.map((p) => p.malId);
 console.log(`catalog picks: A=${A} B=${B} C=${C} · today(UTC)=${today}`);
 
-// ---------- reset (wipe 20 days of watch stats so earlier runs can't leak in) ----------
+// ---------- reset (wipe ALL watch stats so earlier runs / old traffic can't leak in) ----------
 await db.top10Event.deleteMany();
 await db.top10Meta.deleteMany();
-await db.watchStat.deleteMany({ where: { day: { gte: dayOffset(today, -20), lte: today } } });
+await db.watchStat.deleteMany({});
 
 // ---------- phase 1: yesterday has A,B; A watched today -> no notification ----------
 await db.watchStat.create({ data: { day: D1, malId: A, seconds: 600, title: "A", image: null } });
@@ -111,6 +115,8 @@ const expect = [
 ].sort();
 check("phase3 seal emits exactly the D-2/D-1 enters+leaves", JSON.stringify(kinds) === JSON.stringify(expect), JSON.stringify(kinds));
 check("phase3 no LEAVE for today from the seal (today is never sealed)", !evs.some((e) => e.day === today && e.type === "leave"), JSON.stringify(evs.filter((e) => e.day === today)));
+const cLeave = evs.find((e) => e.type === "leave" && e.malId === C && e.day === D1);
+check("phase3 C's leave says 0 weeks (up 1 day, not a full 7)", !!cLeave && cLeave.weeks === 0, JSON.stringify(cLeave));
 
 // ---------- phase 4: A watched 9 days back-to-back -> 10-day streak -> "1w in Top 10" ----------
 for (let i = 9; i >= 2; i--) {
@@ -129,6 +135,26 @@ evs = await events();
 check("phase5 seal is idempotent (no duplicate events)", evs.length === countBefore + 0 || evs.length >= countBefore, `before=${countBefore} after=${evs.length}`);
 const uniq = new Set(evs.map((e) => `${e.type}:${e.malId}:${e.day}`));
 check("phase5 no duplicate (type,malId,day) keys", uniq.size === evs.length);
+
+// ---------- phase 6: C up 7 straight days then gone -> leave carries weeks = 1 ----------
+// Seed C on D-10..D-4 (7 consecutive days), leave it out of D-3 (A is there from
+// phase 4), rewind the seal cursor to D-11 and let the bell fetch re-publish.
+const D11 = dayOffset(today, -11);
+for (let i = 10; i >= 4; i--) {
+  const day = dayOffset(today, -i);
+  await db.watchStat.create({ data: { day, malId: C, seconds: 500, title: "C" } });
+}
+await db.top10Meta.upsert({
+  where: { key: "top10.lastSealed" },
+  update: { value: D11 },
+  create: { key: "top10.lastSealed", value: D11 },
+});
+evs = await events(); // bell fetch triggers the catch-up seal
+const cLongLeave = evs.find((e) => e.type === "leave" && e.malId === C && e.day === D3);
+check("phase6 C's leave after a 7-day run says 1 week", !!cLongLeave && cLongLeave.weeks === 1, JSON.stringify(evs.filter((e) => e.type === "leave")));
+check("phase6 leave lands on the first day C is missing (D-3)", cLongLeave ? cLongLeave.day === D3 : false, `expected ${D3}`);
+// while an anime is in the Top 10 nothing may surface a weeks count — enter events stay weeks-less
+check("phase6 enter events carry no weeks", evs.filter((e) => e.type === "enter").every((e) => e.weeks == null), JSON.stringify(evs.filter((e) => e.weeks != null && e.type === "enter")));
 
 console.log(failures === 0 ? "\nALL GREEN" : `\n${failures} FAILURES`);
 process.exit(failures === 0 ? 0 : 1);

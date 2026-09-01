@@ -91,7 +91,7 @@ for (const e of data.top10Events ?? []) {
   await db.top10Event.upsert({
     where: { type_malId_day: { type: e.type, malId: e.malId, day: e.day } },
     update: {},
-    create: { type: e.type, malId: e.malId, day: e.day, title: e.title, image: e.image ?? null, rank: e.rank ?? null, ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {}) },
+    create: { type: e.type, malId: e.malId, day: e.day, title: e.title, image: e.image ?? null, rank: e.rank ?? null, weeks: e.weeks ?? null, ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {}) },
   }).catch(() => undefined);
   stats.top10Events += 1;
 }

@@ -1,6 +1,7 @@
 /**
  * Seeds a realistic Top 10 notification demo state for browser E2E:
- *  - One Piece (21) in the Top 10 for the last 9 days (streak -> "1w" badge once watched today)
+ *  - One Piece (21) in the Top 10 for the last 9 days (a later day without it
+ *    yields a leave notification reading "was up for 1 week"; weeks show only on leaves)
  *  - Frieren (52991) entered 2 days ago, gone yesterday -> enter + leave notifications
  *  - events/meta reset; watch rows for the window reset
  */

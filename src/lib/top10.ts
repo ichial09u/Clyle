@@ -9,9 +9,12 @@ import { db } from "@/lib/db";
  *  - "enter" notification — an anime shows up in a day's Top 10 and was NOT
  *    in the last published day's list.
  *  - "leave" notification — a published day completes without an anime that
- *    was in the previous published list.
+ *    was in the previous published list. The leave event records how many
+ *    full weeks the anime was up (floor of consecutive days / 7): 0 weeks
+ *    until a full 7 days have passed. Weeks surface ONLY on leaves — the
+ *    rail itself never shows a duration while an anime is still in.
  *  - streak — consecutive published days in the Top 10, which powers the
- *    Netflix-style "Nw in the Top 10" badge on the rail.
+ *    NEW badge (first day) and the leave-event week count.
  *
  * Days are "published" (sealed) once they are complete: the seal runs lazily
  * on the first request that touches a real current day. A day with zero
@@ -97,6 +100,8 @@ interface PendingEvent {
   malId: number;
   day: string;
   rank?: number;
+  /** leaves only — full weeks the anime was up, starting at 0 */
+  weeks?: number;
   fallbackTitle: string;
   fallbackImage: string | null;
 }
@@ -124,6 +129,7 @@ async function insertEvents(events: PendingEvent[]): Promise<void> {
           malId: e.malId,
           day: e.day,
           rank: e.type === "enter" ? (e.rank ?? null) : null,
+          weeks: e.type === "leave" ? (e.weeks ?? 0) : null,
           title: (c?.title || e.fallbackTitle || `Anime ${e.malId}`).slice(0, 200),
           image: c?.image ?? e.fallbackImage ?? null,
         },
@@ -134,7 +140,12 @@ async function insertEvents(events: PendingEvent[]): Promise<void> {
   }
 }
 
-function diffEvents(day: string, members: Top10Member[], prev: Top10Member[]): PendingEvent[] {
+/**
+ * `leaveStreaks` (optional) maps a leaving malId to its consecutive-day Top 10
+ * streak ending at the previous published day; leaves get weeks = floor/7 so
+ * the notification can say how long it was up (0 weeks < 7 full days).
+ */
+function diffEvents(day: string, members: Top10Member[], prev: Top10Member[], leaveStreaks?: Map<number, number>): PendingEvent[] {
   const ids = new Set(members.map((m) => m.malId));
   const prevIds = new Set(prev.map((m) => m.malId));
   return [
@@ -143,7 +154,15 @@ function diffEvents(day: string, members: Top10Member[], prev: Top10Member[]): P
       .map((m) => ({ type: "enter" as const, malId: m.malId, day, rank: m.rank, fallbackTitle: m.title, fallbackImage: m.image })),
     ...prev
       .filter((m) => !ids.has(m.malId))
-      .map((m) => ({ type: "leave" as const, malId: m.malId, day, rank: undefined, fallbackTitle: m.title, fallbackImage: m.image })),
+      .map((m) => ({
+        type: "leave" as const,
+        malId: m.malId,
+        day,
+        rank: undefined,
+        weeks: leaveStreaks ? Math.floor((leaveStreaks.get(m.malId) ?? 0) / 7) : undefined,
+        fallbackTitle: m.title,
+        fallbackImage: m.image,
+      })),
   ];
 }
 
@@ -174,7 +193,9 @@ export async function sealTop10Days(): Promise<void> {
     const earliest = top10DayOffset(today, -SEAL_CATCHUP_DAYS);
     if (lastSealed < top10DayOffset(earliest, -1)) lastSealed = top10DayOffset(earliest, -1);
 
-    let prevMembers = (await previousPublishedMembership(top10DayOffset(lastSealed, 1))).members;
+    const prevPub = await previousPublishedMembership(top10DayOffset(lastSealed, 1));
+    let prevMembers = prevPub.members;
+    let prevDay = prevPub.day;
     let cursor = lastSealed;
     let guard = 0;
     while (cursor < yesterday && guard < 60) {
@@ -182,8 +203,16 @@ export async function sealTop10Days(): Promise<void> {
       const day = top10DayOffset(cursor, 1);
       const members = await top10ForDay(day);
       if (members.length) {
-        await insertEvents(diffEvents(day, members, prevMembers));
+        const diff = diffEvents(day, members, prevMembers);
+        const leaveIds = diff.filter((e) => e.type === "leave").map((e) => e.malId);
+        if (leaveIds.length) {
+          // weeks-up = consecutive days ending at the last day the anime WAS in
+          const streaks = await streaksForDay(prevDay, leaveIds);
+          for (const e of diff) if (e.type === "leave") e.weeks = Math.floor((streaks.get(e.malId) ?? 0) / 7);
+        }
+        await insertEvents(diff);
         prevMembers = members;
+        prevDay = day;
         await db.top10Meta.upsert({
           where: { key: META_KEY },
           create: { key: META_KEY, value: day },
@@ -218,9 +247,10 @@ export async function touchTop10EnterEvents(day: string): Promise<void> {
 }
 
 /**
- * Consecutive-published-day Top 10 streaks, used for the Netflix-style
- * "Nw in the Top 10" badge. Days with zero app-wide watch traffic are
- * neutral (neither break nor extend the streak).
+ * Consecutive-published-day Top 10 streaks ending at `day`: powers the NEW
+ * badge (first day of a streak) and the week count stored on leave events.
+ * Days with zero app-wide watch traffic are neutral (neither break nor
+ * extend the streak).
  */
 export async function streaksForDay(day: string, malIds: number[]): Promise<Map<number, number>> {
   const out = new Map<number, number>();

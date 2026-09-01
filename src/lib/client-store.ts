@@ -736,6 +736,7 @@ export interface Top10EventItem {
   title: string;
   image: string | null;
   rank: number | null;
+  weeks?: number | null; // leaves only: full weeks it was up (0 = less than 7 days)
   createdAt: string;
 }
 

@@ -13,7 +13,8 @@ export const dynamic = "force-dynamic";
  * the rail that morning. Read state is per-device (localStorage) — the
  * server feed is the same for every viewer.
  *
- * GET /api/top10-events -> { events: [{ id, type, malId, day, title, image, rank, createdAt }] }
+ * GET /api/top10-events -> { events: [{ id, type, malId, day, title, image, rank, weeks, createdAt }] }
+ *   leaves carry `weeks` = full weeks the anime was up (0 = less than 7 days).
  */
 export async function GET() {
   await sealTop10Days();

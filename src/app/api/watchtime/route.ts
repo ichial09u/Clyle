@@ -96,8 +96,10 @@ export async function GET(req: Request) {
     return { ...base, malId: r.malId, seconds: r.seconds, image: base.image ?? r.image ?? null };
   });
 
-  // Netflix-style streak metadata: consecutive days in the Top 10 ->
-  // isNew (first day) / weeksInTop10 (>= 1 week).
+  // Streak metadata: consecutive days in the Top 10 -> isNew (first day).
+  // weeksInTop10 stays in the payload for API consumers, but per product
+  // decision the duration is only surfaced when an anime LEAVES the Top 10
+  // (stored on the leave notification, starting at 0 weeks).
   const streaks = await streaksForDay(day, items.map((i) => i.malId));
   const enriched = items.map((it) => {
     const streak = streaks.get(it.malId) ?? 1;

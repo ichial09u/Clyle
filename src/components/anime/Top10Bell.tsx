@@ -151,7 +151,17 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                                     entered the Top 10{e.rank && e.rank > 0 ? <> at <span className="text-white font-semibold">#{e.rank}</span></> : null}
                                   </span>
                                 ) : (
-                                  <span>left the Top 10</span>
+                                  <span>
+                                    left the Top 10
+                                    {typeof e.weeks === "number" ? (
+                                      <>
+                                        {" · "}was up for{" "}
+                                        <span className="text-white font-semibold">
+                                          {e.weeks} week{e.weeks === 1 ? "" : "s"}
+                                        </span>
+                                      </>
+                                    ) : null}
+                                  </span>
                                 )}
                               </p>
                               <p className="text-[11px] text-gray-600 mt-0.5">{timeAgo(e.createdAt)}</p>

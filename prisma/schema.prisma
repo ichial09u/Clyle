@@ -150,6 +150,7 @@ model Top10Event {
   title     String
   image     String?
   rank      Int? // rank on the day it entered (null for leaves)
+  weeks     Int? // leaves only: full weeks the anime was up (floor(days/7); 0 = less than a full 7 days)
   createdAt DateTime @default(now())
 
   @@unique([type, malId, day])
