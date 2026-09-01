@@ -180,24 +180,21 @@ async function expectJson(name, path, init, validate) {
     { method: "POST", body: JSON.stringify({ userId: BOT, malId: 21, day: probeDay, delta: 5, title: "smoke", image: null }) },
     (r, b) => r.ok && b?.ok === true,
   );
-  await expectJson(
-    "POST /api/watchtime rejects bad day",
-    "/api/watchtime",
-    { method: "POST", body: JSON.stringify({ malId: 21, day: "not-a-day", delta: 5 }) },
-    (r) => r.status === 400,
-  );
+  // negative checks: expectJson asserts res.ok, so raw 400s use req + record
+  {
+    const bad = await req("/api/watchtime", { method: "POST", body: JSON.stringify({ malId: 21, day: "not-a-day", delta: 5 }) });
+    record("POST /api/watchtime rejects bad day", bad.status === 400, `status ${bad.status}`);
+  }
   await expectJson(
     "GET /api/watchtime top (accumulated)",
     `/api/watchtime?day=${probeDay}`,
     {},
     (r, b) => r.ok && Array.isArray(b?.items) && b.items.some((i) => i.malId === 21 && i.seconds >= 5 && !!i.title),
   );
-  await expectJson(
-    "GET /api/watchtime rejects bad day",
-    "/api/watchtime?day=nope",
-    {},
-    (r) => r.status === 400,
-  );
+  {
+    const badGet = await req("/api/watchtime?day=nope");
+    record("GET /api/watchtime rejects bad day", badGet.status === 400, `status ${badGet.status}`);
+  }
 
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);
