@@ -5,7 +5,7 @@ import type { AnimeLite, DetailsPayload, RelatedCard } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import PosterCard from "@/components/anime/PosterCard";
 import CommentsSection from "@/components/anime/CommentsSection";
-import { useMyList } from "@/lib/client-store";
+import { useMyList, minimalLite } from "@/lib/client-store";
 
 export default function DetailsView({
   anime: initial,
@@ -28,14 +28,27 @@ export default function DetailsView({
   useEffect(() => {
     let cancelled = false;
     setExpanded(false);
-    (async () => {
+    const grab = async (): Promise<DetailsPayload | null> => {
       try {
         const res = await fetch(`/api/anime/${initial.malId}`);
-        if (!res.ok) return;
-        const payload = (await res.json()) as DetailsPayload;
-        if (!cancelled) setData({ for: initial.malId, payload });
+        if (!res.ok) return null; // rate-limited / transient — try again
+        return (await res.json()) as DetailsPayload;
       } catch {
-        /* network hiccup — keep hero data */
+        return null; // network hiccup — keep hero data
+      }
+    };
+    (async () => {
+      // When the viewer taps an import card (search/genre), the import POST is
+      // still running server-side and /api/anime can fail or come back empty —
+      // poll briefly so the page fills in live instead of staying skeletal.
+      for (let attempt = 0; attempt < 24 && !cancelled; attempt++) {
+        const payload = await grab();
+        if (cancelled) return;
+        if (payload?.anime) {
+          setData({ for: initial.malId, payload });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 2_500));
       }
     })();
     return () => {
@@ -69,11 +82,9 @@ export default function DetailsView({
       onClick={() =>
         r.malId &&
         onSelect({
-          malId: r.malId,
-          title: r.name,
-          image: r.image,
+          ...minimalLite(r.malId, r.name, r.image),
           inCatalog: r.inCatalog,
-        } as AnimeLite)
+        })
       }
       className="relative shrink-0 w-[190px] h-[96px] rounded-[6px] overflow-hidden bg-[#161616] active:scale-[0.97] transition"
     >
@@ -168,7 +179,7 @@ export default function DetailsView({
                   <PosterCard
                     image={r.image}
                     title={r.name}
-                    onClick={() => onSelect({ malId: r.malId, title: r.name, image: r.image, inCatalog: r.inCatalog } as AnimeLite)}
+                    onClick={() => onSelect({ ...minimalLite(r.malId, r.name, r.image), inCatalog: r.inCatalog })}
                     className="w-full aspect-[2/3]"
                   />
                   {!r.inCatalog ? (

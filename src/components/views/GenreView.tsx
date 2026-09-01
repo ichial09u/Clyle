@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, Plus, Check } from "lucide-react";
 import type { AnimeLite, SearchResult } from "@/lib/types";
+import { minimalLite } from "@/lib/client-store";
 import PosterCard from "@/components/anime/PosterCard";
 
 interface GenrePayload {
@@ -84,7 +85,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
                       <PosterCard
                         image={s.image}
                         title={s.title}
-                        onClick={() => importOne(s.malId).then(() => onSelect({ malId: s.malId, title: s.title, image: s.image, inCatalog: true } as AnimeLite))}
+                        onClick={() => importOne(s.malId).then(() => onSelect({ ...minimalLite(s.malId, s.title, s.image), inCatalog: true }))}
                         className="w-full aspect-[2/3]"
                       />
                       <button

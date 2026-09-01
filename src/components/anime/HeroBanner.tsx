@@ -28,6 +28,9 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
   // defensive: props can arrive unsettled during fast-refresh/dev transitions
   const list = Array.isArray(items) ? items : [];
   const anime = list[index] ?? null;
+  // hand-rolled minimal anime objects (MAL import cards, related titles) can
+  // lack array fields — never trust genres to exist
+  const genres = anime && Array.isArray(anime.genres) ? anime.genres : [];
   if (!anime) {
     return <div className="h-[470px] bg-black animate-pulse" />;
   }
@@ -80,8 +83,8 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
           </span>
         </div>
 
-        {anime.genres.length ? (
-          <div className="mt-1.5 text-[13px] text-gray-200">{anime.genres.slice(0, 3).join(", ")}</div>
+        {genres.length ? (
+          <div className="mt-1.5 text-[13px] text-gray-200">{genres.slice(0, 3).join(", ")}</div>
         ) : null}
 
         {/* action row */}
