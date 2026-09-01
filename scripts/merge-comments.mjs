@@ -22,7 +22,18 @@ if (!file) {
 }
 
 const data = JSON.parse(readFileSync(file, "utf8"));
-const stats = { users: 0, comments: 0, watchStats: 0, top10Events: 0, top10Meta: 0 };
+const stats = { users: 0, comments: 0, watchStats: 0, top10Events: 0, top10Meta: 0, tombstones: 0 };
+
+// tombstones FIRST: remove comments deleted on the live site so a stale
+// bundled copy can't resurrect them (also keeps the local tombstone table)
+const tombstones = data.deletedCommentIds ?? [];
+if (tombstones.length) {
+  const r = await db.comment.deleteMany({ where: { id: { in: tombstones } } });
+  stats.tombstones = r.count;
+  for (const id of tombstones) {
+    await db.deletedComment.create({ data: { id } }).catch(() => undefined);
+  }
+}
 
 for (const u of data.users ?? []) {
   await db.user.upsert({
@@ -100,5 +111,5 @@ if (lastSealed) {
 }
 
 try { unlinkSync(file); } catch { /* keep on failure */ }
-console.log(`merged: ${stats.users} users, ${stats.comments} comments, ${stats.watchStats} watchStat rows, ${stats.top10Events} events, lastSealed=${lastSealed ?? "n/a"}`);
+console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, lastSealed=${lastSealed ?? "n/a"}`);
 process.exit(0);

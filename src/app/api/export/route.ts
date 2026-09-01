@@ -14,15 +14,24 @@ export const dynamic = "force-dynamic";
  * secrets). Used by scripts/merge-comments.mjs via scripts/deploy-vercel.mjs.
  */
 export async function GET() {
-  const [users, comments, watchStats, top10Events, top10Meta] = await Promise.all([
+  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds] = await Promise.all([
     db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),
     db.comment.findMany(),
     db.watchStat.findMany(),
     db.top10Event.findMany(),
     db.top10Meta.findMany(),
+    db.deletedComment.findMany({ select: { id: true } }),
   ]);
   return NextResponse.json(
-    { exportedAt: new Date().toISOString(), users, comments, watchStats, top10Events, top10Meta },
+    {
+      exportedAt: new Date().toISOString(),
+      users,
+      comments,
+      watchStats,
+      top10Events,
+      top10Meta,
+      deletedCommentIds: deletedCommentIds.map((d) => d.id),
+    },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

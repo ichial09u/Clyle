@@ -156,6 +156,14 @@ model Top10Event {
   @@index([createdAt])
 }
 
+// Tombstones for deleted comments — the deploy carry-forward merge is
+// additive (upserts the prod dump into the bundled db), so without these a
+// comment a user deleted would resurrect on the next site update.
+model DeletedComment {
+  id        String   @id
+  deletedAt DateTime @default(now())
+}
+
 // Tiny KV store for Top 10 bookkeeping (last published/sealed day).
 model Top10Meta {
   key       String   @id

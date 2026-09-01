@@ -159,7 +159,16 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "not yours" }, { status: 403 });
   }
 
-  // drop the comment and (in one query set) any replies hanging off it
+  // drop the comment and (in one query set) any replies hanging off it,
+  // tombstoning every removed id so the deploy carry-forward never
+  // resurrects them from an older bundled db
+  const doomed = await db.comment.findMany({
+    where: { OR: [{ id }, { parentId: id }] },
+    select: { id: true },
+  });
   await db.comment.deleteMany({ where: { OR: [{ id }, { parentId: id }] } });
+  for (const d of doomed) {
+    await db.deletedComment.create({ data: { id: d.id } }).catch(() => undefined);
+  }
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
