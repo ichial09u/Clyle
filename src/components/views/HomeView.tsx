@@ -68,9 +68,16 @@ export default function HomeView({
       if (document.visibilityState === "visible") refreshTop10();
     };
     document.addEventListener("visibilitychange", onVis);
+    // the ranking is SERVER-side (every viewer contributes) — poll so other
+    // people's watches show up on this device within half a minute, not just
+    // after a tab switch
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") refreshTop10();
+    }, 30_000);
     return () => {
       unsub();
       document.removeEventListener("visibilitychange", onVis);
+      clearInterval(poll);
     };
   }, [refreshTop10]);
 

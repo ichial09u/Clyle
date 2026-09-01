@@ -189,19 +189,26 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     setState("casting");
     return { ok: true };
   } catch (err: any) {
-    const raw = String(err?.message || err?.description || err?.code || "Cast failed");
-    // map the common failure modes to something a viewer can act on
+    // CAF errors arrive as message/description/code in mixed formats
+    // ("session_error", "LOAD_MEDIA_FAILED", numeric codes...) — normalize
+    // before matching so every failure maps to an actionable message.
+    const rawParts = [err?.message, err?.description, typeof err?.code === "number" ? `code ${err.code}` : err?.code]
+      .filter((p: unknown) => typeof p === "string" && p && p !== "undefined")
+      .map((p: string) => String(p).replace(/_/g, " ").trim());
+    const raw = rawParts[0] || "Cast failed";
+    const flat = rawParts.join(" | ").toLowerCase();
+    console.warn("[cast] session/media failure:", err, rawParts.join(" | "));
     let msg: string;
-    const low = raw.toLowerCase();
-    if (low.includes("cancel")) msg = "Cast cancelled";
-    else if (low.includes("no device") || low.includes("not found") || low.includes("no compatible")) {
+    if (flat.includes("cancel")) msg = "Cast cancelled";
+    else if (flat.includes("no device") || flat.includes("not found") || flat.includes("no compatible")) {
       msg = "No cast device found — make sure your TV/Chromecast is on the same Wi-Fi, then try again";
-    } else if (low.includes("session error") || low.includes("timeout")) {
+    } else if (flat.includes("session error") || flat.includes("timeout") || flat.includes("status")) {
       msg = "Couldn't reach the cast device — check the Wi-Fi and try again";
-    } else if (low.includes("load") || low.includes("media")) {
+    } else if (flat.includes("load") || flat.includes("media")) {
       msg = "The TV couldn't load this stream — try another server for this episode";
     } else {
-      msg = raw.toLowerCase().startsWith("cast") ? raw : `Cast failed: ${raw}`;
+      // unknown failure — show the actual code so it can be reported/fixed
+      msg = `Cast failed (${rawParts.join(" · ")}) — tell me this text to fix it`;
     }
     if (!refs.session) setState("idle");
     return { ok: false, error: msg };

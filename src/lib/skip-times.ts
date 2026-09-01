@@ -26,6 +26,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { db } from "@/lib/db";
 import skipDataset from "./skip-times.data.json";
 
 export interface SkipInterval {
@@ -37,7 +38,7 @@ export interface SkipData {
   intro?: SkipInterval;
   outro?: SkipInterval;
   /** where the data came from — handy for debugging */
-  source?: "zoko" | "aniskip" | "aniskip-live";
+  source?: "zoko" | "aniskip" | "aniskip-live" | "crowd";
 }
 
 type EpisodeEntry = { op?: [number, number]; ed?: [number, number] };
@@ -127,7 +128,10 @@ export function withSkipData<T extends { skip?: SkipData }>(malId: number, ep: n
  * ------------------------------------------------------------------ */
 
 const ANISKIP_API = "https://api.aniskip.com/v2/skip-times";
-const ANISKIP_MISS_TTL_MS = 7 * 24 * 60 * 60 * 1000; // don't re-ask for a week
+// Submissions trickle in over the days after an episode airs (2026-season
+// shows were 404 on air day, populated within the week) — re-ask daily so a
+// fresh episode picks up community times as soon as anyone submits them.
+const ANISKIP_MISS_TTL_MS = 24 * 60 * 60 * 1000;
 const ANISKIP_DISK_DIR =
   process.env.VERCEL === "1" ? join(tmpdir(), "aniskip-cache") : join(process.cwd(), "db", "aniskip-cache");
 
@@ -264,7 +268,22 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
       }
     }
   } catch {
-    /* live tier is best-effort — the player's heuristic still covers TV episodes */
+    /* live tier is best-effort — the crowd/heuristic tiers still cover episodes */
+  }
+  // crowd tier — for shows nobody has submitted anywhere yet, viewers who
+  // scrubbed past the opening have already taught us where it ends
+  try {
+    const crowd = await crowdIntroTarget(malId, ep);
+    if (crowd != null) {
+      const skip: SkipData = { ...(merged.skip ?? {}) };
+      if (!skip.intro) skip.intro = { start: 8, end: crowd };
+      if (skip.intro || skip.outro) {
+        skip.source = merged.skip?.source ?? "crowd";
+        return { ...merged, skip };
+      }
+    }
+  } catch {
+    /* votes are best-effort too */
   }
   return merged;
 }
@@ -350,4 +369,82 @@ export async function prefetchSkipTimes(
     await new Promise((r) => setTimeout(r, 1_100)); // respect 1 req/s
   }
   return fetched;
+}
+
+/* ------------------------------------------------------------------ *
+ * Tier 5 — crowd-learned openings. Brand-new seasons often have NO
+ * skip data anywhere (AniSkip 404s for months on niche shows), so the
+ * fixed 8-90s guess lands in the middle of their long cold-opens.
+ * Instead, viewers who manually scrub forward past the opening get
+ * recorded (see POST /api/skip-vote) and the median scrub target
+ * becomes this anime's Skip Intro end for everyone. Self-healing:
+ * the more people watch, the sharper the button gets.
+ * ---------------------------------------------------------------- */
+
+const CROWD_MIN_VOTES_EP = 2; // per-episode median needs at least this many
+const CROWD_MIN_VOTES_ANIME = 4; // anime-wide fallback needs more agreement
+const CROWD_VOTE_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000; // tastes/encodes drift
+const CROWD_KEEP_PER_ANIME = 200; // storage cap per anime
+
+export const SKIP_VOTE_TARGET_MIN = 30;
+export const SKIP_VOTE_TARGET_MAX = 420;
+
+/**
+ * Record one implied OP-end vote. Best-effort: validates the catalog entry
+ * and the target range, caps rows per anime, never throws.
+ */
+export async function recordSkipVote(malId: number, ep: number, target: number): Promise<boolean> {
+  try {
+    if (!Number.isFinite(malId) || malId <= 0 || !Number.isFinite(ep) || ep < 1 || ep > 2000) return false;
+    if (!Number.isFinite(target)) return false;
+    const t = Math.round(target);
+    if (t < SKIP_VOTE_TARGET_MIN || t > SKIP_VOTE_TARGET_MAX) return false;
+    const anime = await db.anime.findUnique({ where: { malId }, select: { malId: true } });
+    if (!anime) return false;
+    await db.skipVote.create({ data: { malId, ep, target: t } });
+    // prune: keep the newest KEEP votes for this anime (votes are cheap to drop)
+    const count = await db.skipVote.count({ where: { malId } });
+    if (count > CROWD_KEEP_PER_ANIME) {
+      const old = await db.skipVote.findMany({
+        where: { malId },
+        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        take: count - CROWD_KEEP_PER_ANIME,
+        select: { id: true },
+      });
+      if (old.length) await db.skipVote.deleteMany({ where: { id: { in: old.map((r) => r.id) } } });
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function medianNum(values: number[]): number | null {
+  if (!values.length) return null;
+  const s = [...values].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
+
+/**
+ * The crowd's OP-end for one episode: median of this episode's recent votes,
+ * else (with more agreement) the anime-wide median — openings are the same
+ * video across episodes. Returns whole seconds or null when thin/old.
+ */
+export async function crowdIntroTarget(malId: number, ep: number): Promise<number | null> {
+  try {
+    const from = new Date(Date.now() - CROWD_VOTE_MAX_AGE_MS);
+    const rows = await db.skipVote.findMany({
+      where: { malId, createdAt: { gte: from } },
+      select: { ep: true, target: true },
+      orderBy: { createdAt: "desc" },
+      take: 400,
+    });
+    const epTargets = rows.filter((r) => r.ep === ep).map((r) => r.target);
+    if (epTargets.length >= CROWD_MIN_VOTES_EP) return medianNum(epTargets);
+    const all = rows.map((r) => r.target);
+    if (all.length >= CROWD_MIN_VOTES_ANIME) return medianNum(all);
+    return null;
+  } catch {
+    return null;
+  }
 }

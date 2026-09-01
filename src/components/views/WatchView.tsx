@@ -610,6 +610,31 @@ export default function WatchView({
     setCurrentTime(video.currentTime);
   };
 
+  // Crowd-learned Skip Intro: when a viewer manually scrubs forward from
+  // inside the intro region well past it, that target is the best possible
+  // hint where the OP ends on shows with no skip data (new seasons).
+  // Throttled to one vote/minute; the server validates + takes medians.
+  const lastSkipVoteRef = useRef(0);
+  const userScrub = (to: number) => {
+    const from = currentTime;
+    seekTo(to);
+    try {
+      const now = Date.now();
+      if (now - lastSkipVoteRef.current < 60_000) return;
+      if (from >= 8 && from <= 240 && Number.isFinite(to) && to >= from + 15 && to <= 420) {
+        lastSkipVoteRef.current = now;
+        fetch("/api/skip-vote", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ malId: anime.malId, ep: episode, target: to }),
+          keepalive: true,
+        }).catch(() => undefined);
+      }
+    } catch {
+      /* voting is cosmetic */
+    }
+  };
+
   const applyQuality = (q: "auto" | number) => {
     setQuality(q);
     // save the spot immediately so nothing (network blip, app kill) can lose
@@ -662,7 +687,7 @@ export default function WatchView({
       setCastMsg(null);
     } else {
       setCastMsg(res.error ?? "Cast failed");
-      window.setTimeout(() => setCastMsg(null), 6500);
+      window.setTimeout(() => setCastMsg(null), 12_000);
     }
   };
 
@@ -681,8 +706,9 @@ export default function WatchView({
   };
 
   // Skip buttons — three-tier data: Zoko payload → AniSkip dataset (merged
-  // server-side in /api/stream) → last-resort heuristic window (~90s OP)
-  // for TV-length episodes only, so we never cut movies or shorts blindly.
+  // server-side in /api/stream) → crowd-learned scrub medians → last-resort
+  // heuristic window (~90s OP) for TV-length episodes only, so we never cut
+  // movies or shorts blindly.
   const introSkip: { start: number; end: number } | undefined =
     stream?.skip?.intro ?? (duration >= 300 && duration <= 1800 ? { start: 8, end: 90 } : undefined);
   const outroSkip = stream?.skip?.outro;
@@ -695,6 +721,24 @@ export default function WatchView({
   const casting = castState === "casting";
   const castUsable = castState !== "unavailable";
   const ui = uiVisible; // shorthand for JSX below
+
+  // Skip buttons fade away after 3s untapped; any player-UI summon (tap on
+  // the video) brings them straight back while the window is still active.
+  const [skipAwake, setSkipAwake] = useState(true);
+  const skipFadeTimer = useRef<number | null>(null);
+  useEffect(() => {
+    const inWindow = Boolean((showSkipIntro || showSkipOutro) && !casting && !iframeFallback);
+    if (skipFadeTimer.current) window.clearTimeout(skipFadeTimer.current);
+    if (!inWindow) {
+      setSkipAwake(true);
+      return;
+    }
+    setSkipAwake(true);
+    skipFadeTimer.current = window.setTimeout(() => setSkipAwake(false), 3_000);
+    return () => {
+      if (skipFadeTimer.current) window.clearTimeout(skipFadeTimer.current);
+    };
+  }, [showSkipIntro, showSkipOutro, ui, casting, iframeFallback]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black select-none" ref={shellRef}>
@@ -852,8 +896,8 @@ export default function WatchView({
           </div>
         ) : null}
 
-        {/* skip intro / skip ending — stay visible even when controls hide,
-            exactly like the reference player in the screenshot */}
+        {/* skip intro / skip ending — appear when the window opens, fade out
+            after 3s untapped, come back whenever the player UI is summoned */}
         {showSkipOutro && !casting && !iframeFallback ? (
           <button
             onClick={(e) => {
@@ -861,7 +905,9 @@ export default function WatchView({
               seekTo(outroSkip!.end);
               showUi();
             }}
-            className="absolute bottom-44 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
+            className={`absolute bottom-44 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
+              skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
           >
             <FastForward className="w-4 h-4 text-[#35d5bf]" /> Skip Ending
           </button>
@@ -873,7 +919,9 @@ export default function WatchView({
               seekTo(introSkip!.end);
               showUi();
             }}
-            className="absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition z-10"
+            className={`absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
+              skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
+            }`}
           >
             <Zap className="w-4 h-4 text-[#35d5bf]" /> Skip Intro
           </button>
@@ -881,7 +929,7 @@ export default function WatchView({
 
         {/* cast failure toast */}
         {castMsg ? (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-full px-3.5 py-1.5 whitespace-nowrap">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center">
             {castMsg}
           </div>
         ) : null}
@@ -961,7 +1009,7 @@ export default function WatchView({
                   max={duration || 0}
                   step={0.5}
                   value={currentTime}
-                  onChange={(e) => seekTo(parseFloat(e.target.value))}
+                  onChange={(e) => userScrub(parseFloat(e.target.value))}
                   className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
                   aria-label="Seek"
                 />

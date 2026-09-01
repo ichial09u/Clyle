@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    title: "AnimeTest123",
+    title: "Clyle", // the installed-app name on iOS home screens
     statusBarStyle: "black-translucent",
   },
 };

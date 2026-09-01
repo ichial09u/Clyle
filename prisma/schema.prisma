@@ -172,6 +172,22 @@ model Top10Meta {
   updatedAt DateTime @updatedAt
 }
 
+// Crowd-learned Skip Intro targets. When a show has no OP data anywhere
+// (brand-new seasons AniSkip hasn't yet), a viewer manually scrubbing past
+// the opening teaches the app where the OP ends for everyone. The stream API
+// uses the median of recent votes as a SkipIntro interval, so the button
+// self-corrects as people watch.
+model SkipVote {
+  id        String   @id @default(cuid())
+  malId     Int
+  ep        Int
+  target    Float // seconds the viewer scrubbed to — the implied OP end
+  createdAt DateTime @default(now())
+
+  @@index([malId, ep])
+  @@index([malId])
+}
+
 // Community comment on an anime (shows nickname + avatar snapshot at post time).
 // Supports one level of replies (parentId -> parent comment) and likes
 // (likedBy = JSON array of userIds; count = array length, so double-likes are
