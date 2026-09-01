@@ -1,16 +1,5 @@
 {
- "ok": [
-  {
-   "malId": 59741,
-   "title": "Tsuihou Sareta Tensei Juukishi wa Game Chishiki de Musou Suru",
-   "url": "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/4ed9a3d1bf8d.png"
-  },
-  {
-   "malId": 5114,
-   "title": "Hagane no Renkinjutsushi: FULLMETAL ALCHEMIST",
-   "url": "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f7ebe2f6a55a.webp"
-  }
- ],
+ "ok": [],
  "miss": [
   {
    "malId": 235,
@@ -55,6 +44,14 @@
   {
    "malId": 1535,
    "title": "Death Note"
+  },
+  {
+   "malId": 30276,
+   "title": "One-Punch Man"
+  },
+  {
+   "malId": 38000,
+   "title": "Demon Slayer: Kimetsu no Yaiba"
   }
  ],
  "fail": []
