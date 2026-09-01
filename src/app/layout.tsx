@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Roboto, Roboto_Slab } from "next/font/google";
+import RegisterSW from "@/components/pwa/RegisterSW";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -49,6 +50,7 @@ export default function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning>
       <body className={`${roboto.variable} ${robotoSlab.variable} antialiased bg-black text-white`}>
         {children}
+        <RegisterSW />
       </body>
     </html>
   );

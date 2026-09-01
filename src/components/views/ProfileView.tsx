@@ -303,7 +303,7 @@ function InstallAppCard() {
           <Download className="w-[18px] h-[18px] text-[#ff5252]" />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[13px] font-bold text-gray-100">Install AnimeTest123</p>
+          <p className="text-[13px] font-bold text-gray-100">Install Clyle</p>
           <p className="text-[11.5px] text-gray-400 mt-0.5 leading-relaxed">
             Add it to your home screen — full-screen playback, its own icon, like a real app.
           </p>
