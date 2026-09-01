@@ -172,6 +172,33 @@ async function expectJson(name, path, init, validate) {
   );
   await expectJson("GET /api/continue (bot)", `/api/continue?userId=${BOT}`, {}, (r) => r.ok || r.status === 400);
 
+  // ---- 5b) watch time -> Top 10 Today (probe uses a scratch day so real rankings stay untouched) ----
+  const probeDay = "1970-01-01";
+  await expectJson(
+    "POST /api/watchtime (roundtrip)",
+    "/api/watchtime",
+    { method: "POST", body: JSON.stringify({ userId: BOT, malId: 21, day: probeDay, delta: 5, title: "smoke", image: null }) },
+    (r, b) => r.ok && b?.ok === true,
+  );
+  await expectJson(
+    "POST /api/watchtime rejects bad day",
+    "/api/watchtime",
+    { method: "POST", body: JSON.stringify({ malId: 21, day: "not-a-day", delta: 5 }) },
+    (r) => r.status === 400,
+  );
+  await expectJson(
+    "GET /api/watchtime top (accumulated)",
+    `/api/watchtime?day=${probeDay}`,
+    {},
+    (r, b) => r.ok && Array.isArray(b?.items) && b.items.some((i) => i.malId === 21 && i.seconds >= 5 && !!i.title),
+  );
+  await expectJson(
+    "GET /api/watchtime rejects bad day",
+    "/api/watchtime?day=nope",
+    {},
+    (r) => r.status === 400,
+  );
+
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);
 

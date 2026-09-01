@@ -133,13 +133,13 @@ export async function GET() {
     { key: "most-favorite", title: "Most Favorite", items: mostFavorite.length ? mostFavorite : byScore.slice(0, 12) },
     { key: "new-episodes", title: "New Episodes", items: dedup(spotlight).slice(0, 12) },
   ];
-  const top10 = byScore.slice(0, 10);
+  // Top 10 Today moved to /api/watchtime — it now ranks anime by how long
+  // people ACTUALLY watch them per day, and stays empty until they do.
 
   const sync = await lastSync();
-  const payload: HomePayload & { top10: AnimeLite[] } = {
+  const payload: HomePayload = {
     hero,
     sections,
-    top10,
     lastSync: { at: sync.at },
   };
   return NextResponse.json(payload);

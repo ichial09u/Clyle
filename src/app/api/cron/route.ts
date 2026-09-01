@@ -142,6 +142,23 @@ export async function GET(req: Request) {
     checks.push({ name: "skip-intro-audit", ok: false, detail: String(err).slice(0, 200) });
   }
 
+  // ---- 8) watch-time table (Top 10 Today data path) ----
+  try {
+    const day = new Date().toISOString().slice(0, 10);
+    const rows = await db.watchStat.findMany({ where: { day }, orderBy: { seconds: "desc" }, take: 3 });
+    const tracked = await db.watchStat.count({ where: { day } });
+    checks.push({
+      name: "watchtime-today",
+      ok: true,
+      detail: tracked
+        ? `${tracked} anime watched today; leader at ${Math.round(rows[0].seconds / 60)}min`
+        : "no watch time recorded today yet (Top 10 Today is empty until someone watches)",
+    });
+  } catch (err) {
+    healthy = false;
+    checks.push({ name: "watchtime-today", ok: false, detail: String(err).slice(0, 200) });
+  }
+
   const report = {
     ok: healthy,
     startedAt,

@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   getCastState, onCastStateChange, type CastState,
@@ -91,6 +91,9 @@ export default function WatchView({
   streamErrorRef.current = streamError;
   const downloadOpenRef = useRef(false);
   downloadOpenRef.current = downloadOpen;
+  // watch-time accrual (Top 10 Today): wall clock of the last tick/transition;
+  // deltas only ever accrue while playback is actually running
+  const lastActiveRef = useRef(Date.now());
 
   /* -------- auto-hide the in-player controls (like a real video app) -------- */
   const showUi = useCallback((autoHide = true) => {
@@ -325,6 +328,8 @@ export default function WatchView({
     const onHide = () => {
       if (document.visibilityState === "hidden") saveNow({ keepalive: true });
     };
+
+    // (watch-time accrual lives in its own effect below)
     window.addEventListener("pagehide", onHide);
     document.addEventListener("visibilitychange", onHide);
     return () => {
@@ -335,12 +340,58 @@ export default function WatchView({
     };
   }, [saveNow]);
 
+  /* -------- watch-time accrual (Top 10 Today) --------
+     Counts ONLY real viewing: the video must actually be playing. Paused,
+     ended and iframe-fallback time never accrues, and the clock advances on
+     every tick, so a pause followed by a long idle adds nothing when playback
+     resumes. Deltas land in the per-day per-anime ranking bucket (flushed
+     every 10s, on tab hide, and when leaving the player). */
+  useEffect(() => {
+    const flush = (keepalive?: boolean) => {
+      const v = videoRef.current;
+      const now = Date.now();
+      if (v && !v.paused && !v.ended && !iframeFallback) {
+        const delta = (now - lastActiveRef.current) / 1000;
+        if (delta >= 1) {
+          recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta }, { keepalive });
+        }
+      }
+      lastActiveRef.current = now;
+    };
+    const id = window.setInterval(flush, 10_000);
+    const onHide = () => {
+      if (document.visibilityState === "hidden") flush(true);
+    };
+    window.addEventListener("pagehide", onHide);
+    document.addEventListener("visibilitychange", onHide);
+    return () => {
+      window.clearInterval(id);
+      flush(true);
+      window.removeEventListener("pagehide", onHide);
+      document.removeEventListener("visibilitychange", onHide);
+    };
+  }, [anime.malId, anime.title, anime.image, iframeFallback]);
+
   /* -------- cast progress heartbeat (positions come from the TV) -------- */
   useEffect(() => {
     if (castState !== "casting") return;
+    let lastPos: number | null = castPosition();
+    let castActiveAt = Date.now();
     const id = window.setInterval(() => {
       const pos = castPosition();
-      if (pos == null) return;
+      const now = Date.now();
+      const delta = Math.min(120, (now - castActiveAt) / 1000);
+      if (pos == null || pos === lastPos) {
+        // TV paused or unreachable — wall time between these ticks doesn't count
+        lastPos = pos;
+        castActiveAt = now;
+        return;
+      }
+      lastPos = pos;
+      castActiveAt = now;
+      if (delta >= 1) {
+        recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta });
+      }
       saveProgressDetailed({
         malId: anime.malId,
         episode,
@@ -353,7 +404,15 @@ export default function WatchView({
         total: anime.totalEpisodes || episode,
       });
     }, 10_000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearInterval(id);
+      // flush any residual playing time since the last tick
+      const delta = Math.min(120, (Date.now() - castActiveAt) / 1000);
+      const pos = castPosition();
+      if (delta >= 1 && pos != null && pos !== lastPos) {
+        recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta });
+      }
+    };
   }, [castState, anime.malId, anime.title, anime.image, anime.totalEpisodes, episode, lang, server]);
 
   /* -------- attach hls.js -------- */
@@ -440,13 +499,18 @@ export default function WatchView({
       if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
     };
     const onMeta = () => setDuration(video.duration || 0);
-    const onPlay = () => setPlaying(true);
+    const onPlay = () => {
+      setPlaying(true);
+      lastActiveRef.current = Date.now(); // playback resumed — start the clock
+    };
     const onPause = () => {
       setPlaying(false);
+      lastActiveRef.current = Date.now(); // paused — don't count idle time
       saveNow();
     };
     const onEnded = () => {
       setPlaying(false);
+      lastActiveRef.current = Date.now();
       saveNow({ completed: true });
     };
     video.addEventListener("timeupdate", onTime);

@@ -451,6 +451,224 @@ export function removeEpThumbs(malId: number) {
   }
 }
 
+/* ---------------- Watch time (Top 10 Today) ---------------- *
+ *
+ * "Top 10 Today" ranks anime by how long people ACTUALLY watch them — the
+ * rail stays empty until real playback seconds exist. The player records
+ * wall-clock deltas while the video is playing; they accumulate locally
+ * (instant, offline-safe) and flush to the server so EVERY viewer's time
+ * lands in one global per-day ranking, Crunchyroll-style.
+ *
+ * Local shape: day -> malId -> { seconds, title, image, sent }.
+ * `sent` is the amount already ACKed by the server, so flushes POST only
+ * the un-sent remainder. Display merges server + local with max() — never
+ * a sum — so nothing is double-counted and offline time still shows.
+ */
+
+const WATCHTIME_KEY = "animetest123.watchtime";
+const WATCHTIME_EVENT = "watchtime-changed";
+const WATCHTIME_KEEP_DAYS = 7; // local buckets older than a week are dropped
+
+export interface LocalWatchEntry {
+  seconds: number;
+  title?: string;
+  image?: string | null;
+  sent?: number; // seconds already accepted by the server
+}
+
+type WatchTimeMap = Record<string, Record<string, LocalWatchEntry>>;
+
+/** The viewer's LOCAL calendar day ("YYYY-MM-DD") — "today" on their device. */
+export function localDayKey(d = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function readWatchTime(): WatchTimeMap {
+  return readJson<WatchTimeMap>(WATCHTIME_KEY, {});
+}
+
+function writeWatchTime(map: WatchTimeMap) {
+  // prune: keep only the newest KEEP_DAYS day buckets
+  const days = Object.keys(map).sort();
+  for (const stale of days.slice(0, Math.max(0, days.length - WATCHTIME_KEEP_DAYS))) delete map[stale];
+  writeJson(WATCHTIME_KEY, map);
+}
+
+/**
+ * Add `delta` seconds of real playback to today's bucket for this anime and
+ * flush the un-sent remainder to the server (best effort, never throws).
+ * `keepalive` switches to sendBeacon for pagehide/unload flushes.
+ */
+export function recordWatchSeconds(
+  args: { malId: number; title?: string; image?: string | null; delta: number; day?: string },
+  opts?: { keepalive?: boolean },
+) {
+  const delta = Math.min(120, Math.max(0, Number(args.delta) || 0));
+  if (delta < 1 || !Number.isFinite(args.malId)) return;
+  const day = args.day ?? localDayKey();
+
+  let pending = 0;
+  try {
+    const map = readWatchTime();
+    const dayBucket = (map[day] = map[day] ?? {});
+    const entry = dayBucket[String(args.malId)] ?? { seconds: 0, sent: 0 };
+    entry.seconds += delta;
+    if (args.title) entry.title = args.title;
+    if (args.image !== undefined) entry.image = args.image;
+    dayBucket[String(args.malId)] = entry;
+    pending = entry.seconds - (entry.sent ?? 0);
+    if (pending >= 5) {
+      entry.sent = entry.seconds; // optimistic — reverted below if the send fails outright
+      writeWatchTime(map);
+    } else {
+      pending = 0;
+      writeWatchTime(map);
+    }
+  } catch {
+    return; // storage blocked — ranking is decorative, never fatal
+  }
+
+  if (pending < 5) {
+    // still notify listeners so Home can re-rank from the local bucket alone
+    try {
+      window.dispatchEvent(new CustomEvent(WATCHTIME_EVENT));
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  const body = JSON.stringify({
+    userId: getUserId(),
+    malId: args.malId,
+    day,
+    delta: Math.round(pending),
+    title: args.title,
+    image: args.image,
+  });
+  const revert = () => {
+    try {
+      const map = readWatchTime();
+      const entry = map[day]?.[String(args.malId)];
+      if (entry) {
+        entry.sent = Math.max(0, (entry.sent ?? 0) - pending);
+        writeWatchTime(map);
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+  try {
+    if (opts?.keepalive && "sendBeacon" in navigator) {
+      navigator.sendBeacon("/api/watchtime", new Blob([body], { type: "application/json" }));
+    } else {
+      fetch("/api/watchtime", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body,
+      })
+        .then((res) => {
+          if (!res.ok) revert(); // server rejected — retry on a later tick
+        })
+        .catch(revert);
+    }
+  } catch {
+    revert();
+  }
+
+  try {
+    window.dispatchEvent(new CustomEvent(WATCHTIME_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Subscribe to watch-time changes (local accrual + cross-tab). */
+export function subscribeWatchTime(onChange: () => void) {
+  window.addEventListener(WATCHTIME_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(WATCHTIME_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+export type TopWatchEntry = AnimeLite & { seconds: number };
+
+/** Minimal stand-in when only the local snapshot knows this anime. */
+function minimalLite(malId: number, title: string, image: string | null): AnimeLite {
+  return {
+    malId,
+    title,
+    titleEnglish: null,
+    image,
+    banner: null,
+    synopsis: null,
+    type: null,
+    ratingShort: null,
+    status: null,
+    airing: false,
+    season: null,
+    year: null,
+    durationMin: null,
+    score: null,
+    rank: null,
+    popularity: null,
+    totalEpisodes: 0,
+    genres: [],
+    inCatalog: true,
+    source: "local",
+  };
+}
+
+/**
+ * The day's most-watched anime: the server's global ranking merged with this
+ * device's instant local buckets (max, not sum — no double counting; local
+ * covers the un-flushed tail and offline/served-cold cases).
+ */
+export async function fetchWatchTimeTop(day: string, limit = 10): Promise<TopWatchEntry[]> {
+  let serverItems: TopWatchEntry[] = [];
+  try {
+    const res = await fetch(`/api/watchtime?day=${encodeURIComponent(day)}&limit=${limit}`);
+    if (res.ok) {
+      const data = (await res.json()) as { items?: TopWatchEntry[] };
+      serverItems = data.items ?? [];
+    }
+  } catch {
+    /* offline / cold server — local buckets only */
+  }
+
+  const byId = new Map<number, TopWatchEntry>();
+  for (const it of serverItems) {
+    if (Number.isFinite(it?.malId)) byId.set(it.malId, it);
+  }
+  try {
+    const local = readWatchTime()[day] ?? {};
+    for (const [key, entry] of Object.entries(local)) {
+      const malId = Number(key);
+      if (!Number.isFinite(malId)) continue;
+      const prev = byId.get(malId);
+      const seconds = Math.max(prev?.seconds ?? 0, entry.seconds || 0);
+      if (seconds < 5) continue; // a stray couple of seconds isn't "watched"
+      byId.set(malId, {
+        ...(prev ?? minimalLite(malId, entry.title || `Anime ${malId}`, entry.image ?? null)),
+        // local snapshots keep the rail informative when the catalog row is gone
+        title: prev?.title || entry.title || `Anime ${malId}`,
+        image: prev?.image ?? entry.image ?? null,
+        malId,
+        seconds,
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return [...byId.values()].sort((a, b) => b.seconds - a.seconds).slice(0, limit);
+}
+
 /* ---------------- misc ---------------- */
 
 export function timeAgo(iso: string | number): string {

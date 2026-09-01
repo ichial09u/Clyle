@@ -32,7 +32,6 @@ export interface HomeSection {
 export interface HomePayload {
   hero: AnimeLite[];
   sections: HomeSection[];
-  top10: AnimeLite[];
   lastSync: { at: string | null };
 }
 

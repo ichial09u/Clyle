@@ -117,6 +117,26 @@ model WatchProgress {
   @@index([userId, malId])
 }
 
+// Aggregated in-app watch time per anime per calendar day — powers the
+// "Top 10 Today" rail on Home. Empty until someone actually watches: rows
+// only exist once real playback seconds have been recorded. `seconds`
+// accumulates from player heartbeats while a video is ACTUALLY playing
+// (paused/buffered/ended time never counts). `day` is the viewer's LOCAL
+// calendar day ("YYYY-MM-DD"), so "today" matches each user's timezone.
+model WatchStat {
+  id        String   @id @default(cuid())
+  day       String // "YYYY-MM-DD" (viewer's local calendar day)
+  malId     Int
+  seconds   Int      @default(0) // total seconds actually watched this day
+  title     String? // title snapshot from the player session
+  image     String? // poster snapshot from the player session
+  updatedAt DateTime @updatedAt
+
+  @@unique([day, malId])
+  @@index([day, seconds])
+  @@index([updatedAt])
+}
+
 // Community comment on an anime (shows nickname + avatar snapshot at post time).
 // Supports one level of replies (parentId -> parent comment) and likes
 // (likedBy = JSON array of userIds; count = array length, so double-likes are

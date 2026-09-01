@@ -1,12 +1,26 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AnimeLite, ContinueItem, HomePayload } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import Row from "@/components/anime/Row";
 import PosterCard from "@/components/anime/PosterCard";
 import ContinueRow from "@/components/anime/ContinueRow";
-import { loadContinueItems, removeProgress, timeAgo, useProgressVersion } from "@/lib/client-store";
+import {
+  loadContinueItems, removeProgress, timeAgo, useProgressVersion,
+  fetchWatchTimeTop, localDayKey, subscribeWatchTime, type TopWatchEntry,
+} from "@/lib/client-store";
+
+/** "3h 24m watched" style caption under each Top 10 Today card. */
+function fmtWatched(s: number): string {
+  if (s >= 3600) {
+    const h = Math.floor(s / 3600);
+    const m = Math.round((s % 3600) / 60);
+    return m ? `${h}h ${m}m watched` : `${h}h watched`;
+  }
+  if (s >= 60) return `${Math.floor(s / 60)}m watched`;
+  return "just started";
+}
 
 export default function HomeView({
   onSelect,
@@ -23,7 +37,9 @@ export default function HomeView({
   const [heroIdx, setHeroIdx] = useState(0);
   const [error, setError] = useState(false);
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
+  const [top10, setTop10] = useState<TopWatchEntry[]>([]);
   const progressVersion = useProgressVersion();
+  const lastTop10Fetch = useRef(0);
 
   const refreshContinue = useCallback(() => {
     loadContinueItems().then(setContinueItems).catch(() => undefined);
@@ -32,6 +48,30 @@ export default function HomeView({
   useEffect(() => {
     refreshContinue();
   }, [refreshContinue, progressVersion]);
+
+  // Top 10 Today — ranked purely by how long people ACTUALLY watched today
+  // (server aggregates every viewer; local buckets keep it instant + offline).
+  // Stays empty until someone watches an episode of an anime.
+  const refreshTop10 = useCallback(() => {
+    lastTop10Fetch.current = Date.now();
+    fetchWatchTimeTop(localDayKey()).then(setTop10).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    refreshTop10();
+    const unsub = subscribeWatchTime(() => {
+      // the player accrues every ~5-10s; re-rank at most every 15s
+      if (Date.now() - lastTop10Fetch.current > 15_000) refreshTop10();
+    });
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshTop10();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      unsub();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [refreshTop10]);
 
   useEffect(() => {
     let cancelled = false;
@@ -116,25 +156,26 @@ export default function HomeView({
           {data.sections.map((s) => (
             <Row key={s.key} title={s.title} items={s.items} onSelect={onSelect} />
           ))}
-
-          {/* Top 10 Today — numbered list */}
-          {data.top10.length ? (
-            <section className="mt-6">
-              <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Top 10 Today</h2>
-              <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-1">
-                {data.top10.map((a, i) => (
-                  <div key={a.malId} className="relative shrink-0 text-left active:scale-[0.97] transition">
-                    <span className="absolute -left-0.5 -top-1 z-10 font-slab text-[42px] font-extrabold leading-none text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
-                      {i + 1}
-                    </span>
-                    <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3" />
-                    <p className="mt-1.5 text-[11px] text-gray-300 truncate w-[126px] ml-3">{a.title}</p>
-                  </div>
-                ))}
-              </div>
-            </section>
-          ) : null}
         </>
+      ) : null}
+
+      {/* Top 10 Today — ranked by real watch time; hidden until someone watches */}
+      {top10.length ? (
+        <section className="mt-6">
+          <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Top 10 Today</h2>
+          <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-1">
+            {top10.map((a, i) => (
+              <div key={a.malId} className="relative shrink-0 text-left active:scale-[0.97] transition">
+                <span className="absolute -left-0.5 -top-1 z-10 font-slab text-[42px] font-extrabold leading-none text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
+                  {i + 1}
+                </span>
+                <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3" />
+                <p className="mt-1.5 text-[11px] text-gray-300 truncate w-[126px] ml-3">{a.title}</p>
+                <p className="text-[10px] text-gray-500 ml-3">{fmtWatched(a.seconds)}</p>
+              </div>
+            ))}
+          </div>
+        </section>
       ) : null}
     </div>
   );
