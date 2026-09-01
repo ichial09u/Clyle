@@ -11,8 +11,9 @@ import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerI
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
-  getCastState, onCastStateChange, type CastState,
+  getCastState, onCastStateChange, onCastMediaError, type CastState,
 } from "@/lib/cast";
+import { pickSubtitleTrack } from "@/lib/subtitles";
 
 type Panel = null | "quality" | "speed" | "subs";
 type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } };
@@ -228,6 +229,20 @@ export default function WatchView({
     return off;
   }, []);
 
+  /* -------- receiver-side playback failures surface as a player toast -------- */
+  useEffect(() => {
+    let timer: number | null = null;
+    const off = onCastMediaError((msg) => {
+      setCastMsg(msg);
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => setCastMsg(null), 12_000);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      off();
+    };
+  }, []);
+
   /* -------- figure out where to resume (local first, server fallback) -------- */
   useEffect(() => {
     let cancelled = false;
@@ -435,11 +450,13 @@ export default function WatchView({
 
       // casting already? hand this episode straight to the TV, keep phone quiet
       if (castStateRef.current === "casting") {
+        const cap = pickSubtitleTrack(stream.subtitles);
         void castLoadNext({
           src: castMediaUrlRef.current,
           title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
           imageUrl: anime.image,
           startTime: pendingSeekRef.current ?? resumeAtRef.current,
+          captions: cap ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(cap.src)}`, label: cap.label || "English" } : undefined,
         });
         pendingSeekRef.current = null;
         return;
@@ -681,6 +698,9 @@ export default function WatchView({
       title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
       imageUrl: anime.image,
       startTime: videoRef.current ? videoRef.current.currentTime : resumeAtRef.current,
+      captions: subTrack
+        ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(subTrack.src)}`, label: subTrack.label || "English" }
+        : undefined,
     });
     if (res.ok) {
       videoRef.current?.pause();
@@ -714,7 +734,10 @@ export default function WatchView({
   const outroSkip = stream?.skip?.outro;
   const showSkipIntro = introSkip && currentTime >= introSkip.start && currentTime <= introSkip.end && !locked;
   const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
-  const subTrack = stream?.subtitles?.[0];
+  // Zoko tags EVERY subtitle track lang:"en" and often lists English NOT first
+  // (FMA:B ep1: Arabic, Chinese, Chinese, Danish, Dutch, English, ...) — pick
+  // the real English track instead of blindly playing subtitles[0].
+  const subTrack = pickSubtitleTrack(stream?.subtitles);
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;

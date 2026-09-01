@@ -31,6 +31,67 @@ let sdkReady = false;
 let currentState: CastState = "unavailable";
 const listeners = new Set<(s: CastState) => void>();
 
+/* ---- failure forensics ------------------------------------------------
+ * CAF's requestSession() rejection is often an EMPTY object (no code, no
+ * message) — the real reason rides on the CastContext events instead
+ * (SESSION_START_FAILED / CAST_STATE_CHANGED carry e.errorCode). We keep
+ * both the last event errorCode and a short trail so a failed cast can be
+ * diagnosed from the toast alone, without a debugger.
+ * -------------------------------------------------------------------- */
+let lastEventError = "";
+const castTrail: string[] = [];
+function noteTrail(s: string, code?: unknown) {
+  const c = typeof code === "string" && code ? code : "";
+  if (c) lastEventError = c;
+  castTrail.push(c ? `${s}(${c})` : s);
+  if (castTrail.length > 12) castTrail.shift();
+}
+
+/* receiver-side playback failure (HLS the TV couldn't load etc.) */
+const mediaErrorListeners = new Set<(msg: string) => void>();
+export function onCastMediaError(fn: (msg: string) => void): () => void {
+  mediaErrorListeners.add(fn);
+  return () => mediaErrorListeners.delete(fn);
+}
+function notifyMediaError(msg: string) {
+  mediaErrorListeners.forEach((fn) => {
+    try {
+      fn(msg);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/**
+ * Squeeze every byte of meaning out of a cast failure. CAF rejections come
+ * in many shapes: undefined, empty object, {errorCode}, {code, description},
+ * DOMException, Error... Serialize whichever fields actually exist.
+ */
+function describeError(err: unknown): string {
+  if (err == null) return "";
+  if (typeof err === "string") return err.trim();
+  const e = err as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of ["message", "description", "errorCode", "code", "detail", "reason", "name"]) {
+    const v = e[key];
+    if (typeof v === "string" && v.trim()) parts.push(`${key}:${v.trim().replace(/_/g, " ")}`);
+    else if (typeof v === "number") parts.push(`${key}:${v}`);
+  }
+  // last resort: every own property, JSON-shaped (truncated)
+  if (parts.length === 0) {
+    try {
+      const keys = Object.getOwnPropertyNames(e);
+      const snap = JSON.stringify(e, keys as never);
+      if (snap && snap !== "{}" && snap !== '""') parts.push(snap.slice(0, 140));
+      else if (keys.length > 0) parts.push(keys.join(","));
+    } catch {
+      /* ignore */
+    }
+  }
+  return parts.join(" · ").slice(0, 180);
+}
+
 function setState(s: CastState) {
   if (currentState === s) return;
   currentState = s;
@@ -113,19 +174,26 @@ function configureContext() {
         const s = e?.sessionState;
         const S = framework.SessionState ?? {};
         if (s === S.SESSION_STARTED || s === S.SESSION_RESUMED) {
+          noteTrail("session-started");
           refs.session = e.session ?? context.getCurrentSession();
           setState("casting");
         } else if (s === S.SESSION_START_FAILED) {
+          // THIS is where the real reason hides when requestSession rejects empty
+          noteTrail("session-failed", e?.errorCode);
           refs.session = null;
           refs.media = null;
           setState("idle");
         } else if (s === S.SESSION_ENDED || s === S.SESSION_END_FAILED) {
+          noteTrail("session-ended", s === S.SESSION_END_FAILED ? e?.errorCode : undefined);
           refs.session = null;
           refs.media = null;
           setState("idle");
         }
       },
     );
+    context.addEventListener(framework.CastContextEventType.CAST_STATE_CHANGED, (e: any) => {
+      noteTrail(`cast:${e?.castState ?? "?"}`, e?.errorCode);
+    });
     // a previous page load may still hold a live session
     if (context.getCurrentSession()) {
       refs.session = context.getCurrentSession();
@@ -143,11 +211,33 @@ export interface CastMediaRequest {
   /** Absolute HTTPS URL of the master m3u8 (our proxy). */
   src: string;
   title: string;
+  /** Deprecated text (metadata subtitle line), not a caption track. */
   subtitle?: string;
+  /** Side-loaded caption track the receiver fetches directly (absolute URL). */
+  captions?: { url: string; label?: string };
   imageUrl?: string | null;
   /** Resume point, seconds. */
   startTime?: number;
 }
+
+/** Side-load a WebVTT caption track onto the Default Media Receiver. */
+function attachCaptions(chromeCast: any, mediaInfo: any, request: any, captions?: { url: string; label?: string }) {
+  if (!captions?.url || !chromeCast.media.Track) return;
+  try {
+    const track = new chromeCast.media.Track(0, chromeCast.media.TrackType.TEXT);
+    track.subtype = chromeCast.media.TextTrackType?.SUBTITLES ?? "SUBTITLES";
+    track.name = captions.label || "English";
+    track.language = "en";
+    track.contentId = captions.url;
+    track.contentType = "text/vtt";
+    mediaInfo.tracks = [track];
+    request.activeTrackIds = [0];
+  } catch {
+    /* captions are best-effort — video still casts without them */
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Ask the user to pick a device, then load the episode. Returns success. */
 export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; error?: string }> {
@@ -160,8 +250,22 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     const context = framework.CastContext.getInstance();
 
     if (!refs.session) {
-      const session = await context.requestSession(); // rejects on cancel/failure
-      refs.session = session ?? context.getCurrentSession();
+      const ask = async () => {
+        const session = await context.requestSession(); // rejects on cancel/failure
+        return session ?? context.getCurrentSession();
+      };
+      try {
+        refs.session = await ask();
+      } catch (err) {
+        const text = describeError(err).toLowerCase();
+        // user closed the chooser — do not retry, just report
+        if (text.includes("cancel")) throw err;
+        // first connect attempts fail transiently on flaky mesh/2.4GHz links;
+        // one quiet retry catches a good chunk of those
+        noteTrail("retry");
+        await sleep(1200);
+        refs.session = await ask();
+      }
     }
     if (!refs.session) throw new Error("No Chromecast selected");
 
@@ -176,39 +280,40 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     const request = new chromeCast.media.LoadRequest(mediaInfo);
     request.autoplay = true;
     request.currentTime = Math.max(0, req.startTime ?? 0);
+    attachCaptions(chromeCast, mediaInfo, request, req.captions);
 
     const media = await refs.session.loadMedia(request);
     refs.media = media;
     media.addUpdateListener?.(() => {
       // if playback finished / errored on the big screen, keep state honest
       const st = media.status?.playerState;
-      if (st === "IDLE" && media.status?.idleReason === "FINISHED") {
-        // keep the session alive — the user may pick the next episode
+      if (st === "IDLE" && media.status?.idleReason === "ERROR") {
+        noteTrail("receiver-media-error");
+        notifyMediaError("The TV couldn't play this stream — try another server or quality");
       }
     });
     setState("casting");
     return { ok: true };
-  } catch (err: any) {
-    // CAF errors arrive as message/description/code in mixed formats
-    // ("session_error", "LOAD_MEDIA_FAILED", numeric codes...) — normalize
-    // before matching so every failure maps to an actionable message.
-    const rawParts = [err?.message, err?.description, typeof err?.code === "number" ? `code ${err.code}` : err?.code]
-      .filter((p: unknown) => typeof p === "string" && p && p !== "undefined")
-      .map((p: string) => String(p).replace(/_/g, " ").trim());
-    const raw = rawParts[0] || "Cast failed";
-    const flat = rawParts.join(" | ").toLowerCase();
-    console.warn("[cast] session/media failure:", err, rawParts.join(" | "));
+  } catch (err: unknown) {
+    // CAF errors arrive in mixed shapes (often EMPTY) — describeError pulls
+    // whatever exists, and lastEventError holds the reason the context events
+    // saw (the promise rejection alone is frequently {} on session failures).
+    const detail = [describeError(err), lastEventError ? `event:${lastEventError}` : ""]
+      .filter(Boolean)
+      .join(" · ");
+    const flat = detail.toLowerCase();
+    console.warn("[cast] session/media failure:", err, "| eventError:", lastEventError, "| trail:", castTrail.join(" > "));
     let msg: string;
     if (flat.includes("cancel")) msg = "Cast cancelled";
     else if (flat.includes("no device") || flat.includes("not found") || flat.includes("no compatible")) {
       msg = "No cast device found — make sure your TV/Chromecast is on the same Wi-Fi, then try again";
-    } else if (flat.includes("session error") || flat.includes("timeout") || flat.includes("status")) {
-      msg = "Couldn't reach the cast device — check the Wi-Fi and try again";
-    } else if (flat.includes("load") || flat.includes("media")) {
+    } else if (flat.includes("session error") || flat.includes("timeout") || flat.includes("unreachable")) {
+      msg = `Couldn't reach the TV (${detail}) — your phone finds the TV but can't open a connection. Router AP/client isolation or a guest network usually causes this`;
+    } else if (flat.includes("load") || flat.includes("media") || flat.includes("invalid")) {
       msg = "The TV couldn't load this stream — try another server for this episode";
     } else {
-      // unknown failure — show the actual code so it can be reported/fixed
-      msg = `Cast failed (${rawParts.join(" · ")}) — tell me this text to fix it`;
+      // unknown failure — show everything we captured so it can be reported
+      msg = `Cast failed (${detail || "no details"}) — tell me this text to fix it`;
     }
     if (!refs.session) setState("idle");
     return { ok: false, error: msg };
@@ -228,6 +333,7 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     const request = new chromeCast.media.LoadRequest(mediaInfo);
     request.autoplay = true;
     request.currentTime = Math.max(0, req.startTime ?? 0);
+    attachCaptions(chromeCast, mediaInfo, request, req.captions);
     refs.media = await refs.session.loadMedia(request);
     return true;
   } catch {
