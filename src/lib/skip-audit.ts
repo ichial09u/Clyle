@@ -15,8 +15,10 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
  *                earlier open)
  *   heuristic  — no data, but it's a TV-length episode (5-30 min per MAL),
  *                so the player's 8-90s window guarantees the button
- *   uncovered  — nothing covers it (e.g. movies/specials by design — we
- *                never blindly skip inside a film)
+ *   na         — films (Movie/Music/long non-TV specials): no Skip Intro by
+ *                design (we never blindly skip inside a film) — neither ok
+ *                nor uncovered, so importing a movie can't fail the audit
+ *   uncovered  — nothing covers it and it SHOULD have a button
  *
  * `probe: true` additionally asks AniSkip live for up to `probeBudget`
  * uncovered samples (and caches the answers), which heals gaps in place —
@@ -26,7 +28,7 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
 
 export interface SkipAuditEpisode {
   ep: number;
-  source: "exact" | "consensus" | "live" | "heuristic" | "uncovered";
+  source: "exact" | "consensus" | "live" | "heuristic" | "na" | "uncovered";
   introEnd: number | null;
 }
 
@@ -48,6 +50,7 @@ export interface SkipAuditReport {
     consensus: number;
     live: number;
     heuristic: number;
+    na: number;
     uncovered: number;
     coveragePct: number;
     probed: number;
@@ -62,7 +65,7 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
     orderBy: { popularity: "asc" },
   });
 
-  const totals = { anime: animes.length, sampled: 0, exact: 0, consensus: 0, live: 0, heuristic: 0, uncovered: 0 };
+  const totals = { anime: animes.length, sampled: 0, exact: 0, consensus: 0, live: 0, heuristic: 0, na: 0, uncovered: 0 };
   const uncoveredList: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
   const rows: SkipAuditRow[] = [];
 
@@ -89,6 +92,15 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
       ) {
         source = "heuristic";
         introEnd = 90;
+      } else if (
+        // films and film-like one-offs: Skip Intro intentionally never shows
+        // (there is no standard OP to skip and no data will exist) — count
+        // them as not-applicable instead of failing the audit
+        a.type === "Movie" ||
+        a.type === "Music" ||
+        (a.type !== "TV" && a.durationMin != null && a.durationMin > 30)
+      ) {
+        source = "na";
       } else {
         ok = false;
         uncoveredList.push({ malId: a.malId, ep, lenMin: a.durationMin });
@@ -118,13 +130,14 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
     }
   }
 
-  const covered = totals.sampled - totals.uncovered;
+  const covered = totals.sampled - totals.uncovered - totals.na;
+  const audited = Math.max(1, totals.sampled - totals.na);
   return {
     ok: totals.uncovered === 0,
     generatedAt: new Date().toISOString(),
     totals: {
       ...totals,
-      coveragePct: totals.sampled ? Math.round((covered / totals.sampled) * 100) : 0,
+      coveragePct: Math.round((covered / audited) * 100),
       probed,
     },
     anime: rows,
