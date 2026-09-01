@@ -292,12 +292,14 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
  * Coverage check used by the skip audit (bot): where would this episode's
  * Skip Intro data come from? Checks the vendored dataset (exact row, then
  * per-anime consensus), then the live tier's cache — `allowLiveFetch` also
- * permits one cached network query to AniSkip (used when probing gaps).
+ * permits one cached network query to AniSkip (used when probing gaps), and
+ * finally the crowd-learned scrub median — the audit counts anything the
+ * player would actually show.
  */
 export interface SkipCoverage {
   intro?: SkipInterval;
   outro?: SkipInterval;
-  source: "exact" | "consensus" | "live";
+  source: "exact" | "consensus" | "live" | "crowd";
 }
 
 export async function skipCoverage(
@@ -328,15 +330,19 @@ export async function skipCoverage(
       if (live.ed) cov.outro = { start: live.ed[0], end: live.ed[1] };
       return cov;
     }
-    return null;
+  } else {
+    const cached = (await liveRead(malId))[String(ep)];
+    if (cached && !cached.miss && (cached.op || cached.ed)) {
+      const cov: SkipCoverage = { source: "live" };
+      if (cached.op) cov.intro = { start: cached.op[0], end: cached.op[1] };
+      if (cached.ed) cov.outro = { start: cached.ed[0], end: cached.ed[1] };
+      return cov;
+    }
   }
-  const cached = (await liveRead(malId))[String(ep)];
-  if (cached && !cached.miss && (cached.op || cached.ed)) {
-    const cov: SkipCoverage = { source: "live" };
-    if (cached.op) cov.intro = { start: cached.op[0], end: cached.op[1] };
-    if (cached.ed) cov.outro = { start: cached.ed[0], end: cached.ed[1] };
-    return cov;
-  }
+  // crowd tier — viewers' scrub medians count as coverage too (the player
+  // shows a working Skip Intro button for them)
+  const crowd = await crowdIntroTarget(malId, ep);
+  if (crowd != null) return { source: "crowd", intro: { start: 8, end: crowd } };
   return null;
 }
 

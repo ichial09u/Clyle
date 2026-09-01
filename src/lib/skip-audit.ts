@@ -15,9 +15,10 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
  *                earlier open)
  *   heuristic  — no data, but it's a TV-length episode (5-30 min per MAL),
  *                so the player's 8-90s window guarantees the button
- *   na         — films (Movie/Music/long non-TV specials): no Skip Intro by
- *                design (we never blindly skip inside a film) — neither ok
- *                nor uncovered, so importing a movie can't fail the audit
+ *   crowd      — viewers' scrub medians taught the app where the OP ends
+ *   na         — non-TV content (movies, music, ONA/OVA/specials): no Skip
+ *                Intro by design (never blindly skip outside TV-length) —
+ *                neither ok nor uncovered, so imports can't fail the audit
  *   uncovered  — nothing covers it and it SHOULD have a button
  *
  * `probe: true` additionally asks AniSkip live for up to `probeBudget`
@@ -28,7 +29,7 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
 
 export interface SkipAuditEpisode {
   ep: number;
-  source: "exact" | "consensus" | "live" | "heuristic" | "na" | "uncovered";
+  source: "exact" | "consensus" | "live" | "crowd" | "heuristic" | "na" | "uncovered";
   introEnd: number | null;
 }
 
@@ -49,6 +50,7 @@ export interface SkipAuditReport {
     exact: number;
     consensus: number;
     live: number;
+    crowd: number;
     heuristic: number;
     na: number;
     uncovered: number;
@@ -65,7 +67,7 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
     orderBy: { popularity: "asc" },
   });
 
-  const totals = { anime: animes.length, sampled: 0, exact: 0, consensus: 0, live: 0, heuristic: 0, na: 0, uncovered: 0 };
+  const totals = { anime: animes.length, sampled: 0, exact: 0, consensus: 0, live: 0, crowd: 0, heuristic: 0, na: 0, uncovered: 0 };
   const uncoveredList: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
   const rows: SkipAuditRow[] = [];
 
@@ -93,12 +95,11 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
         source = "heuristic";
         introEnd = 90;
       } else if (
-        // films and film-like one-offs: Skip Intro intentionally never shows
-        // (there is no standard OP to skip and no data will exist) — count
-        // them as not-applicable instead of failing the audit
-        a.type === "Movie" ||
-        a.type === "Music" ||
-        (a.type !== "TV" && a.durationMin != null && a.durationMin > 30)
+        // non-TV content (movies, music videos, ONA/OVA/special episodes):
+        // Skip Intro intentionally never shows there — the 8-90s guess is
+        // far likelier wrong than right, and most shorts have no standard
+        // OP at all. Count as not-applicable so imports can't fail the audit.
+        (a.type != null && a.type !== "TV")
       ) {
         source = "na";
       } else {

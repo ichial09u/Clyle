@@ -132,7 +132,7 @@ export async function GET(req: Request) {
     checks.push({
       name: "skip-intro-audit",
       ok: audit.ok,
-      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.heuristic} heuristic / ${t.uncovered} uncovered, probed ${t.probed})`,
+      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.heuristic} heuristic / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
     });
     if (!audit.ok) {
       const bad = audit.anime.filter((a) => !a.ok).slice(0, 5).map((a) => `${a.title} (${a.episodes.filter((e) => e.source === "uncovered").map((e) => `ep${e.ep}`).join(",")})`);
