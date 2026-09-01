@@ -6,6 +6,7 @@ import HeroBanner from "@/components/anime/HeroBanner";
 import Row from "@/components/anime/Row";
 import PosterCard from "@/components/anime/PosterCard";
 import ContinueRow from "@/components/anime/ContinueRow";
+import Top10Bell from "@/components/anime/Top10Bell";
 import {
   loadContinueItems, removeProgress, timeAgo, useProgressVersion,
   fetchWatchTimeTop, localDayKey, subscribeWatchTime, type TopWatchEntry,
@@ -109,6 +110,9 @@ export default function HomeView({
 
   return (
     <div className="pb-24">
+      {/* Top 10 notifications — floating bell (unread badge) over the hero */}
+      <Top10Bell onSelect={onSelect} />
+
       <HeroBanner
         items={data?.hero ?? []}
         index={heroIdx}
@@ -171,7 +175,21 @@ export default function HomeView({
                 </span>
                 <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3" />
                 <p className="mt-1.5 text-[11px] text-gray-300 truncate w-[126px] ml-3">{a.title}</p>
-                <p className="text-[10px] text-gray-500 ml-3">{fmtWatched(a.seconds)}</p>
+                <p className="mt-0.5 text-[10px] ml-3 flex items-center gap-1 min-h-[16px]">
+                  {a.isNew ? (
+                    <span className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide">
+                      NEW
+                    </span>
+                  ) : a.weeksInTop10 && a.weeksInTop10 > 0 ? (
+                    <span
+                      title={`${a.weeksInTop10} week${a.weeksInTop10 > 1 ? "s" : ""} in the Top 10`}
+                      className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide"
+                    >
+                      {a.weeksInTop10}w in Top 10
+                    </span>
+                  ) : null}
+                  <span className="text-gray-500 truncate">{fmtWatched(a.seconds)}</span>
+                </p>
               </div>
             ))}
           </div>

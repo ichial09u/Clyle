@@ -195,6 +195,21 @@ async function expectJson(name, path, init, validate) {
     const badGet = await req("/api/watchtime?day=nope");
     record("GET /api/watchtime rejects bad day", badGet.status === 400, `status ${badGet.status}`);
   }
+  // streak metadata rides every watchtime response (Netflix-style weeks badge)
+  await expectJson(
+    "GET /api/watchtime streak meta (scratch day)",
+    `/api/watchtime?day=${probeDay}`,
+    {},
+    (r, b) => r.ok && Array.isArray(b?.items) && b.items.length > 0 && Number.isFinite(b.items[0].streakDays) && typeof b.items[0].isNew === "boolean" && Number.isFinite(b.items[0].weeksInTop10),
+  );
+
+  // ---- 5c) top 10 notifications feed (bell data path) ----
+  await expectJson(
+    "GET /api/top10-events (bell feed)",
+    "/api/top10-events",
+    {},
+    (r, b) => r.ok && Array.isArray(b?.events) && b.events.every((e) => (e.type === "enter" || e.type === "leave") && !!e.title && !!e.day),
+  );
 
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);

@@ -159,6 +159,25 @@ export async function GET(req: Request) {
     checks.push({ name: "watchtime-today", ok: false, detail: String(err).slice(0, 200) });
   }
 
+  // ---- 9) top 10 notifications feed (bell data path) ----
+  try {
+    const total = await db.top10Event.count();
+    const latest = await db.top10Event.findFirst({
+      orderBy: { id: "desc" },
+      select: { type: true, title: true, createdAt: true },
+    });
+    checks.push({
+      name: "top10-events",
+      ok: true,
+      detail: latest
+        ? `${total} enter/leave event(s); latest: ${latest.title} ${latest.type === "enter" ? "entered" : "left"} the Top 10 (${latest.createdAt.toISOString()})`
+        : "no enter/leave events yet (bell stays empty until the Top 10 changes)",
+    });
+  } catch (err) {
+    healthy = false;
+    checks.push({ name: "top10-events", ok: false, detail: String(err).slice(0, 200) });
+  }
+
   const report = {
     ok: healthy,
     startedAt,

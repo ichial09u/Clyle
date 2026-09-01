@@ -2,6 +2,12 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { lite } from "@/lib/serialize";
 import type { AnimeLite } from "@/lib/types";
+import {
+  isCurrentishTop10Day,
+  sealTop10Days,
+  streaksForDay,
+  touchTop10EnterEvents,
+} from "@/lib/top10";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +54,14 @@ export async function GET(req: Request) {
     take: limit,
   });
 
+  // Notifications + streaks ride the app's normal rail fetches (Home asks for
+  // a current day; smoke probes on scratch days skip the event machinery).
+  const currentish = isCurrentishTop10Day(day);
+  if (currentish) {
+    await sealTop10Days(); // first real request of a new day publishes yesterday
+    await touchTop10EnterEvents(day); // live "entered" while the day fills up
+  }
+
   // full catalog objects where we have the anime locally; otherwise fall back
   // to the title/poster snapshots the player sessions left behind
   const ids = rows.map((r) => r.malId);
@@ -82,7 +96,15 @@ export async function GET(req: Request) {
     return { ...base, malId: r.malId, seconds: r.seconds, image: base.image ?? r.image ?? null };
   });
 
-  return NextResponse.json({ day, items }, { headers: { "Cache-Control": "no-store" } });
+  // Netflix-style streak metadata: consecutive days in the Top 10 ->
+  // isNew (first day) / weeksInTop10 (>= 1 week).
+  const streaks = await streaksForDay(day, items.map((i) => i.malId));
+  const enriched = items.map((it) => {
+    const streak = streaks.get(it.malId) ?? 1;
+    return { ...it, streakDays: streak, isNew: streak <= 1, weeksInTop10: Math.floor(streak / 7) };
+  });
+
+  return NextResponse.json({ day, items: enriched }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: Request) {

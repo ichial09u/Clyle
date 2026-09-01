@@ -596,10 +596,15 @@ export function subscribeWatchTime(onChange: () => void) {
   };
 }
 
-export type TopWatchEntry = AnimeLite & { seconds: number };
+export type TopWatchEntry = AnimeLite & {
+  seconds: number;
+  streakDays?: number; // consecutive days in the Top 10 (server-computed)
+  isNew?: boolean; // first day of the current streak
+  weeksInTop10?: number; // Math.floor(streakDays / 7)
+};
 
-/** Minimal stand-in when only the local snapshot knows this anime. */
-function minimalLite(malId: number, title: string, image: string | null): AnimeLite {
+/** Minimal stand-in when only a server event/snapshot knows this anime. */
+export function minimalLite(malId: number, title: string, image: string | null): AnimeLite {
   return {
     malId,
     title,
@@ -667,6 +672,63 @@ export async function fetchWatchTimeTop(day: string, limit = 10): Promise<TopWat
   }
 
   return [...byId.values()].sort((a, b) => b.seconds - a.seconds).slice(0, limit);
+}
+
+/* ---------------- Top 10 notifications (bell) ---------------- */
+
+const TOP10_READ_KEY = "animetest123.top10read";
+const TOP10_READ_EVENT = "top10read-changed";
+
+export interface Top10EventItem {
+  id: number;
+  type: "enter" | "leave";
+  malId: number;
+  day: string;
+  title: string;
+  image: string | null;
+  rank: number | null;
+  createdAt: string;
+}
+
+/** The server's Top 10 enter/leave feed (same for every viewer). */
+export async function fetchTop10Events(): Promise<Top10EventItem[]> {
+  const res = await fetch("/api/top10-events");
+  if (!res.ok) throw new Error(String(res.status));
+  const data = (await res.json()) as { events?: Top10EventItem[] };
+  return Array.isArray(data.events) ? data.events : [];
+}
+
+/** Per-device read watermark: every event with a bigger id is unread. */
+export function getTop10ReadId(): number {
+  return readJson<{ id?: number }>(TOP10_READ_KEY, {}).id ?? 0;
+}
+
+export function markTop10Read(maxId: number) {
+  if (!Number.isFinite(maxId) || maxId <= getTop10ReadId()) return;
+  writeJson(TOP10_READ_KEY, { id: Math.floor(maxId) });
+  try {
+    window.dispatchEvent(new Event(TOP10_READ_EVENT));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Subscribe to read-watermark changes (this tab + cross-tab storage). */
+export function subscribeTop10Read(onChange: () => void) {
+  window.addEventListener(TOP10_READ_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(TOP10_READ_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+const getTop10ReadSnapshot = () => String(getTop10ReadId());
+const getTop10ReadServerSnapshot = () => "0";
+
+/** Reactive read watermark for the notification bell (0 = nothing read yet). */
+export function useTop10ReadId(): number {
+  return Number(useSyncExternalStore(subscribeTop10Read, getTop10ReadSnapshot, getTop10ReadServerSnapshot));
 }
 
 /* ---------------- misc ---------------- */

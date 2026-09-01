@@ -137,6 +137,32 @@ model WatchStat {
   @@index([updatedAt])
 }
 
+// Top 10 Today membership-change event, surfaced in the bell notifications:
+//   "enter" — anime appeared in a day's Top 10 (wasn't in the previous
+//             published day's list)
+//   "leave" — anime dropped out when a day published without it
+// Deduped per (type, malId, day) so re-computations never double-notify.
+model Top10Event {
+  id        Int      @id @default(autoincrement())
+  type      String // "enter" | "leave"
+  malId     Int
+  day       String // the Top 10 day the event belongs to ("YYYY-MM-DD")
+  title     String
+  image     String?
+  rank      Int? // rank on the day it entered (null for leaves)
+  createdAt DateTime @default(now())
+
+  @@unique([type, malId, day])
+  @@index([createdAt])
+}
+
+// Tiny KV store for Top 10 bookkeeping (last published/sealed day).
+model Top10Meta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // Community comment on an anime (shows nickname + avatar snapshot at post time).
 // Supports one level of replies (parentId -> parent comment) and likes
 // (likedBy = JSON array of userIds; count = array length, so double-likes are
