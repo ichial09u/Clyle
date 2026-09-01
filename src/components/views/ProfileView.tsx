@@ -93,7 +93,7 @@ export default function ProfileView({
   const initial = (profile?.nickname ?? "O").trim().charAt(0).toUpperCase() || "O";
 
   return (
-    <div className="pb-24 min-h-screen">
+    <div className="pb-24 min-h-screen lg:max-w-[860px] lg:mx-auto">
       <header className="px-4 pt-5 pb-2">
         <h1 className="font-slab text-[24px] font-bold">Profile</h1>
         <p className="text-[12px] text-gray-400">Your nickname, photo and watch history on this device</p>

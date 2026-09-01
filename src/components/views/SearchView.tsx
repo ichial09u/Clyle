@@ -51,7 +51,7 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
   const hasQuery = query.trim().length >= 2;
 
   return (
-    <div className="pb-24">
+    <div className="pb-24 lg:max-w-[1200px] lg:mx-auto">
       <h1 className="font-slab text-[26px] font-extrabold px-4 pt-4 pb-3">Search</h1>
       <div className="px-4">
         <div className="flex items-center bg-[#1c1c1c] rounded-[10px] px-3.5 h-[46px]">
@@ -72,7 +72,7 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
       </div>
 
       {loading ? (
-        <div className="grid grid-cols-3 gap-1.5 px-4 mt-4">
+        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 md:gap-2.5 px-4 mt-4">
           {Array.from({ length: 9 }).map((_, i) => (
             <div key={i} className="aspect-[2/3] rounded-[6px] bg-[#161616] animate-pulse" />
           ))}
@@ -86,7 +86,7 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
       {!loading && catalog.length ? (
         <>
           <h2 className="font-slab text-[16px] font-bold px-4 mt-5 mb-2">In catalog</h2>
-          <div className="grid grid-cols-3 gap-1.5 px-4">
+          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 md:gap-2.5 px-4">
             {catalog.map((a) => (
               <div key={a.malId}>
                 <PosterCard image={a.image} title={a.title} logo={a.logo} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
@@ -102,7 +102,7 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
           <h2 className="font-slab text-[16px] font-bold px-4 mt-6 mb-2">
             More from MAL <span className="text-[12px] font-normal text-gray-500">— tap + to import into Zoko catalog</span>
           </h2>
-          <div className="grid grid-cols-3 gap-1.5 px-4">
+          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 md:gap-2.5 px-4">
             {mal.map((s) => (
               <div key={s.malId}>
                 <div className="relative">

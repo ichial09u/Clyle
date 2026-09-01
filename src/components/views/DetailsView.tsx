@@ -86,7 +86,7 @@ export default function DetailsView({
           inCatalog: r.inCatalog,
         })
       }
-      className="relative shrink-0 w-[190px] h-[96px] rounded-[6px] overflow-hidden bg-[#161616] active:scale-[0.97] transition"
+      className="relative shrink-0 w-[190px] h-[96px] md:w-[220px] md:h-[110px] rounded-[6px] overflow-hidden bg-[#161616] active:scale-[0.97] transition"
     >
       {r.image ? (
         <img src={r.image} alt={r.name} loading="lazy" className="absolute inset-0 w-full h-full object-cover opacity-45" />
@@ -101,7 +101,8 @@ export default function DetailsView({
   return (
     <div className="pb-24">
       {/* top bar */}
-      <div className="fixed top-0 inset-x-0 z-30 max-w-[560px] mx-auto">
+      {/* top bar — spans the content area right of the lg nav rail */}
+      <div className="fixed top-0 inset-x-0 z-30 max-w-[560px] md:max-w-[820px] lg:max-w-none lg:left-[76px] mx-auto">
         <button
           onClick={onBack}
           className="m-3 w-9 h-9 rounded-full bg-black/50 backdrop-blur flex items-center justify-center hover:bg-black/70 transition"
@@ -125,7 +126,7 @@ export default function DetailsView({
         }}
       />
 
-      <div className="px-4">
+      <div className="px-4 lg:max-w-[1100px] lg:mx-auto">
         {/* synopsis */}
         {anime.synopsis ? (
           <p className={`mt-4 text-[13.5px] leading-relaxed text-gray-200 ${expanded ? "" : "line-clamp-4"}`}>
@@ -173,7 +174,7 @@ export default function DetailsView({
         {details?.similar?.length ? (
           <section className="mt-6">
             <h2 className="font-slab text-[21px] font-bold mb-2.5">You May Also Like</h2>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-2.5">
               {details.similar.slice(0, 9).map((r) => (
                 <div key={r.malId} className="relative">
                   <PosterCard

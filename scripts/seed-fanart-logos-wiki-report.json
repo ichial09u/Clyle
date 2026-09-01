@@ -1,0 +1,139 @@
+{
+ "ok": [
+  {
+   "malId": 20583,
+   "title": "HAIKYU!!"
+  },
+  {
+   "malId": 34599,
+   "title": "Made in Abyss"
+  },
+  {
+   "malId": 1735,
+   "title": "Naruto: Shippuden"
+  },
+  {
+   "malId": 918,
+   "title": "Gintama"
+  }
+ ],
+ "miss": [
+  {
+   "malId": 1108,
+   "title": "Soul Hunter"
+  },
+  {
+   "malId": 13271,
+   "title": "Hunter x Hunter: Phantom Rouge"
+  },
+  {
+   "malId": 17637,
+   "title": "Miyakawa-ke no Kuufuku"
+  },
+  {
+   "malId": 19951,
+   "title": "Hunter x Hunter: The Last Mission"
+  },
+  {
+   "malId": 32615,
+   "title": "Saga of Tanya the Evil"
+  },
+  {
+   "malId": 37430,
+   "title": "That Time I Got Reincarnated as a Slime"
+  },
+  {
+   "malId": 38691,
+   "title": "Dr. STONE"
+  },
+  {
+   "malId": 40620,
+   "title": "Life Lessons with Uramichi Oniisan"
+  },
+  {
+   "malId": 43325,
+   "title": "Moriarty the Patriot Part 2"
+  },
+  {
+   "malId": 49233,
+   "title": "Saga of Tanya the Evil Season 2"
+  },
+  {
+   "malId": 54000,
+   "title": "Trapped in a Dating Sim: The World of Otome Games is Tough for Mobs Season 2"
+  },
+  {
+   "malId": 56735,
+   "title": "Oh Boy, Was I Wrong About Her"
+  },
+  {
+   "malId": 60522,
+   "title": "Skeleton Knight in Another World Season 2"
+  },
+  {
+   "malId": 61126,
+   "title": "I Want to Love You Till Your Dying Day"
+  },
+  {
+   "malId": 61169,
+   "title": "BLACK TORCH"
+  },
+  {
+   "malId": 61240,
+   "title": "Though I Am an Inept Villainess"
+  },
+  {
+   "malId": 61483,
+   "title": "Jaadugar: A Witch in Mongolia"
+  },
+  {
+   "malId": 61897,
+   "title": "From Old Country Bumpkin to Master Swordsman II"
+  },
+  {
+   "malId": 62076,
+   "title": "Smoking Behind the Supermarket with You"
+  },
+  {
+   "malId": 62513,
+   "title": "Clevatess Season 2"
+  },
+  {
+   "malId": 62811,
+   "title": "The 100 Girlfriends Who Really, Really, Really, Really, REALLY Love You Season 3"
+  },
+  {
+   "malId": 62856,
+   "title": "Sparks of Tomorrow"
+  },
+  {
+   "malId": 62876,
+   "title": "Rich Girl Caretaker: I'm Secretly the Caregiver of the Most Popular Girl in This Rich Kid School"
+  },
+  {
+   "malId": 62936,
+   "title": "Love Unseen Beneath the Clear Night Sky"
+  },
+  {
+   "malId": 63817,
+   "title": "HELL MODE: The Hardcore Gamer Dominates in Another World with Garbage Balancing Season 2"
+  },
+  {
+   "malId": 63832,
+   "title": "You and I Are Polar Opposites Season 2"
+  },
+  {
+   "malId": 11061,
+   "title": "Hunter x Hunter (2011)"
+  },
+  {
+   "malId": 9253,
+   "title": "Steins;Gate"
+  },
+  {
+   "malId": 1,
+   "title": "Cowboy Bebop"
+  }
+ ],
+ "fail": []
+}

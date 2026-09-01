@@ -452,7 +452,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
   };
 
   return (
-    <section className="mt-7 px-4">
+    <section className="mt-7 px-4 lg:max-w-[1100px] lg:mx-auto">
       <h2 className="font-slab text-[21px] font-bold mb-3 flex items-center gap-2">
         <MessageSquare className="w-[19px] h-[19px] text-[#ff5252]" />
         Comments

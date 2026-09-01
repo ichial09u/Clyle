@@ -44,7 +44,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
   }
 
   return (
-    <div className="pb-24 min-h-screen">
+    <div className="pb-24 min-h-screen lg:max-w-[1100px] lg:mx-auto">
       <header className="sticky top-0 z-30 bg-black/95 backdrop-blur flex items-center gap-3 px-3 pt-3 pb-3">
         <button onClick={onBack} className="p-1 -ml-1 hover:opacity-80 active:scale-95 transition" aria-label="Back">
           <ArrowLeft className="w-6 h-6" />
@@ -53,7 +53,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
       </header>
 
       {!view ? (
-        <div className="grid grid-cols-3 gap-2 px-4">
+        <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-3 px-4">
           {Array.from({ length: 9 }).map((_, i) => (
             <div key={i} className="aspect-[2/3] rounded-[6px] bg-[#161616] animate-pulse" />
           ))}
@@ -61,7 +61,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
       ) : (
         <>
           {view.catalog.length ? (
-            <div className="grid grid-cols-3 gap-2 px-4">
+            <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-3 px-4">
               {view.catalog.map((a) => (
                 <div key={a.malId}>
                   <PosterCard image={a.image} title={a.title} logo={a.logo} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
@@ -78,7 +78,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
               <h2 className="font-slab text-[18px] font-bold px-4 mt-7 mb-2.5">
                 Popular in this genre <span className="text-[12px] font-normal text-gray-500">— tap + to import from MAL</span>
               </h2>
-              <div className="grid grid-cols-3 gap-2 px-4">
+              <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-3 px-4">
                 {view.suggestions.map((s) => (
                   <div key={s.malId}>
                     <div className="relative">

@@ -32,12 +32,12 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
   // lack array fields — never trust genres to exist
   const genres = anime && Array.isArray(anime.genres) ? anime.genres : [];
   if (!anime) {
-    return <div className="h-[470px] bg-black animate-pulse" />;
+    return <div className="h-[470px] md:h-[560px] lg:h-[640px] bg-black animate-pulse" />;
   }
   const inList = has(anime.malId);
 
   return (
-    <div className="relative w-full h-[470px] overflow-hidden bg-[#0a0a0a]">
+    <div className="relative w-full h-[470px] md:h-[560px] lg:h-[640px] overflow-hidden bg-[#0a0a0a]">
       {/* backdrop — all slides stacked, opacity crossfades between them */}
       {list.map((it, i) => {
         const src = it.banner || it.image;
@@ -57,7 +57,7 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
 
       {/* content */}
       <div className="absolute inset-x-0 bottom-0 flex flex-col items-center text-center px-4 pb-3">
-        <h1 className="font-slab text-[26px] leading-tight font-bold text-white drop-shadow-lg max-w-[92%]">
+        <h1 className="font-slab text-[26px] md:text-[32px] lg:text-[40px] leading-tight font-bold text-white drop-shadow-lg max-w-[92%] lg:max-w-[80%]">
           {anime.title}
         </h1>
 
@@ -67,7 +67,7 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
           {anime.score ? <Badge kind="score">{anime.score.toFixed(1)}</Badge> : null}
         </div>
 
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-2.5 text-[13px] text-gray-200">
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 mt-2.5 text-[13px] md:text-[14.5px] text-gray-200">
           {anime.season || anime.year ? (
             <span>
               {anime.season ?? ""} {anime.year ?? ""}
@@ -84,11 +84,11 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
         </div>
 
         {genres.length ? (
-          <div className="mt-1.5 text-[13px] text-gray-200">{genres.slice(0, 3).join(", ")}</div>
+          <div className="mt-1.5 text-[13px] md:text-[14.5px] text-gray-200">{genres.slice(0, 3).join(", ")}</div>
         ) : null}
 
         {/* action row */}
-        <div className="mt-4 mb-1 w-full max-w-[360px] grid grid-cols-3 items-center">
+        <div className="mt-4 mb-1 w-full max-w-[360px] md:max-w-[430px] grid grid-cols-3 items-center">
           <button
             onClick={onShare}
             className="flex flex-col items-center gap-1 text-gray-200 hover:text-white active:scale-95 transition"
@@ -100,7 +100,7 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
 
           <button
             onClick={onCta}
-            className="justify-self-center flex items-center gap-2 bg-white text-black font-bold text-[15px] rounded-full px-7 py-2.5 hover:bg-gray-200 active:scale-95 transition shadow-lg"
+            className="justify-self-center flex items-center gap-2 bg-white text-black font-bold text-[15px] md:text-[16.5px] rounded-full px-7 py-2.5 md:px-9 md:py-3 hover:bg-gray-200 active:scale-95 transition shadow-lg"
           >
             {ctaLabel === "Watch" ? (
               <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">

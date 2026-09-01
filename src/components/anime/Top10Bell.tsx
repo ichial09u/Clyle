@@ -87,7 +87,7 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
             <div className="fixed inset-0 z-[60]" role="dialog" aria-label="Top 10 notifications">
               <div className="absolute inset-0 bg-black/70" onClick={closePanel} />
               <div
-                className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[560px] max-h-[85dvh] overflow-y-auto overscroll-contain rounded-b-2xl border-x border-b border-[#222] bg-[#0b0b0b] shadow-2xl"
+                className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[560px] md:max-w-[720px] lg:max-w-[920px] max-h-[85dvh] overflow-y-auto overscroll-contain rounded-b-2xl border-x border-b border-[#222] bg-[#0b0b0b] shadow-2xl"
                 style={{ paddingTop: "env(safe-area-inset-top)" }}
               >
                 <div className="sticky top-0 bg-[#0b0b0b]/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-[#1c1c1c] flex items-start justify-between gap-3">

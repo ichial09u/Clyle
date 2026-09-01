@@ -107,7 +107,7 @@ export default function EpisodesView({
   const prefWorks = pref.lang === "sub" || episodesData?.hasDub !== false;
 
   return (
-    <div className="pb-24 min-h-screen">
+    <div className="pb-24 min-h-screen lg:max-w-[1100px] lg:mx-auto">
       {/* header */}
       <header className="sticky top-0 z-30 bg-black/95 backdrop-blur">
         <div className="flex items-center gap-3 px-3 pt-3 pb-2">
@@ -165,13 +165,13 @@ export default function EpisodesView({
 
       {/* grid */}
       {!episodesData ? (
-        <div className="grid grid-cols-5 gap-2 px-4 pt-4">
+        <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 px-4 pt-4">
           {Array.from({ length: 20 }).map((_, i) => (
             <div key={i} className="h-[46px] rounded-md bg-[#161616] animate-pulse" />
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-5 gap-2 px-4 pt-3">
+        <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 px-4 pt-3">
           {numbers.map((n) => {
             const pr = epProgress[String(n)];
             const pct = barWidth(pr);

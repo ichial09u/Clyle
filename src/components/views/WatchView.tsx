@@ -857,52 +857,52 @@ export default function WatchView({
                 className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-30"
                 onClick={(e) => e.stopPropagation()}
               >
-                <div className="shrink-0 flex flex-col items-center gap-2 pt-12 px-6 text-center">
+                <div className="shrink-0 flex flex-col items-center gap-2 pt-12 md:pt-14 px-6 text-center">
                   <span className="w-12 h-12 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
                     <Cast className="w-6 h-6 text-[#ff5252]" />
                   </span>
                   <p className="text-[14px] font-bold">Casting to your TV</p>
-                  <p className="text-[11.5px] text-gray-400 max-w-[300px] truncate">
+                  <p className="text-[11.5px] text-gray-400 max-w-[300px] md:max-w-[440px] truncate">
                     {anime.title} · Episode {episode} ({lang.toUpperCase()})
                   </p>
                 </div>
 
                 <div className="flex-1" />
 
-                <div className="shrink-0 px-8 pb-10 flex flex-col items-center gap-6">
+                <div className="shrink-0 px-8 pb-10 md:pb-14 flex flex-col items-center gap-6">
                   {/* transport row */}
-                  <div className="flex items-center gap-9">
+                  <div className="flex items-center gap-9 md:gap-14">
                     <button
                       onClick={() => castSkip(-10)}
-                      className="relative w-12 h-12 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
                       aria-label="Back 10 seconds"
                     >
-                      <RotateCcw className="w-7 h-7 text-white" />
+                      <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
                       <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
                     </button>
                     <button
                       onClick={castToggle}
-                      className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
+                      className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
                       aria-label={castUi.playing ? "Pause on TV" : "Play on TV"}
                     >
                       {castUi.playing ? (
-                        <Pause className="w-7 h-7 text-black fill-black" />
+                        <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
                       ) : (
-                        <Play className="w-7 h-7 text-black ml-0.5 fill-black" />
+                        <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
                       )}
                     </button>
                     <button
                       onClick={() => castSkip(10)}
-                      className="relative w-12 h-12 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
                       aria-label="Forward 10 seconds"
                     >
-                      <RotateCw className="w-7 h-7 text-white" />
+                      <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
                       <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
                     </button>
                   </div>
 
                   {/* progress bar (below the buttons) — scrubbing seeks the TV */}
-                  <div className="w-full max-w-[340px] flex items-center gap-2">
+                  <div className="w-full max-w-[340px] md:max-w-[560px] lg:max-w-[680px] flex items-center gap-2">
                     <span className="text-[10.5px] text-gray-300 tabular-nums w-11 text-right shrink-0">{fmtTime(castScrub ?? castUi.pos)}</span>
                     <div className="relative h-4 flex items-center flex-1">
                       <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full">
@@ -956,7 +956,7 @@ export default function WatchView({
                 (show/hide controls); only the three buttons capture taps. */}
             {ready && !casting && !streamError && !locked ? (
               <div
-                className={`absolute inset-0 flex items-center justify-center gap-8 z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+                className={`absolute inset-0 flex items-center justify-center gap-8 md:gap-14 z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
               >
                 <button
                   onClick={(e) => {
@@ -964,10 +964,10 @@ export default function WatchView({
                     seekTo(Math.max(0, currentTime - 10));
                     showUi();
                   }}
-                  className="relative w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
                   aria-label="Back 10 seconds"
                 >
-                  <RotateCcw className="w-7 h-7 text-white" />
+                  <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
                   <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
                 </button>
                 <button
@@ -975,13 +975,13 @@ export default function WatchView({
                     e.stopPropagation();
                     togglePlay();
                   }}
-                  className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition pointer-events-auto"
+                  className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition pointer-events-auto"
                   aria-label={playing ? "Pause" : "Play"}
                 >
                   {playing ? (
-                    <Pause className="w-7 h-7 text-black fill-black" />
+                    <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
                   ) : (
-                    <Play className="w-7 h-7 text-black ml-0.5 fill-black" />
+                    <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
                   )}
                 </button>
                 <button
@@ -990,10 +990,10 @@ export default function WatchView({
                     seekTo(Math.min(duration || 0, currentTime + 10));
                     showUi();
                   }}
-                  className="relative w-12 h-12 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
                   aria-label="Forward 10 seconds"
                 >
-                  <RotateCw className="w-7 h-7 text-white" />
+                  <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
                   <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
                 </button>
               </div>
@@ -1142,6 +1142,9 @@ export default function WatchView({
           className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
+          {/* controls stay readable on wide screens: cap their width, keep the
+              gradient full-bleed */}
+          <div className="mx-auto w-full md:max-w-[760px] lg:max-w-[1040px]">
           {!iframeFallback ? (
             <div className="flex items-center gap-2">
               <span className="text-[10.5px] text-gray-200 tabular-nums w-11 text-right shrink-0">{fmtTime(currentTime)}</span>
@@ -1186,6 +1189,7 @@ export default function WatchView({
         ) : null}
         <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
       </div>
+          </div>
         </div>
 
         {/* locked — single unlock chip */}
@@ -1203,7 +1207,7 @@ export default function WatchView({
 
         {/* quality panel — real hls levels, slides up inside the player */}
         {panel === "quality" ? (
-          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 max-h-[46vh] overflow-y-auto anim-sheet-up" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 max-h-[46vh] overflow-y-auto anim-sheet-up lg:inset-x-auto lg:w-[720px] lg:left-[calc(50%-360px)] lg:border-x lg:border-[#222]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between pb-2">
               <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
                 <ChevronLeft className="w-4 h-4" /> Back
@@ -1288,7 +1292,7 @@ export default function WatchView({
 
         {/* speed panel */}
         {panel === "speed" ? (
-          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 anim-sheet-up" onClick={(e) => e.stopPropagation()}>
+          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 anim-sheet-up lg:inset-x-auto lg:w-[720px] lg:left-[calc(50%-360px)] lg:border-x lg:border-[#222]" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between pb-2">
               <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
                 <ChevronLeft className="w-4 h-4" /> Back
@@ -1315,7 +1319,7 @@ export default function WatchView({
       {downloadOpen ? (
         <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-center justify-center px-6" onClick={() => setDownloadOpen(false)}>
           <div
-            className="w-full max-w-[340px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden anim-sheet-up"
+            className="w-full max-w-[340px] md:max-w-[400px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden anim-sheet-up"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-label="Select Download Format"
@@ -1364,8 +1368,8 @@ function ControlButton({
       disabled={disabled}
       className={`flex items-center gap-1 disabled:opacity-30 active:scale-95 transition px-0.5 py-1 ${active ? "text-[#ff5252]" : "text-gray-200 hover:text-white"}`}
     >
-      <Icon className="w-3 h-3 shrink-0" />
-      <span className="text-[10.5px] leading-none whitespace-nowrap">{label}</span>
+      <Icon className="w-3 h-3 md:w-3.5 md:h-3.5 shrink-0" />
+      <span className="text-[10.5px] md:text-[11.5px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );
 }

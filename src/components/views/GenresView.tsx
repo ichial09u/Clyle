@@ -23,9 +23,9 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
   }, []);
 
   return (
-    <div className="pb-24">
+    <div className="pb-24 lg:max-w-[1000px] lg:mx-auto">
       <h1 className="font-slab text-[26px] font-extrabold px-4 pt-4 pb-3">Genres</h1>
-      <div className="grid grid-cols-3 gap-2 px-4">
+      <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3 px-4">
         {(genres ?? Array.from({ length: 36 }).map((_, i) => ({ name: `slot-${i}`, count: -1 }))).map((g) =>
           g.count === -1 ? (
             <div key={g.name} className="h-[48px] rounded-md bg-[#161616] animate-pulse" />

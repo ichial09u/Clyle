@@ -228,11 +228,15 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-black">
-      <div className="max-w-[560px] mx-auto h-[100dvh] bg-black border-x border-[#141414] relative overflow-hidden">
+      {/* phone frame < md; tablet column at md; full-bleed desktop at lg
+          (BottomNav becomes a 76px left rail there, so panes get lg:left-[76px]) */}
+      <div className="relative w-full max-w-[560px] md:max-w-[820px] lg:max-w-none mx-auto h-[100dvh] bg-black border-x border-[#141414] overflow-hidden">
         {/* current (incoming) pane */}
         <div
           key={topKey}
-          className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${inClass} ${inZ}`}
+          className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${
+            view.name !== "watch" ? "lg:left-[76px]" : ""
+          } ${inClass} ${inZ}`}
         >
           {renderView(view)}
         </div>
@@ -242,7 +246,9 @@ export default function Page() {
           <div
             key={`out-${anim.nonce}`}
             data-leaving="true"
-            className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${outClass} pointer-events-none ${
+            className={`absolute inset-0 overflow-y-auto overscroll-contain bg-black ${
+              anim.prev.name !== "watch" ? "lg:left-[76px]" : ""
+            } ${outClass} pointer-events-none ${
               anim.dir === "pop" ? "z-20" : "z-10"
             }`}
           >

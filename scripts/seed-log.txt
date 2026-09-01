@@ -1,0 +1,1 @@
+Seeding logos for 71 titles (1 workers, cap 60min)

@@ -154,7 +154,7 @@ export default function HomeView({
       {!data && !error ? (
         <div className="flex gap-2 px-4 mt-6">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="w-[126px] h-[178px] rounded-[6px] bg-[#161616] animate-pulse" />
+            <div key={i} className="w-[126px] h-[178px] md:w-[150px] md:h-[212px] lg:w-[172px] lg:h-[243px] rounded-[6px] bg-[#161616] animate-pulse" />
           ))}
         </div>
       ) : null}
@@ -180,8 +180,8 @@ export default function HomeView({
                 <span className="absolute -left-0.5 -top-1 z-10 font-slab text-[42px] font-extrabold leading-none text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
                   {i + 1}
                 </span>
-                <PosterCard image={a.image} title={a.title} logo={a.logo} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3" />
-                <p className="mt-1.5 text-[11px] text-gray-300 truncate w-[126px] ml-3">{a.title}</p>
+                <PosterCard image={a.image} title={a.title} logo={a.logo} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3 md:w-[150px] md:h-[212px] lg:w-[172px] lg:h-[243px]" />
+                <p className="mt-1.5 text-[11px] text-gray-300 truncate w-[126px] ml-3 md:w-[150px] lg:w-[172px]">{a.title}</p>
                 <p className="mt-0.5 text-[10px] ml-3 flex items-center gap-1 min-h-[16px]">
                   {a.isNew ? (
                     <span className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide">

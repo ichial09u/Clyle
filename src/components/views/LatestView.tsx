@@ -43,7 +43,7 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
   }
 
   return (
-    <div className="pb-24">
+    <div className="pb-24 lg:max-w-[900px] lg:mx-auto">
       <div className="flex items-center justify-between px-4 pt-4 pb-1">
         <h1 className="font-slab text-[26px] font-extrabold">Latest</h1>
         <button

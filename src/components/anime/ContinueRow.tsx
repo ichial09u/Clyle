@@ -46,9 +46,9 @@ export default function ContinueRow({
         {items.map((item) => {
           const thumb = thumbs[item.malId] ?? null;
           return (
-            <div key={item.malId} className="relative shrink-0 w-[196px]">
+            <div key={item.malId} className="relative shrink-0 w-[196px] md:w-[240px] lg:w-[276px]">
               <button onClick={() => onResume(item)} className="block w-full text-left active:scale-[0.97] transition">
-                <div className="relative w-[196px] h-[110px] rounded-[8px] overflow-hidden bg-[#161616]">
+                <div className="relative w-full h-[110px] md:h-[135px] lg:h-[155px] rounded-[8px] overflow-hidden bg-[#161616]">
                   {thumb ? (
                     <img src={thumb} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
                   ) : item.image ? (
@@ -79,7 +79,7 @@ export default function ContinueRow({
                     <span className="block h-full bg-[#d32f2f] rounded-full" style={{ width: `${Math.max(3, item.percent)}%` }} />
                   </span>
                 </div>
-                <p className="mt-1.5 text-[11.5px] text-gray-300 truncate w-[196px]">{item.title}</p>
+                <p className="mt-1.5 text-[11.5px] text-gray-300 truncate w-full">{item.title}</p>
               </button>
 
               {/* remove from Continue Watching */}
