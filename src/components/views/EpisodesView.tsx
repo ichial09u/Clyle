@@ -7,6 +7,8 @@ import type { AnimeLite, EpisodesPayload } from "@/lib/types";
 import {
   fetchServerProgress,
   getEpProgressAll,
+  getLangPref,
+  setLangPref,
   useProgressVersion,
 } from "@/lib/client-store";
 import { type Lang } from "@/lib/zoko";
@@ -93,8 +95,16 @@ export default function EpisodesView({
   const openServerSheet = (n: number) => setPicked(n);
   const play = (lang: Lang, server: "zoko" | "kiwi") => {
     if (picked != null) onWatchEpisode(picked, server, lang);
+    // remember for next time — the sheet will lead with this language/server
+    setLangPref(anime.malId, { lang, server });
     setPicked(null);
   };
+
+  // what the viewer last watched here (per anime -> global -> sub/zoko):
+  // back from the player into this list no longer "switches to sub" when you
+  // were in DUB — the sheet leads with your language and highlights it
+  const pref = getLangPref(anime.malId);
+  const prefWorks = pref.lang === "sub" || episodesData?.hasDub !== false;
 
   return (
     <div className="pb-24 min-h-screen">
@@ -227,28 +237,46 @@ export default function EpisodesView({
               })()}
               <p className="px-4 pb-3 text-[11.5px] text-gray-400">Choose a server &amp; a server doesn&apos;t work, please choose another</p>
               <div className="px-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}>
-                <div className="grid grid-cols-2 gap-2">
-                  {([
-                    { lang: "sub" as Lang, n: 1 },
-                    { lang: "sub" as Lang, n: 2 },
+                {(() => {
+                  const all = [
+                    { lang: "sub" as Lang, n: 1 as const },
+                    { lang: "sub" as Lang, n: 2 as const },
                     // anime without a DUB yet — no DUB buttons at all
                     ...(episodesData?.hasDub === false
                       ? []
                       : [
-                          { lang: "dub" as Lang, n: 1 },
-                          { lang: "dub" as Lang, n: 2 },
+                          { lang: "dub" as Lang, n: 1 as const },
+                          { lang: "dub" as Lang, n: 2 as const },
                         ]),
-                  ]).map(({ lang, n }) => (
-                    <button
-                      key={`${lang}-${n}`}
-                      onClick={() => play(lang, n === 1 ? "zoko" : "kiwi")}
-                      className="flex items-center justify-center gap-2 rounded-lg bg-white hover:bg-gray-200 active:scale-[0.98] transition text-[13px] font-bold py-3 text-black text-center"
-                    >
-                      <MonitorPlay className="w-4 h-4 text-[#d32f2f]" />
-                      {lang.toUpperCase()} Server #{n}
-                    </button>
-                  ))}
-                </div>
+                  ];
+                  // your last-used language first (so the top-left button is
+                  // what you were watching), then the other language
+                  const preferred = prefWorks ? all.filter((b) => b.lang === pref.lang) : [];
+                  const rest = all.filter((b) => !preferred.includes(b));
+                  const ordered = [...preferred, ...rest];
+                  return (
+                    <div className="grid grid-cols-2 gap-2">
+                      {ordered.map(({ lang, n }) => {
+                        const isPref = lang === pref.lang && (n === 1 ? "zoko" : "kiwi") === pref.server;
+                        return (
+                          <button
+                            key={`${lang}-${n}`}
+                            onClick={() => play(lang, n === 1 ? "zoko" : "kiwi")}
+                            title={isPref ? "Your last choice" : undefined}
+                            className={`flex items-center justify-center gap-2 rounded-lg active:scale-[0.98] transition text-[13px] font-bold py-3 text-center text-black ${
+                              isPref
+                                ? "bg-[#ff5252] hover:bg-[#ff6b6b] text-white"
+                                : "bg-white hover:bg-gray-200"
+                            }`}
+                          >
+                            <MonitorPlay className={`w-4 h-4 ${isPref ? "text-white" : "text-[#d32f2f]"}`} />
+                            {lang.toUpperCase()} Server #{n}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+              })()}
                 {episodesData?.hasDub === false ? (
                   <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>
                 ) : null}

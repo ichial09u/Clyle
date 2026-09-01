@@ -140,7 +140,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
         body: JSON.stringify({
           malId,
           userId,
-          nickname: profile?.nickname ?? "Otaku",
+          nickname: profile?.nickname ?? "Username",
           avatar: profile?.avatar ?? null,
           text: body,
         }),
@@ -155,7 +155,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
       const localOnly: CommentItem = {
         id: `local-${Date.now()}`,
         userId,
-        nickname: profile?.nickname ?? "Otaku",
+        nickname: profile?.nickname ?? "Username",
         avatar: profile?.avatar ?? null,
         text: body,
         createdAt: new Date().toISOString(),
@@ -182,7 +182,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
       const optimistic: CommentItem = {
         id: `local-${Date.now()}`,
         userId,
-        nickname: profile?.nickname ?? "Otaku",
+        nickname: profile?.nickname ?? "Username",
         avatar: profile?.avatar ?? null,
         text: body,
         createdAt: new Date().toISOString(),
@@ -203,7 +203,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
           body: JSON.stringify({
             malId,
             userId,
-            nickname: profile?.nickname ?? "Otaku",
+            nickname: profile?.nickname ?? "Username",
             avatar: profile?.avatar ?? null,
             text: replySnapshot,
             parentId,
@@ -422,7 +422,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
                   value={replyText}
                   onChange={(e) => setReplyText(e.target.value.slice(0, MAX_LEN))}
                   rows={2}
-                  placeholder={`Reply as ${profile?.nickname ?? "Otaku"}…`}
+                  placeholder={`Reply as ${profile?.nickname ?? "Username"}…`}
                   className="flex-1 bg-transparent text-[12.5px] outline-none resize-none placeholder:text-gray-500 leading-relaxed"
                   aria-label="Write a reply"
                 />
@@ -472,7 +472,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value.slice(0, MAX_LEN))}
-            placeholder={`Add a comment as ${profile?.nickname ?? "Otaku"}…`}
+            placeholder={`Add a comment as ${profile?.nickname ?? "Username"}…`}
             rows={2}
             className="flex-1 bg-transparent text-[13px] outline-none resize-none placeholder:text-gray-500 leading-relaxed"
             aria-label="Write a comment"

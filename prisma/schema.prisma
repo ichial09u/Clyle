@@ -83,7 +83,7 @@ model SyncLog {
 // kept in localStorage; nickname + avatar live here so comments can show them.
 model User {
   id        String   @id
-  nickname  String   @default("Otaku")
+  nickname  String   @default("Username")
   avatar    String? // small data-URL (client resizes to 160x160 JPEG)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

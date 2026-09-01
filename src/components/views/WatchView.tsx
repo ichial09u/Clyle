@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   getCastState, onCastStateChange, type CastState,
@@ -45,6 +45,11 @@ export default function WatchView({
   onEpisodeChange: (ep: number, lang: Lang, server: ServerId) => void;
 }) {
   const [lang, setLang] = useState<Lang>(initialLang);
+  // remember what the player is using so the episode list's server sheet
+  // leads with the same language when you press back (DUB stays DUB)
+  useEffect(() => {
+    setLangPref(anime.malId, { lang, server });
+  }, [anime.malId, lang, server]);
   const [stream, setStream] = useState<Resolved | null>(null);
   const [streamError, setStreamError] = useState(false);
   const [iframeFallback, setIframeFallback] = useState(false);

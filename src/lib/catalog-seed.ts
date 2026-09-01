@@ -77,3 +77,17 @@ export const ALL_GENRES: string[] = [
   "Strategy Game", "Super Power", "Supernatural", "Survival", "Suspense",
   "Team Sports", "Time Travel", "Vampire", "Workplace",
 ];
+
+/**
+ * The POPULAR genres only — the big recognizable ones people actually browse
+ * (AniList's main genres plus the most-loved themes). The Genres grid shows
+ * just these, filtered to genres the catalog actually has, most titles first;
+ * the niche/obscure tags from ALL_GENRES never appear as empty tiles.
+ */
+export const POPULAR_GENRES: string[] = [
+  "Action", "Adventure", "Comedy", "Drama", "Fantasy", "Horror",
+  "Mahou Shoujo", "Mecha", "Military", "Music", "Mystery", "Psychological",
+  "Romance", "School", "Sci-Fi", "Slice of Life", "Sports", "Super Power",
+  "Supernatural", "Thriller", "Ecchi", "Isekai", "Historical", "Space",
+  "Vampire", "Harem",
+];

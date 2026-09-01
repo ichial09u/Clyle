@@ -478,12 +478,14 @@ export interface LocalWatchEntry {
 
 type WatchTimeMap = Record<string, Record<string, LocalWatchEntry>>;
 
-/** The viewer's LOCAL calendar day ("YYYY-MM-DD") — "today" on their device. */
+/**
+ * The SHARED calendar day ("YYYY-MM-DD", UTC) — one global bucket, so every
+ * device in every timezone contributes to (and sees) the exact same
+ * "Top 10 Today" ranking, like Netflix's worldwide lists. Rolls over at
+ * UTC midnight for everyone.
+ */
 export function localDayKey(d = new Date()): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return d.toISOString().slice(0, 10);
 }
 
 function readWatchTime(): WatchTimeMap {
@@ -508,7 +510,7 @@ export function recordWatchSeconds(
 ) {
   const delta = Math.min(120, Math.max(0, Number(args.delta) || 0));
   if (delta < 1 || !Number.isFinite(args.malId)) return;
-  const day = args.day ?? localDayKey();
+  const day = args.day ?? localDayKey(); // shared UTC day — one global ranking
 
   let pending = 0;
   try {
@@ -672,6 +674,53 @@ export async function fetchWatchTimeTop(day: string, limit = 10): Promise<TopWat
   }
 
   return [...byId.values()].sort((a, b) => b.seconds - a.seconds).slice(0, limit);
+}
+
+/* ---------------- language / server preference ---------------- */
+
+const LANGPREF_KEY = "animetest123.langpref";
+
+export interface LangPref {
+  lang: "sub" | "dub";
+  server: "zoko" | "kiwi";
+}
+
+interface LangPrefStore {
+  global?: LangPref;
+  byAnime?: Record<string, LangPref>;
+}
+
+function readLangPref(): LangPrefStore {
+  return readJson<LangPrefStore>(LANGPREF_KEY, {});
+}
+
+/**
+ * What this viewer last watched (per anime, falling back to their global
+ * last choice) — the episode-list server sheet leads with it so pressing
+ * back and picking the next episode keeps you in DUB when you were in DUB.
+ */
+export function getLangPref(malId?: number): LangPref {
+  try {
+    const store = readLangPref();
+    const perAnime = malId != null ? store.byAnime?.[String(malId)] : undefined;
+    return perAnime ?? store.global ?? { lang: "sub", server: "zoko" };
+  } catch {
+    return { lang: "sub", server: "zoko" };
+  }
+}
+
+export function setLangPref(malId: number | null, pref: LangPref) {
+  try {
+    const store = readLangPref();
+    store.global = pref;
+    if (malId != null) {
+      store.byAnime = store.byAnime ?? {};
+      store.byAnime[String(malId)] = pref;
+    }
+    writeJson(LANGPREF_KEY, store);
+  } catch {
+    /* storage blocked — cosmetic preference only */
+  }
 }
 
 /* ---------------- Top 10 notifications (bell) ---------------- */

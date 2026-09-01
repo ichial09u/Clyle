@@ -47,3 +47,4 @@ mini-services/
 worklog.md
 download/
 .vercel
+db/export-comments.tmp.json

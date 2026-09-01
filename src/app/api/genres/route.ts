@@ -1,10 +1,14 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { ALL_GENRES } from "@/lib/catalog-seed";
+import { POPULAR_GENRES } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/genres — the full MAL genre/theme grid (like the app) with catalog counts. */
+/**
+ * GET /api/genres — the POPULAR genres only (curated), filtered to genres the
+ * catalog actually has, sorted most titles first. Niche tags never show up as
+ * empty tiles.
+ */
 export async function GET() {
   const rows = await db.anime.findMany({ where: { inCatalog: true }, select: { genres: true } });
   const counts = new Map<string, number>();
@@ -17,7 +21,9 @@ export async function GET() {
       /* ignore */
     }
   }
-  return NextResponse.json({
-    genres: ALL_GENRES.map((name) => ({ name, count: counts.get(name) ?? 0 })),
-  });
+  const genres = POPULAR_GENRES
+    .map((name) => ({ name, count: counts.get(name) ?? 0 }))
+    .filter((g) => g.count > 0)
+    .sort((a, b) => b.count - a.count);
+  return NextResponse.json({ genres });
 }

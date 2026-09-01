@@ -29,6 +29,18 @@ export interface SyncResult {
   newEpisodes: Array<{ malId: number; ep: number; lenMin?: number | null }>;
 }
 
+/**
+ * Manual art overrides — MAL/AniList still serve decades-old posters for a few
+ * long-running shows; these pin the current-era key visuals so every sync
+ * keeps them instead of reverting (One Piece Elbaph arc key visual).
+ */
+const ART_OVERRIDES: Record<number, { image?: string; banner?: string }> = {
+  21: {
+    image: "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/014548118c75.jpg",
+    banner: "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/014548118c75.jpg",
+  },
+};
+
 let running: Promise<SyncResult> | null = null;
 
 export function syncInProgress(): boolean {
@@ -47,8 +59,8 @@ function toRow(a: JikanAnime) {
   return {
     title: a.title,
     titleEnglish: a.title_english ?? null,
-    image: posterUrl(a),
-    banner: bannerUrl(a),
+    image: ART_OVERRIDES[a.mal_id]?.image ?? posterUrl(a),
+    banner: ART_OVERRIDES[a.mal_id]?.banner ?? bannerUrl(a),
     synopsis: a.synopsis ?? null,
     type: a.type ?? null,
     rating: a.rating ?? null,

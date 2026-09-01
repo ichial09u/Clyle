@@ -93,7 +93,7 @@ export async function POST(req: Request) {
   const malId = Number(body.malId);
   const userId = (body.userId ?? "").trim();
   const text = (body.text ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
-  const nickname = (body.nickname ?? "Otaku").replace(/\s+/g, " ").trim().slice(0, 24) || "Otaku";
+  const nickname = (body.nickname ?? "Username").replace(/\s+/g, " ").trim().slice(0, 24) || "Username";
   const avatar =
     typeof body.avatar === "string" && body.avatar.startsWith("data:image/") && body.avatar.length <= 400_000
       ? body.avatar

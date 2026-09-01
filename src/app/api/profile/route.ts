@@ -36,10 +36,10 @@ export async function POST(req: Request) {
   }
 
   // nickname: 1-24 visible chars, collapsed whitespace
-  const nickname = (body.nickname ?? "Otaku")
+  const nickname = (body.nickname ?? "Username")
     .replace(/\s+/g, " ")
     .trim()
-    .slice(0, 24) || "Otaku";
+    .slice(0, 24) || "Username";
 
   // avatar: small data URL only (client resizes to 160x160 JPEG, ~15-40 KB)
   let avatar: string | null = null;

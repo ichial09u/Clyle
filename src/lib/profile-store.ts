@@ -45,7 +45,7 @@ export function getUserId(): string {
       typeof crypto !== "undefined" && "randomUUID" in crypto
         ? crypto.randomUUID()
         : `u-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    p = { id, nickname: `Otaku${id.slice(0, 4).toUpperCase()}`, avatar: null };
+    p = { id, nickname: "Username", avatar: null };
     writeProfile(p);
     // register on the server in the background (best effort)
     fetch("/api/profile", {
@@ -87,7 +87,7 @@ export function useSaveProfile() {
     const id = getUserId();
     const next: Profile = {
       id,
-      nickname: (patch.nickname ?? current?.nickname ?? "Otaku").replace(/\s+/g, " ").trim().slice(0, 24) || "Otaku",
+      nickname: (patch.nickname ?? current?.nickname ?? "Username").replace(/\s+/g, " ").trim().slice(0, 24) || "Username",
       avatar: patch.avatar !== undefined ? patch.avatar : current?.avatar ?? null,
     };
     writeProfile(next);

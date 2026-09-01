@@ -9,7 +9,7 @@
  *   4. poll status until READY/ERROR, print alias + build events on failure
  */
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, writeFileSync, statSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 
@@ -35,6 +35,24 @@ const api = async (path, init = {}) => {
   });
   return res;
 };
+
+// ---------- 0) carry forward prod user data ----------
+// The bundled SQLite resets on every deploy, so before building we fetch the
+// comments (and Top 10 history) the live site has accumulated and merge them
+// into the local db — comments survive site updates instead of vanishing.
+const PROD_URL = process.env.PROD_URL || "https://temporary-spry-granite-1f0h7ae.vercel.app";
+try {
+  console.log(`preserving live data: fetching ${PROD_URL}/api/export ...`);
+  const res = await fetch(`${PROD_URL}/api/export`, { signal: AbortSignal.timeout(30_000) });
+  if (!res.ok) throw new Error(`status ${res.status}`);
+  const data = await res.json();
+  const total = (data.comments?.length ?? 0) + (data.watchStats?.length ?? 0);
+  writeFileSync(join(ROOT, "db", "export-comments.tmp.json"), JSON.stringify(data));
+  execSync("node scripts/merge-comments.mjs db/export-comments.tmp.json", { cwd: ROOT, stdio: "inherit" });
+  console.log(`carried forward ${data.comments?.length ?? 0} comments + ${data.watchStats?.length ?? 0} watchStat rows (${total} rows total)`);
+} catch (err) {
+  console.log(`no live data carried forward (${String(err).slice(0, 120)}) — deploying as-is`);
+}
 
 // ---------- 1) manifest ----------
 const all = execSync("git ls-files", { cwd: ROOT, encoding: "utf8" })
