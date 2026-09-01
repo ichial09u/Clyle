@@ -613,6 +613,7 @@ export function minimalLite(malId: number, title: string, image: string | null):
     titleEnglish: null,
     image,
     banner: null,
+    logo: null,
     synopsis: null,
     type: null,
     ratingShort: null,

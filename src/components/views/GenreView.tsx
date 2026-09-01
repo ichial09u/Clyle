@@ -64,7 +64,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
             <div className="grid grid-cols-3 gap-2 px-4">
               {view.catalog.map((a) => (
                 <div key={a.malId}>
-                  <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
+                  <PosterCard image={a.image} title={a.title} logo={a.logo} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
                   <p className="mt-1 text-[11px] text-gray-400 truncate">{a.title}</p>
                 </div>
               ))}

@@ -32,6 +32,7 @@ model Anime {
   genres       String   @default("[]") // JSON array of genre names
   studios      String   @default("[]") // JSON array
   trailerYt    String?
+  logoUrl      String? // official title-logo art (fanart.tv-style clearlogo) overlaid inside poster cards
   totalEpisodes Int     @default(0) // known episode count from MAL
   inCatalog     Boolean @default(true) // "Zoko has it"
   hasDub        Boolean? // Zoko probe result: does a DUB stream exist? (null = not probed yet)

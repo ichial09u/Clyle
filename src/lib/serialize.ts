@@ -17,6 +17,7 @@ export function lite(row: Anime): AnimeLite {
     titleEnglish: row.titleEnglish,
     image: row.image,
     banner: row.banner,
+    logo: row.logoUrl,
     synopsis: row.synopsis,
     type: row.type,
     ratingShort: row.ratingShort,

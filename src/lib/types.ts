@@ -6,6 +6,8 @@ export interface AnimeLite {
   titleEnglish: string | null;
   image: string | null;
   banner: string | null;
+  /** Official title-logo art (fanart.tv-style clearlogo) — overlaid inside poster cards. */
+  logo?: string | null;
   synopsis: string | null;
   type: string | null;
   ratingShort: string | null;

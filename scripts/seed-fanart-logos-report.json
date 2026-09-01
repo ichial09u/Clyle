@@ -1,0 +1,61 @@
+{
+ "ok": [
+  {
+   "malId": 59741,
+   "title": "Tsuihou Sareta Tensei Juukishi wa Game Chishiki de Musou Suru",
+   "url": "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/4ed9a3d1bf8d.png"
+  },
+  {
+   "malId": 5114,
+   "title": "Hagane no Renkinjutsushi: FULLMETAL ALCHEMIST",
+   "url": "https://z-cdn.chatglm.cn/image-search-mcp/images-ppt/f7ebe2f6a55a.webp"
+  }
+ ],
+ "miss": [
+  {
+   "malId": 235,
+   "title": "Detective Conan"
+  },
+  {
+   "malId": 49233,
+   "title": "Saga of Tanya the Evil Season 2"
+  },
+  {
+   "malId": 54000,
+   "title": "Trapped in a Dating Sim: The World of Otome Games is Tough for Mobs Season 2"
+  },
+  {
+   "malId": 56735,
+   "title": "Oh Boy, Was I Wrong About Her"
+  },
+  {
+   "malId": 58929,
+   "title": "THE GHOST IN THE SHELL"
+  },
+  {
+   "malId": 60522,
+   "title": "Skeleton Knight in Another World Season 2"
+  },
+  {
+   "malId": 60636,
+   "title": "BLEACH: Thousand-Year Blood War - The Calamity"
+  },
+  {
+   "malId": 61126,
+   "title": "I Want to Love You Till Your Dying Day"
+  },
+  {
+   "malId": 61169,
+   "title": "BLACK TORCH"
+  },
+  {
+   "malId": 16498,
+   "title": "Attack on Titan"
+  },
+  {
+   "malId": 1535,
+   "title": "Death Note"
+  }
+ ],
+ "fail": []
+}

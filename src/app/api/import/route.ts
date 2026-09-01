@@ -4,6 +4,7 @@ import { jikanOne, type JikanAnime } from "@/lib/jikan";
 import { anilistToJikan, airedEpisodeCount, mediaByMal } from "@/lib/anilist";
 import { upsertAnime, importEpisodes, importEpisodesFromList } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
+import { fanartLogoFor, fanartEnabled } from "@/lib/fanart";
 import { lite } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -51,6 +52,14 @@ export async function POST(req: Request) {
 
   // imported episodes bring their skip intro/ending along (background, rate-limited)
   if (newEpisodes.length) after(() => prefetchSkipTimes(newEpisodes, 40));
+
+  // official title logo for the poster cards (background; only with FANART_API_KEY)
+  if (fanartEnabled()) {
+    after(async () => {
+      const url = await fanartLogoFor(malId);
+      if (url) await db.anime.update({ where: { malId }, data: { logoUrl: url } }).catch(() => undefined);
+    });
+  }
 
   const row = await db.anime.findUnique({ where: { malId } });
   return NextResponse.json({ anime: row ? lite(row) : null, episodesAdded });
