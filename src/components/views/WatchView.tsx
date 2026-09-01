@@ -11,7 +11,8 @@ import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerI
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
-  getCastState, onCastStateChange, onCastMediaError, type CastState,
+  castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
+  onCastMediaError, type CastState,
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 
@@ -435,6 +436,45 @@ export default function WatchView({
     };
   }, [castState, anime.malId, anime.title, anime.image, anime.totalEpisodes, episode, lang, server]);
 
+  /* -------- cast remote: position/duration/playing straight from the TV.
+     Polled 2×/s — fast enough for a smooth-feeling bar (the receiver
+     interpolates via getEstimatedTime), cheap enough to ignore. -------- */
+  const [castUi, setCastUi] = useState({ pos: 0, dur: 0, playing: false });
+  // while the user drags the bar, their finger wins over the poll
+  const [castScrub, setCastScrub] = useState<number | null>(null);
+  useEffect(() => {
+    if (castState !== "casting") {
+      setCastScrub(null);
+      return;
+    }
+    const tick = () =>
+      setCastUi({ pos: castPosition() ?? 0, dur: castDuration() ?? 0, playing: castIsPlaying() });
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, [castState, episode]); // episode: reset the readout the moment the TV loads the next one
+
+  const castToggle = () => {
+    // optimistic flip — the poll corrects us if the command failed
+    setCastUi((u) => ({ ...u, playing: !u.playing }));
+    void castTogglePlay();
+  };
+
+  const castSkip = (delta: number) => {
+    let target = (castScrub ?? castUi.pos) + delta;
+    if (castUi.dur > 0) target = Math.min(castUi.dur, target);
+    target = Math.max(0, target);
+    setCastUi((u) => ({ ...u, pos: target }));
+    void castSeek(target);
+  };
+
+  const commitCastScrub = () => {
+    setCastScrub((v) => {
+      if (v != null) void castSeek(v);
+      return null;
+    });
+  };
+
   /* -------- attach hls.js -------- */
   useEffect(() => {
     const video = videoRef.current;
@@ -457,6 +497,11 @@ export default function WatchView({
           imageUrl: anime.image,
           startTime: pendingSeekRef.current ?? resumeAtRef.current,
           captions: cap ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(cap.src)}`, label: cap.label || "English" } : undefined,
+        }).then((ok) => {
+          if (!ok) {
+            setCastMsg("Couldn't load this episode on the TV — Stop casting, then cast again");
+            window.setTimeout(() => setCastMsg(null), 12_000);
+          }
         });
         pendingSeekRef.current = null;
         return;
@@ -803,25 +848,105 @@ export default function WatchView({
               ) : null}
             </video>
 
-            {/* casting overlay — playback lives on the TV now */}
+            {/* casting overlay — playback lives on the TV now; the phone is
+                the remote: play/pause, ±10s, a scrub bar, and next-episode
+                (side-loaded into the LIVE session — the TV never disconnects
+                between episodes). */}
             {casting ? (
-              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-30">
-                <span className="w-14 h-14 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
-                  <Cast className="w-7 h-7 text-[#ff5252]" />
-                </span>
-                <p className="text-[14px] font-bold">Casting to your TV</p>
-                <p className="text-[11.5px] text-gray-400 max-w-[260px] text-center truncate">
-                  {anime.title} · Episode {episode} ({lang.toUpperCase()})
-                </p>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    stopCasting();
-                  }}
-                  className="mt-1 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-5 py-2 transition active:scale-95"
-                >
-                  Stop casting
-                </button>
+              <div
+                className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="shrink-0 flex flex-col items-center gap-2 pt-12 px-6 text-center">
+                  <span className="w-12 h-12 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
+                    <Cast className="w-6 h-6 text-[#ff5252]" />
+                  </span>
+                  <p className="text-[14px] font-bold">Casting to your TV</p>
+                  <p className="text-[11.5px] text-gray-400 max-w-[300px] truncate">
+                    {anime.title} · Episode {episode} ({lang.toUpperCase()})
+                  </p>
+                </div>
+
+                <div className="flex-1" />
+
+                <div className="shrink-0 px-8 pb-10 flex flex-col items-center gap-6">
+                  {/* transport row */}
+                  <div className="flex items-center gap-9">
+                    <button
+                      onClick={() => castSkip(-10)}
+                      className="relative w-12 h-12 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      aria-label="Back 10 seconds"
+                    >
+                      <RotateCcw className="w-7 h-7 text-white" />
+                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                    </button>
+                    <button
+                      onClick={castToggle}
+                      className="w-16 h-16 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
+                      aria-label={castUi.playing ? "Pause on TV" : "Play on TV"}
+                    >
+                      {castUi.playing ? (
+                        <Pause className="w-7 h-7 text-black fill-black" />
+                      ) : (
+                        <Play className="w-7 h-7 text-black ml-0.5 fill-black" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => castSkip(10)}
+                      className="relative w-12 h-12 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      aria-label="Forward 10 seconds"
+                    >
+                      <RotateCw className="w-7 h-7 text-white" />
+                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                    </button>
+                  </div>
+
+                  {/* progress bar (below the buttons) — scrubbing seeks the TV */}
+                  <div className="w-full max-w-[340px] flex items-center gap-2">
+                    <span className="text-[10.5px] text-gray-300 tabular-nums w-11 text-right shrink-0">{fmtTime(castScrub ?? castUi.pos)}</span>
+                    <div className="relative h-4 flex items-center flex-1">
+                      <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full">
+                        <div
+                          className="h-full bg-[#d32f2f] rounded-full"
+                          style={{ width: `${castUi.dur > 0 ? ((castScrub ?? castUi.pos) / castUi.dur) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={castUi.dur || 0}
+                        step={1}
+                        value={castScrub ?? Math.min(castUi.pos, castUi.dur || castUi.pos)}
+                        onChange={(e) => setCastScrub(parseFloat(e.target.value))}
+                        onPointerUp={commitCastScrub}
+                        onPointerCancel={() => setCastScrub(null)}
+                        onKeyUp={(e) => {
+                          if (e.key === "ArrowLeft" || e.key === "ArrowRight") commitCastScrub();
+                        }}
+                        className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
+                        aria-label="Seek on TV"
+                      />
+                    </div>
+                    <span className="text-[10.5px] text-gray-300 tabular-nums w-11 shrink-0">{fmtTime(castUi.dur)}</span>
+                  </div>
+
+                  {/* next episode — side-loads into the live cast session, so
+                      the TV keeps playing without ever disconnecting */}
+                  <button
+                    onClick={() => go(episode + 1)}
+                    disabled={episode >= total}
+                    className="flex items-center gap-2 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[13px] font-bold rounded-full px-6 py-2.5 transition active:scale-95 disabled:opacity-30"
+                  >
+                    <SkipForward className="w-4 h-4 fill-white" />
+                    Next episode
+                  </button>
+                  <button
+                    onClick={stopCasting}
+                    className="text-[12px] font-bold text-gray-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-4 py-1.5 transition active:scale-95"
+                  >
+                    Stop casting
+                  </button>
+                </div>
               </div>
             ) : null}
 
@@ -990,7 +1115,7 @@ export default function WatchView({
 
         {/* ---- in-player TOP bar: back / title / download ---- */}
         <div
-          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 pt-3 pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 pt-3 pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Back">
@@ -1014,7 +1139,7 @@ export default function WatchView({
 
         {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
         <div
-          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           {!iframeFallback ? (

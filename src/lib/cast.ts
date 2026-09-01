@@ -47,6 +47,18 @@ function noteTrail(s: string, code?: unknown) {
   if (castTrail.length > 12) castTrail.shift();
 }
 
+/* DEV-only hook point (set by the NODE_ENV-guarded block at the bottom of
+ * this file): lets the cast remote UI be exercised — and screenshotted —
+ * without real cast hardware. Always null in production builds. */
+let demoHook: {
+  position(): number | null;
+  duration(): number | null;
+  isPlaying(): boolean;
+  toggle(): boolean;
+  seek(s: number): boolean;
+  loadNext(): boolean;
+} | null = null;
+
 /* receiver-side playback failure (HLS the TV couldn't load etc.) */
 const mediaErrorListeners = new Set<(msg: string) => void>();
 export function onCastMediaError(fn: (msg: string) => void): () => void {
@@ -322,6 +334,7 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
 
 /** Load another episode into the live cast session (no re-prompt). */
 export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
+  if (demoHook) return demoHook.loadNext();
   if (!refs.session) return false;
   try {
     const chromeCast = (window as any).chrome?.cast;
@@ -356,6 +369,7 @@ export function castStop(): void {
 
 /** Best-effort current position inside the cast session (seconds). */
 export function castPosition(): number | null {
+  if (demoHook) return demoHook.position();
   try {
     const t = refs.media?.getEstimatedTime?.();
     return typeof t === "number" && Number.isFinite(t) ? t : null;
@@ -365,10 +379,100 @@ export function castPosition(): number | null {
 }
 
 export function castDuration(): number | null {
+  if (demoHook) return demoHook.duration();
   try {
     const d = refs.media?.duration;
     return typeof d === "number" && Number.isFinite(d) ? d : null;
   } catch {
     return null;
   }
+}
+
+/* ---- cast remote (phone controls the TV while casting) ---------------- */
+
+/** True while the receiver reports active playback (BUFFERING counts — it's en route to PLAYING). */
+export function castIsPlaying(): boolean {
+  if (demoHook) return demoHook.isPlaying();
+  try {
+    const st = refs.media?.status?.playerState;
+    return st === "PLAYING" || st === "BUFFERING";
+  } catch {
+    return false;
+  }
+}
+
+/** Play/pause the TV; returns false when there is no live media to control. */
+export async function castTogglePlay(): Promise<boolean> {
+  if (demoHook) return demoHook.toggle();
+  try {
+    const chromeCast = (window as any).chrome?.cast;
+    const media = refs.media;
+    if (!chromeCast || !media) return false;
+    if (castIsPlaying()) await media.pause?.(new chromeCast.media.PauseRequest());
+    else await media.play?.(new chromeCast.media.PlayRequest());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Jump the TV to an absolute second (remote progress bar + ±10s buttons). */
+export async function castSeek(sec: number): Promise<boolean> {
+  if (demoHook) return demoHook.seek(sec);
+  try {
+    const chromeCast = (window as any).chrome?.cast;
+    const media = refs.media;
+    if (!chromeCast || !media) return false;
+    const req = new chromeCast.media.SeekRequest();
+    req.currentTime = Math.max(0, sec);
+    await media.seek?.(req);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/* DEV-ONLY cast demo — strip-mined from production builds by the NODE_ENV
+ * check. `window.__castDemo.start()` fakes a live session (ticking position,
+ * toggle/seek/loadNext) so the remote UI can be verified without a TV. */
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  let demo = false;
+  let playing = true;
+  let base = Date.now();
+  let offset = 95; // fake position when the demo starts
+  const pos = () => (playing ? offset + (Date.now() - base) / 1000 : offset);
+  const api = {
+    start() {
+      demo = true;
+      playing = true;
+      base = Date.now();
+      refs.session = { demo: true };
+      setState("casting");
+    },
+    stop() {
+      demo = false;
+      refs.session = null;
+      setState("idle");
+    },
+  };
+  (window as any).__castDemo = api;
+  demoHook = {
+    position: () => (demo ? pos() : null),
+    duration: () => (demo ? 1425 : null),
+    isPlaying: () => demo && playing,
+    toggle() {
+      if (!demo) return false;
+      if (playing) offset = pos();
+      playing = !playing;
+      base = Date.now();
+      return true;
+    },
+    seek(s: number) {
+      if (!demo) return false;
+      offset = Math.max(0, s);
+      base = Date.now();
+      return true;
+    },
+    loadNext: () => demo,
+  };
 }
