@@ -238,16 +238,15 @@ export default function EpisodesView({
               <p className="px-4 pb-3 text-[11.5px] text-gray-400">Choose a server &amp; a server doesn&apos;t work, please choose another</p>
               <div className="px-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}>
                 {(() => {
+                  // SUB is always on both servers; DUB only on the servers
+                  // whose probe says a REAL (non-fake) dub exists. When one
+                  // server lacks the dub, only the other server's DUB button
+                  // is shown (e.g. Zoko's Blue Box dub is the sub re-uploaded).
+                  const dubServers = episodesData?.dubServers ?? ["zoko", "kiwi"];
                   const all = [
-                    { lang: "sub" as Lang, n: 1 as const },
-                    { lang: "sub" as Lang, n: 2 as const },
-                    // anime without a DUB yet — no DUB buttons at all
-                    ...(episodesData?.hasDub === false
-                      ? []
-                      : [
-                          { lang: "dub" as Lang, n: 1 as const },
-                          { lang: "dub" as Lang, n: 2 as const },
-                        ]),
+                    { lang: "sub" as Lang, server: "zoko" as const },
+                    { lang: "sub" as Lang, server: "kiwi" as const },
+                    ...dubServers.map((s) => ({ lang: "dub" as Lang, server: s })),
                   ];
                   // your last-used language first (so the top-left button is
                   // what you were watching), then the other language
@@ -256,12 +255,13 @@ export default function EpisodesView({
                   const ordered = [...preferred, ...rest];
                   return (
                     <div className="grid grid-cols-2 gap-2">
-                      {ordered.map(({ lang, n }) => {
-                        const isPref = lang === pref.lang && (n === 1 ? "zoko" : "kiwi") === pref.server;
+                      {ordered.map(({ lang, server }) => {
+                        const n: 1 | 2 = server === "zoko" ? 1 : 2;
+                        const isPref = lang === pref.lang && server === pref.server;
                         return (
                           <button
-                            key={`${lang}-${n}`}
-                            onClick={() => play(lang, n === 1 ? "zoko" : "kiwi")}
+                            key={`${lang}-${server}`}
+                            onClick={() => play(lang, server)}
                             title={isPref ? "Your last choice" : undefined}
                             className={`flex items-center justify-center gap-2 rounded-lg active:scale-[0.98] transition text-[13px] font-bold py-3 text-center text-black ${
                               isPref
@@ -277,7 +277,7 @@ export default function EpisodesView({
                     </div>
                   );
               })()}
-                {episodesData?.hasDub === false ? (
+                {episodesData?.dubServers?.length === 0 ? (
                   <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>
                 ) : null}
               </div>

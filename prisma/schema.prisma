@@ -35,7 +35,9 @@ model Anime {
   logoUrl      String? // official title-logo art (fanart.tv-style clearlogo) overlaid inside poster cards
   totalEpisodes Int     @default(0) // known episode count from MAL
   inCatalog     Boolean @default(true) // "Zoko has it"
-  hasDub        Boolean? // Zoko probe result: does a DUB stream exist? (null = not probed yet)
+  hasDub        Boolean? // Zoko dub verdict: does a REAL (non-fake) English dub stream exist? (null = not probed yet)
+  hasDubKiwi    Boolean? // Kiwi dub verdict — same probe against the Kiwi server (null = not probed)
+  tmdbId        Int?    // The Movie Database id (TV or Movie), for TMDB popularity ranking
   source        String  @default("seed") // seed | season-import | manual
   lastSyncedAt  DateTime?
   createdAt     DateTime @default(now())
@@ -138,20 +140,22 @@ model WatchStat {
   @@index([updatedAt])
 }
 
-// Top 10 Today membership-change event, surfaced in the bell notifications:
-//   "enter" — anime appeared in a day's Top 10 (wasn't in the previous
-//             published day's list)
-//   "leave" — anime dropped out when a day published without it
+// Top 10 membership-change event, surfaced in the bell notifications:
+//   "enter" — anime newly appeared in the Top 10
+//   "leave" — anime dropped out of the Top 10
+//   "up"    — anime climbed the ranking (surpassed a higher-ranked anime)
+//   "down"  — anime fell one or more ranks but is still in the Top 10
 // Deduped per (type, malId, day) so re-computations never double-notify.
 model Top10Event {
   id        Int      @id @default(autoincrement())
-  type      String // "enter" | "leave"
+  type      String // "enter" | "leave" | "up" | "down"
   malId     Int
-  day       String // the Top 10 day the event belongs to ("YYYY-MM-DD")
+  day       String // the ranking day the event belongs to ("YYYY-MM-DD")
   title     String
   image     String?
-  rank      Int? // rank on the day it entered (null for leaves)
-  weeks     Int? // leaves only: full weeks the anime was up (floor(days/7); 0 = less than a full 7 days)
+  rank      Int? // new rank (null for leaves)
+  prevRank  Int? // rank before the change (null for enters)
+  weeks     Int? // legacy (watch-time era leaves): full weeks the anime was up
   createdAt DateTime @default(now())
 
   @@unique([type, malId, day])

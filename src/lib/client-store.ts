@@ -605,6 +605,25 @@ export type TopWatchEntry = AnimeLite & {
   weeksInTop10?: number; // Math.floor(streakDays / 7)
 };
 
+/** One row of the "Top 10 This Month" rail (TMDB-popularity ranking). */
+export type Top10MonthEntry = AnimeLite & {
+  rank: number;
+  /** rank before the most recent refresh (null = new in the Top 10) */
+  prevRank: number | null;
+};
+
+/** The server's active Top 10 This Month (TMDB popularity order). */
+export async function fetchTop10Month(): Promise<Top10MonthEntry[]> {
+  try {
+    const res = await fetch("/api/top10");
+    if (!res.ok) return [];
+    const data = (await res.json()) as { items?: Top10MonthEntry[] };
+    return (data.items ?? []).filter((it) => Number.isFinite(it?.malId));
+  } catch {
+    return [];
+  }
+}
+
 /** Minimal stand-in when only a server event/snapshot knows this anime. */
 export function minimalLite(malId: number, title: string, image: string | null): AnimeLite {
   return {
@@ -731,17 +750,18 @@ const TOP10_READ_EVENT = "top10read-changed";
 
 export interface Top10EventItem {
   id: number;
-  type: "enter" | "leave";
+  type: "enter" | "leave" | "up" | "down";
   malId: number;
   day: string;
   title: string;
   image: string | null;
   rank: number | null;
-  weeks?: number | null; // leaves only: full weeks it was up (0 = less than 7 days)
+  prevRank?: number | null; // rank before the change (up/down/leave)
+  weeks?: number | null; // legacy (watch-time era leaves): full weeks it was up
   createdAt: string;
 }
 
-/** The server's Top 10 enter/leave feed (same for every viewer). */
+/** The server's Top 10 rank-change feed (same for every viewer). */
 export async function fetchTop10Events(): Promise<Top10EventItem[]> {
   const res = await fetch("/api/top10-events");
   if (!res.ok) throw new Error(String(res.status));

@@ -52,6 +52,8 @@ export interface EpisodesPayload {
   durationMin: number | null;
   total: number;
   hasDub: boolean;
+  /** which servers carry a real DUB for this title ("zoko", "kiwi") */
+  dubServers: Array<"zoko" | "kiwi">;
   episodes: EpisodeInfo[];
   newlyAdded: number;
 }

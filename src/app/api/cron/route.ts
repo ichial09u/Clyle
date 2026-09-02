@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { syncCatalog, lastSync } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { runSkipAudit } from "@/lib/skip-audit";
+import { refreshTop10Month } from "@/lib/top10-month";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -159,19 +160,28 @@ export async function GET(req: Request) {
     checks.push({ name: "watchtime-today", ok: false, detail: String(err).slice(0, 200) });
   }
 
-  // ---- 9) top 10 notifications feed (bell data path) ----
+  // ---- 9) top 10 rank notifications (bell data path) + TMDB refresh ----
   try {
+    await refreshTop10Month(); // rate-limited inside (6h TTL)
     const total = await db.top10Event.count();
     const latest = await db.top10Event.findFirst({
       orderBy: { id: "desc" },
-      select: { type: true, title: true, createdAt: true },
+      select: { type: true, title: true, rank: true, createdAt: true },
     });
+    const label =
+      latest?.type === "up"
+        ? `climbed to #${latest.rank}`
+        : latest?.type === "down"
+          ? `fell to #${latest.rank}`
+          : latest?.type === "enter"
+            ? "entered the Top 10"
+            : "left the Top 10";
     checks.push({
       name: "top10-events",
       ok: true,
       detail: latest
-        ? `${total} enter/leave event(s); latest: ${latest.title} ${latest.type === "enter" ? "entered" : "left"} the Top 10 (${latest.createdAt.toISOString()})`
-        : "no enter/leave events yet (bell stays empty until the Top 10 changes)",
+        ? `${total} rank-change event(s); latest: ${latest.title} ${label} (${latest.createdAt.toISOString()})`
+        : "no rank-change events yet (bell stays empty until the Top 10 moves)",
     });
   } catch (err) {
     healthy = false;

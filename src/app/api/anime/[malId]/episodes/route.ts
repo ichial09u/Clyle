@@ -61,15 +61,29 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // fall back to the stored count if the episode table has not caught up yet
   const total = episodes.length > 0 ? episodes[episodes.length - 1].number : anime.totalEpisodes;
 
-  // does Zoko even have a DUB for this show? probe once, remember the verdict
+  // does a REAL DUB exist for this show? probe once per server, remember.
+  // The verdict is per-anime (probed at ep 1) — individual later episodes
+  // just 404 at play time until the dub catches up.
   let hasDub = anime.hasDub;
-  if (hasDub == null) {
-    const verdict = await probeDubAvailable(malId, 1);
-    if (verdict != null) {
-      hasDub = verdict;
-      await db.anime.update({ where: { malId }, data: { hasDub } }).catch(() => undefined);
+  let hasDubKiwi = anime.hasDubKiwi;
+  if (hasDub == null || hasDubKiwi == null) {
+    const [zoko, kiwi] = await Promise.all([
+      hasDub == null ? probeDubAvailable(malId, 1) : Promise.resolve(null),
+      hasDubKiwi == null ? probeDubAvailable(malId, 1, "kiwi") : Promise.resolve(null),
+    ]);
+    if (zoko != null) {
+      hasDub = zoko;
+      await db.anime.update({ where: { malId }, data: { hasDub: zoko } }).catch(() => undefined);
+    }
+    if (kiwi != null) {
+      hasDubKiwi = kiwi;
+      await db.anime.update({ where: { malId }, data: { hasDubKiwi: kiwi } }).catch(() => undefined);
     }
   }
+  // null = not probed -> optimistic (show DUB; the stream API validates)
+  const dubServers: Array<"zoko" | "kiwi"> = [];
+  if (hasDub !== false) dubServers.push("zoko");
+  if (hasDubKiwi !== false) dubServers.push("kiwi");
 
   return NextResponse.json({
     malId,
@@ -78,7 +92,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     airing: anime.airing,
     durationMin: anime.durationMin,
     total,
-    hasDub: hasDub != null ? hasDub : true,
+    hasDub: dubServers.length > 0,
+    dubServers,
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
   });

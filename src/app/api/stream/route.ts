@@ -13,6 +13,12 @@ export const maxDuration = 60;
  *
  * Resolves one episode's direct HLS playlist + subtitle tracks + skip data
  * from Zoko, so our own player can stream it without Zoko's ad-laden page.
+ *
+ * DUB requests fall back across servers: if the requested server has no real
+ * dub for this anime/episode, the other server is tried ("if Zoko doesn't
+ * have it, show Kiwi's server"). The response's `serverUsed` reports which
+ * server actually served the stream (equal to the requested one unless the
+ * fallback kicked in).
  */
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
@@ -26,7 +32,17 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
 
-  const stream = await resolveStream(malId, ep, lang, server, { fresh });
+  let serverUsed: ServerId = server;
+  let stream = await resolveStream(malId, ep, lang, server, { fresh });
+  if (!stream && lang === "dub") {
+    // requested server has no real dub here — try the other one
+    const other: ServerId = server === "kiwi" ? "zoko" : "kiwi";
+    const alt = await resolveStream(malId, ep, lang, other, { fresh });
+    if (alt) {
+      stream = alt;
+      serverUsed = other;
+    }
+  }
   if (!stream) {
     return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
@@ -35,7 +51,7 @@ export async function GET(req: Request) {
   // (the live query wants the episode's length in minutes for its filters)
   const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
   const enriched = await withSkipDataLive(malId, ep, stream, { episodeLengthMin: meta?.durationMin });
-  return NextResponse.json(enriched, {
+  return NextResponse.json({ ...enriched, serverUsed }, {
     headers: { "Cache-Control": "no-store" },
   });
 }

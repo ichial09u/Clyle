@@ -16,6 +16,15 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zokoStreamPageUrl, type Lang, type ServerId } from "@/lib/zoko";
+import { db } from "@/lib/db";
+
+/** Zoko answered with a definitive "this page doesn't exist" (HTTP 404/410). */
+export class ZokoNoPageError extends Error {
+  constructor(status: number) {
+    super(`zoko page -> ${status}`);
+    this.name = "ZokoNoPageError";
+  }
+}
 
 const OBF_KEY = "otaku-embed-v1";
 const ZOKO_ORIGIN = "https://zokoanime.video";
@@ -120,8 +129,8 @@ async function diskWrite(key: string, entry: DiskEntry): Promise<void> {
  *   false = no dub page, or the dub is the sub file re-uploaded
  *   null  = couldn't ask right now (network) — caller should not cache a verdict
  */
-export async function probeDubAvailable(malId: number, ep = 1): Promise<boolean | null> {
-  return verifyRealDub(malId, ep, "zoko");
+export async function probeDubAvailable(malId: number, ep = 1, server: ServerId = "zoko"): Promise<boolean | null> {
+  return verifyRealDub(malId, ep, server);
 }
 
 async function fetchStream(malId: number, ep: number, lang: Lang, server: ServerId): Promise<ZokoStream | null> {
@@ -137,6 +146,11 @@ async function fetchStream(malId: number, ep: number, lang: Lang, server: Server
     signal: AbortSignal.timeout(20_000),
     redirect: "follow",
   });
+  if (res.status === 404 || res.status === 410) {
+    // definitive: Zoko has no such page (e.g. no dub uploaded for this
+    // episode). Must be distinguished from transient failures below.
+    throw new ZokoNoPageError(res.status);
+  }
   if (!res.ok) throw new Error(`zoko stream page -> ${res.status}`);
   const html = await res.text();
   const m = html.match(/window\.__P="([^"]+)"/);
@@ -209,8 +223,12 @@ async function segmentDigest(url: string): Promise<string | null> {
 /**
  * Does a REAL English dub exist for this episode?
  *   true  = dub stream present AND its content differs from the sub
- *   false = no dub at all, OR the dub is the sub's file re-uploaded (fake)
- *   null  = couldn't tell right now (network) — caller must NOT block
+ *   false = DEFINITIVE no-dub evidence: no dub page at all (HTTP 404), or the
+ *           dub is the sub's file re-uploaded (fake, identical segments)
+ *   null  = couldn't tell right now (network trouble / Zoko hiccup) — the
+ *           verdict is NOT cached, and the caller must NOT block playback on
+ *           it. (Caching a transient failure used to mark real-dub shows as
+ *           "no dub" for a day — that's how DUB vanished app-wide.)
  */
 export async function verifyRealDub(malId: number, ep: number, server: ServerId): Promise<boolean | null> {
   const key = dubCheckKey(malId, ep, server);
@@ -223,14 +241,28 @@ export async function verifyRealDub(malId: number, ep: number, server: ServerId)
   }
 
   try {
-    const [sub, dub] = await Promise.all([
+    const [sub, dubResult] = await Promise.all([
       resolveStreamRaw(malId, ep, "sub", server).catch(() => null), // sub is never verified -> no recursion
-      fetchStream(malId, ep, "dub", server).catch(() => null),
+      fetchStream(malId, ep, "dub", server).then(
+        (d) => d as ZokoStream | null,
+        (err: unknown) => ({ __error: err }),
+      ),
     ]);
+    let dub: ZokoStream | null = null;
+    let dubErr: unknown = null;
+    if (dubResult && typeof dubResult === "object" && "__error" in (dubResult as Record<string, unknown>)) {
+      dubErr = (dubResult as { __error: unknown }).__error;
+    } else if (dubResult) {
+      dub = dubResult as ZokoStream;
+    }
     if (!dub) {
-      // no dub page at all -> a stable "false"
-      await cacheDubVerdict(key, false);
-      return false;
+      if (dubErr instanceof ZokoNoPageError) {
+        // definitive: Zoko has no dub page for this episode -> stable false
+        await cacheDubVerdict(key, false);
+        return false;
+      }
+      // transient failure (timeout, 5xx, rate limit) — DO NOT cache, do not block
+      return null;
     }
     if (!sub) return null; // can't compare — don't guess
     if (sub.src === dub.src) {
@@ -250,9 +282,48 @@ export async function verifyRealDub(malId: number, ep: number, server: ServerId)
 }
 
 /**
+ * Per-server dub verdict for one anime (from the cached ep-1 probes).
+ *   true  = a real dub exists on that server
+ *   false = probed and definitively absent / fake on that server
+ *   null  = not probed yet
+ */
+export async function dubVerdictFor(malId: number, server: ServerId): Promise<boolean | null> {
+  try {
+    const anime = await db.anime.findUnique({
+      where: { malId },
+      select: { hasDub: true, hasDubKiwi: true },
+    });
+    if (!anime) return null;
+    return server === "kiwi" ? (anime.hasDubKiwi ?? null) : (anime.hasDub ?? null);
+  } catch {
+    return null;
+  }
+}
+
+/** Best-effort persist of a dub verdict (both servers share Zoko's backend
+ *  today, so a verified verdict on one server is recorded for that server). */
+export async function storeDubVerdict(malId: number, server: ServerId, verdict: boolean): Promise<void> {
+  try {
+    const data = server === "kiwi" ? { hasDubKiwi: verdict } : { hasDub: verdict };
+    await db.anime.update({ where: { malId }, data }).catch(() => undefined);
+  } catch {
+    /* verdict persistence is an optimization, never a correctness gate */
+  }
+}
+
+/**
  * Resolve one episode's direct stream. Cached (memory + disk) with
  * stale-while-revalidate: an expired entry is served immediately while a
  * fresh token is fetched in the background.
+ *
+ * DUB policy (bring-back-dub fix):
+ *  - the per-anime DB verdict (from the cheap ep-1 probe) is the source of
+ *    truth for "does a real dub exist",
+ *  - verdict false -> null fast (no network, UI hides DUB anyway),
+ *  - verdict true  -> resolve and PLAY (no per-play segment compare — that
+ *    per-play check turned Zoko hiccups into "no dub" for real-dub shows),
+ *  - verdict null  -> one live probe; only DEFINITIVE fake/missing evidence
+ *    blocks, a transient hiccup never blocks playback.
  */
 export async function resolveStream(
   malId: number,
@@ -263,11 +334,19 @@ export async function resolveStream(
 ): Promise<ZokoStream | null> {
   const data = await resolveStreamRaw(malId, ep, lang, server, opts);
   if (!data || lang !== "dub") return data;
-  // Fake-dub guard: Zoko re-uploads the SUB file under a DUB id for some
-  // shows — without this check "DUB" plays Japanese audio (Blue Box bug).
+
+  const verdict = await dubVerdictFor(malId, server);
+  if (verdict === true) return data;
+  if (verdict === false) return null;
+
+  // unknown: probe once (this caches into the dubcheck disk cache too)
   const real = await verifyRealDub(malId, ep, server);
-  if (real === false) return null;
-  return data;
+  if (real === false) {
+    void storeDubVerdict(malId, server, false);
+    return null;
+  }
+  if (real === true) void storeDubVerdict(malId, server, true);
+  return data; // real, or undecidable -> never block playback on a hiccup
 }
 
 async function resolveStreamRaw(

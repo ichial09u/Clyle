@@ -87,14 +87,9 @@ for (const w of data.watchStats ?? []) {
   stats.watchStats += 1;
 }
 
-for (const e of data.top10Events ?? []) {
-  await db.top10Event.upsert({
-    where: { type_malId_day: { type: e.type, malId: e.malId, day: e.day } },
-    update: {},
-    create: { type: e.type, malId: e.malId, day: e.day, title: e.title, image: e.image ?? null, rank: e.rank ?? null, weeks: e.weeks ?? null, ...(e.createdAt ? { createdAt: new Date(e.createdAt) } : {}) },
-  }).catch(() => undefined);
-  stats.top10Events += 1;
-}
+// top10Events are deliberately NOT carried forward anymore: notifications
+// were reset (user request) and the new rank-change feed starts empty —
+// re-importing the prod feed would resurrect the pre-reset enter/leave rows.
 
 let lastSealed;
 for (const m of data.top10Meta ?? []) {

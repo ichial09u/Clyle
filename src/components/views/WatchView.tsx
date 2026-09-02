@@ -59,6 +59,9 @@ export default function WatchView({
   // The server /api/stream also validates every dub play, so a stale value
   // can never put Japanese audio under a DUB label — this only drives the UI.
   const [hasDub, setHasDub] = useState<boolean | null>(null);
+  // which servers carry that dub ("zoko", "kiwi") — when the player's current
+  // server isn't one of them, toggling DUB auto-switches to one that is
+  const [dubServers, setDubServers] = useState<Array<ServerId> | null>(null);
   // generic in-player toast (dub fallback notices); cast errors use castMsg
   const [playerMsg, setPlayerMsg] = useState<string | null>(null);
 
@@ -66,8 +69,9 @@ export default function WatchView({
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean } | null) => {
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[] } | null) => {
         if (ok && d && typeof d.hasDub === "boolean") setHasDub(d.hasDub);
+        if (ok && d && Array.isArray(d.dubServers)) setDubServers(d.dubServers);
       })
       .catch(() => undefined);
     return () => {
@@ -1163,6 +1167,13 @@ export default function WatchView({
                 return;
               }
               const next: Lang = lang === "sub" ? "dub" : "sub";
+              if (next === "dub" && dubServers && dubServers.length > 0 && !dubServers.includes(server)) {
+                // this title's dub lives on the other server — jump there
+                const target = dubServers[0];
+                showPlayerMsg(`DUB is on ${target === "kiwi" ? "Kiwi" : "Zoko"} for this title — switched server`);
+                onEpisodeChange(episode, next, target);
+                return;
+              }
               setLang(next);
             }}
             className="font-slab text-[16px] font-bold truncate"

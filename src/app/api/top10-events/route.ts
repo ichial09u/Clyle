@@ -1,23 +1,24 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sealTop10Days } from "@/lib/top10";
+import { refreshTop10Month } from "@/lib/top10-month";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Top 10 Today notifications for the bell button:
- *   "X entered the Top 10 Today" / "X left the Top 10 Today".
+ * Top 10 rank-change notifications for the bell button:
+ *   "surpassed #3 — now #2" / "fell to #5" / "entered the Top 10" /
+ *   "left the Top 10".
  *
- * Opening the bell also runs the day-seal, so yesterday's final list is
- * published (and its leave/enter events recorded) even if nobody fetched
- * the rail that morning. Read state is per-device (localStorage) — the
- * server feed is the same for every viewer.
+ * The feed is driven by the TMDB-popularity ranking (top10-month.ts). A
+ * refresh is triggered opportunistically (rate-limited to once per TTL) so
+ * the bell has fresh news without waiting for the cron. Read state is
+ * per-device (localStorage); the server feed is the same for every viewer.
  *
- * GET /api/top10-events -> { events: [{ id, type, malId, day, title, image, rank, weeks, createdAt }] }
- *   leaves carry `weeks` = full weeks the anime was up (0 = less than 7 days).
+ * GET /api/top10-events -> { events: [{ id, type, malId, day, title, image, rank, prevRank, createdAt }] }
  */
 export async function GET() {
-  await sealTop10Days();
+  // rate-limited inside refreshTop10Month (6h TTL, in-flight deduped)
+  void refreshTop10Month().catch(() => undefined);
   const events = await db.top10Event.findMany({
     orderBy: [{ createdAt: "desc" }, { id: "desc" }],
     take: 50,

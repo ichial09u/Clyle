@@ -2,32 +2,17 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { lite } from "@/lib/serialize";
 import type { AnimeLite } from "@/lib/types";
-import {
-  isCurrentishTop10Day,
-  sealTop10Days,
-  streaksForDay,
-  touchTop10EnterEvents,
-} from "@/lib/top10";
+import { streaksForDay } from "@/lib/top10";
 
 export const dynamic = "force-dynamic";
 
 /**
- * In-app watch time — the data behind "Top 10 Today".
+ * In-app watch time — accumulated playback seconds per (day, anime).
  *
- * POST /api/watchtime { userId?, malId, day, delta, title?, image? }
- *   -> accumulates `delta` seconds of REAL playback onto the (day, malId) row.
- *      The rail stays empty until the first delta arrives, then ranks purely
- *      by how long people actually watch.
- *
- * GET /api/watchtime?day=YYYY-MM-DD&limit=10
- *   -> the day's most-watched anime as full lite objects (+ seconds), so the
- *      Home rail can tap through to details exactly like every other row.
- *      Catalog titles/posters are preferred over the player snapshots
- *      (fresh art even if MAL re-renders an image).
- *
- * `day` is the viewer's LOCAL calendar day so "today" matches their timezone;
- * every device can contribute to slightly different day buckets, which is the
- * friendliest interpretation of "Top 10 Today" for a global audience.
+ * This fed the original "Top 10 Today" rail; the rail now ranks by TMDB
+ * popularity (see /api/top10 + top10-month.ts) and the bell carries
+ * rank-change events instead of watch-time enter/leave events. The endpoint
+ * still records + serves watch seconds (profile stats, history).
  */
 interface WatchTimeBody {
   userId?: string;
@@ -54,13 +39,8 @@ export async function GET(req: Request) {
     take: limit,
   });
 
-  // Notifications + streaks ride the app's normal rail fetches (Home asks for
-  // a current day; smoke probes on scratch days skip the event machinery).
-  const currentish = isCurrentishTop10Day(day);
-  if (currentish) {
-    await sealTop10Days(); // first real request of a new day publishes yesterday
-    await touchTop10EnterEvents(day); // live "entered" while the day fills up
-  }
+  // Notifications no longer ride watch-time (rank-change events come from the
+  // TMDB-popularity Top 10 now); the streak metadata below stays for the API.
 
   // full catalog objects where we have the anime locally; otherwise fall back
   // to the title/poster snapshots the player sessions left behind

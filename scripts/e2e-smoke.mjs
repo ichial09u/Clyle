@@ -203,12 +203,20 @@ async function expectJson(name, path, init, validate) {
     (r, b) => r.ok && Array.isArray(b?.items) && b.items.length > 0 && Number.isFinite(b.items[0].streakDays) && typeof b.items[0].isNew === "boolean" && Number.isFinite(b.items[0].weeksInTop10),
   );
 
-  // ---- 5c) top 10 notifications feed (bell data path) ----
+  // ---- 5c) top 10 rank-change notifications feed (bell data path) ----
   await expectJson(
     "GET /api/top10-events (bell feed)",
     "/api/top10-events",
     {},
-    (r, b) => r.ok && Array.isArray(b?.events) && b.events.every((e) => (e.type === "enter" || e.type === "leave") && !!e.title && !!e.day),
+    (r, b) => r.ok && Array.isArray(b?.events) && b.events.every((e) => (["enter", "leave", "up", "down"].includes(e.type)) && !!e.title && !!e.day),
+  );
+
+  // ---- 5d) Top 10 This Month (TMDB popularity ranking) ----
+  await expectJson(
+    "GET /api/top10 (TMDB rank rail)",
+    "/api/top10",
+    {},
+    (r, b) => r.ok && Array.isArray(b?.items) && b.items.length > 0 && b.items.every((it) => Number.isFinite(it?.rank) && Number.isFinite(it?.malId)),
   );
 
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----

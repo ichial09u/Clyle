@@ -93,7 +93,7 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                 <div className="sticky top-0 bg-[#0b0b0b]/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-[#1c1c1c] flex items-start justify-between gap-3">
                   <div>
                     <h2 className="font-slab text-[18px] font-bold text-white leading-tight">Top 10 Notifications</h2>
-                    <p className="text-[12px] text-gray-500 mt-0.5">When an anime enters or leaves today&apos;s Top 10</p>
+                    <p className="text-[12px] text-gray-500 mt-0.5">When an anime climbs, falls, or enters the Top 10 This Month</p>
                   </div>
                   <button
                     onClick={closePanel}
@@ -111,14 +111,15 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                     </div>
                     <p className="mt-4 text-[14px] text-gray-300 font-semibold">No notifications yet</p>
                     <p className="mt-1.5 text-[12px] text-gray-500 leading-relaxed">
-                      When an anime enters or leaves the Top 10 Today, it shows up here. Watch something to get the list
-                      started.
+                      When an anime surpasses another, drops a rank, or enters the Top 10 This Month, it shows up here.
                     </p>
                   </div>
                 ) : (
                   <ul className="divide-y divide-[#161616] pb-[max(12px,env(safe-area-inset-bottom))]">
                     {events.map((e) => {
                       const isUnread = e.id > readId;
+                      const up = e.type === "up";
+                      const down = e.type === "down";
                       const enter = e.type === "enter";
                       return (
                         <li key={e.id}>
@@ -141,26 +142,28 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                             <div className="flex-1 min-w-0">
                               <p className="text-[13px] font-semibold text-white truncate">{e.title}</p>
                               <p className="text-[12px] text-gray-400 mt-0.5 flex items-center gap-1">
-                                {enter ? (
+                                {enter || up ? (
                                   <ArrowUpRight className="w-3.5 h-3.5 text-red-500 shrink-0" />
                                 ) : (
-                                  <ArrowDownRight className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                  <ArrowDownRight className={`w-3.5 h-3.5 shrink-0 ${down ? "text-gray-400" : "text-gray-500"}`} />
                                 )}
-                                {enter ? (
+                                {up ? (
+                                  <span>
+                                    surpassed {typeof e.prevRank === "number" ? <>#{e.prevRank}</> : "a rival"} — now <span className="text-white font-semibold">#{e.rank}</span>
+                                  </span>
+                                ) : down ? (
+                                  <span>
+                                    fell to <span className="text-white font-semibold">#{e.rank}</span>
+                                    {typeof e.prevRank === "number" ? <> from #{e.prevRank}</> : null}
+                                  </span>
+                                ) : enter ? (
                                   <span>
                                     entered the Top 10{e.rank && e.rank > 0 ? <> at <span className="text-white font-semibold">#{e.rank}</span></> : null}
                                   </span>
                                 ) : (
                                   <span>
                                     left the Top 10
-                                    {typeof e.weeks === "number" ? (
-                                      <>
-                                        {" · "}was up for{" "}
-                                        <span className="text-white font-semibold">
-                                          {e.weeks} week{e.weeks === 1 ? "" : "s"}
-                                        </span>
-                                      </>
-                                    ) : null}
+                                    {typeof e.prevRank === "number" ? <> (was #{e.prevRank})</> : null}
                                   </span>
                                 )}
                               </p>
