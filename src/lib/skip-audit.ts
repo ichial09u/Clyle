@@ -16,9 +16,10 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
  *   heuristic  — no data, but it's a TV-length episode (5-30 min per MAL),
  *                so the player's 8-90s window guarantees the button
  *   crowd      — viewers' scrub medians taught the app where the OP ends
- *   na         — non-TV content (movies, music, ONA/OVA/specials): no Skip
- *                Intro by design (never blindly skip outside TV-length) —
- *                neither ok nor uncovered, so imports can't fail the audit
+ *   na         — no Skip Intro by design: non-TV content (movies, music,
+ *                ONA/OVA/specials) and TV episodes longer than 30 min (the
+ *                8-90s guess would be wrong there) — neither ok nor
+ *                uncovered, so imports can't fail the audit
  *   uncovered  — nothing covers it and it SHOULD have a button
  *
  * `probe: true` additionally asks AniSkip live for up to `probeBudget`
@@ -95,11 +96,14 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
         source = "heuristic";
         introEnd = 90;
       } else if (
-        // non-TV content (movies, music videos, ONA/OVA/special episodes):
-        // Skip Intro intentionally never shows there — the 8-90s guess is
-        // far likelier wrong than right, and most shorts have no standard
-        // OP at all. Count as not-applicable so imports can't fail the audit.
-        (a.type != null && a.type !== "TV")
+        // non-TV content (movies, music videos, ONA/OVA/special episodes)
+        // AND TV episodes longer than 30 min (PSYCHO-PASS 3, RIN — hour-long
+        // formats): Skip Intro intentionally never guesses there — the 8-90s
+        // guess is far likelier wrong than right, hour-long formats have no
+        // standard OP position, and the crowd-scrub tier self-learns them.
+        // Count as not-applicable so imports can't fail the audit.
+        (a.type != null && a.type !== "TV") ||
+        ((a.type === "TV" || a.type == null) && a.durationMin != null && a.durationMin > 30)
       ) {
         source = "na";
       } else {
