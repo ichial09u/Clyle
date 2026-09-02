@@ -1,0 +1,562 @@
+   561→        // small start buffer, snappy startup
+   562→        maxBufferLength: 30,
+   563→        backBufferLength: 30,
+   564→      });
+   565→      hlsRef.current = hls;
+   566→      hls.loadSource(proxyUrl(stream.src, "m3u8"));
+   567→      hls.attachMedia(video);
+   568→      hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
+   569→        setLevels(data.levels ?? []);
+   570→        startPlayback();
+   571→      });
+   572→      hls.on(Hls.Events.ERROR, (_e, data) => {
+   573→        if (!data.fatal) return;
+   574→        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+   575→          hls.startLoad();
+   576→        } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+   577→          hls.recoverMediaError();
+   578→        } else if (!destroyed) {
+   579→          setStreamError(true);
+   580→        }
+   581→      });
+   582→    } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
+   583→      // Safari native HLS
+   584→      video.src = proxyUrl(stream.src, "m3u8");
+   585→      video.addEventListener("loadedmetadata", startPlayback, { once: true });
+   586→    } else if (!destroyed) {
+   587→      setStreamError(true);
+   588→    }
+   589→
+   590→    return () => {
+   591→      destroyed = true;
+   592→      hlsRef.current?.destroy();
+   593→      hlsRef.current = null;
+   594→      video.removeAttribute("src");
+   595→      video.load();
+   596→    };
+   597→  }, [stream, iframeFallback]);
+   598→
+   599→  /* -------- video element events -------- */
+   600→  useEffect(() => {
+   601→    const video = videoRef.current;
+   602→    if (!video) return;
+   603→    const onTime = () => {
+   604→      setCurrentTime(video.currentTime);
+   605→      if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
+   606→    };
+   607→    const onMeta = () => setDuration(video.duration || 0);
+   608→    const onPlay = () => {
+   609→      setPlaying(true);
+   610→      lastActiveRef.current = Date.now(); // playback resumed — start the clock
+   611→    };
+   612→    const onPause = () => {
+   613→      setPlaying(false);
+   614→      lastActiveRef.current = Date.now(); // paused — don't count idle time
+   615→      saveNow();
+   616→    };
+   617→    const onEnded = () => {
+   618→      setPlaying(false);
+   619→      lastActiveRef.current = Date.now();
+   620→      saveNow({ completed: true });
+   621→    };
+   622→    video.addEventListener("timeupdate", onTime);
+   623→    video.addEventListener("progress", onTime);
+   624→    video.addEventListener("loadedmetadata", onMeta);
+   625→    video.addEventListener("durationchange", onMeta);
+   626→    video.addEventListener("play", onPlay);
+   627→    video.addEventListener("pause", onPause);
+   628→    video.addEventListener("ended", onEnded);
+   629→    return () => {
+   630→      video.removeEventListener("timeupdate", onTime);
+   631→      video.removeEventListener("progress", onTime);
+   632→      video.removeEventListener("loadedmetadata", onMeta);
+   633→      video.removeEventListener("durationchange", onMeta);
+   634→      video.removeEventListener("play", onPlay);
+   635→      video.removeEventListener("pause", onPause);
+   636→      video.removeEventListener("ended", onEnded);
+   637→    };
+   638→  }, [stream, iframeFallback, saveNow]);
+   639→
+   640→  /* -------- episode scene thumbnail (Crunchyroll-style Continue Watching art)
+   641→     Once per episode session, at a random moment 8-28s in, grab whatever
+   642→     frame is on screen and store it as this episode's thumbnail. Streams play
+   643→     through our same-origin proxy via MSE, so the canvas stays untainted;
+   644→     any failure is silently ignored (the poster art remains the fallback). */
+   645→  useEffect(() => {
+   646→    if (!ready || iframeFallback) return;
+   647→    if (getEpThumb(anime.malId, episode, lang)) return; // this episode already has its scene
+   648→    let tries = 0;
+   649→    let timer = 0;
+   650→    const capture = () => {
+   651→      timer = 0;
+   652→      const v = videoRef.current;
+   653→      if (!v || streamErrorRef.current || castStateRef.current === "casting") return;
+   654→      if (getEpThumb(anime.malId, episode, lang)) return; // captured meanwhile
+   655→      // wait for real frames: decoded video, actually playing, a few seconds in
+   656→      if (v.readyState < 2 || v.paused || v.ended || !v.videoWidth || v.currentTime < 3) {
+   657→        if (++tries <= 12) timer = window.setTimeout(capture, 5000);
+   658→        return;
+   659→      }
+   660→      try {
+   661→        const W = 224;
+   662→        const H = 126; // 16:9 card
+   663→        const canvas = document.createElement("canvas");
+   664→        canvas.width = W;
+   665→        canvas.height = H;
+   666→        const ctx = canvas.getContext("2d");
+   667→        if (!ctx) return;
+   668→        // center-crop the source frame to 16:9 so nothing looks squashed
+   669→        const srcAspect = v.videoWidth / v.videoHeight;
+   670→        let sx = 0;
+   671→        let sy = 0;
+   672→        let sw = v.videoWidth;
+   673→        let sh = v.videoHeight;
+   674→        if (srcAspect > W / H) {
+   675→          sw = v.videoHeight * (W / H);
+   676→          sx = (v.videoWidth - sw) / 2;
+   677→        } else {
+   678→          sh = v.videoWidth / (W / H);
+   679→          sy = (v.videoHeight - sh) / 2;
+   680→        }
+   681→        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
+   682→        const url = canvas.toDataURL("image/jpeg", 0.62);
+   683→        if (url.length > 64) saveEpThumb(anime.malId, episode, lang, url);
+   684→      } catch {
+   685→        /* tainted canvas / quota — poster stays the fallback */
+   686→      }
+   687→    };
+   688→    // the "random scene": fire at a random moment 8-28s into the session,
+   689→    // then poll every 5s until frames are really flowing (~1 min patience)
+   690→    timer = window.setTimeout(capture, 8000 + Math.floor(Math.random() * 20000));
+   691→    return () => {
+   692→      if (timer) window.clearTimeout(timer);
+   693→    };
+   694→  }, [ready, iframeFallback, anime.malId, episode, lang]);
+   695→
+   696→  const go = useCallback((ep: number) => {
+   697→    if (ep >= 1 && ep <= total) onEpisodeChange(ep, lang, server);
+   698→  }, [total, onEpisodeChange, lang, server]);
+   699→
+   700→  const togglePlay = () => {
+   701→    const video = videoRef.current;
+   702→    if (!video || castStateRef.current === "casting") return;
+   703→    if (video.paused) video.play().catch(() => undefined);
+   704→    else video.pause();
+   705→  };
+   706→
+   707→  const seekTo = (s: number) => {
+   708→    const video = videoRef.current;
+   709→    if (!video || castStateRef.current === "casting") return;
+   710→    video.currentTime = Math.max(0, Math.min(duration || s, s));
+   711→    setCurrentTime(video.currentTime);
+   712→  };
+   713→
+   714→  // Crowd-learned Skip Intro: when a viewer manually scrubs forward from
+   715→  // inside the intro region well past it, that target is the best possible
+   716→  // hint where the OP ends on shows with no skip data (new seasons).
+   717→  // Throttled to one vote/minute; the server validates + takes medians.
+   718→  const lastSkipVoteRef = useRef(0);
+   719→  const userScrub = (to: number) => {
+   720→    const from = currentTime;
+   721→    seekTo(to);
+   722→    try {
+   723→      const now = Date.now();
+   724→      if (now - lastSkipVoteRef.current < 60_000) return;
+   725→      if (from >= 8 && from <= 240 && Number.isFinite(to) && to >= from + 15 && to <= 420) {
+   726→        lastSkipVoteRef.current = now;
+   727→        fetch("/api/skip-vote", {
+   728→          method: "POST",
+   729→          headers: { "Content-Type": "application/json" },
+   730→          body: JSON.stringify({ malId: anime.malId, ep: episode, target: to }),
+   731→          keepalive: true,
+   732→        }).catch(() => undefined);
+   733→      }
+   734→    } catch {
+   735→      /* voting is cosmetic */
+   736→    }
+   737→  };
+   738→
+   739→  const applyQuality = (q: "auto" | number) => {
+   740→    setQuality(q);
+   741→    // save the spot immediately so nothing (network blip, app kill) can lose
+   742→    // it across the switch — hls.currentLevel changes are seamless and do
+   743→    // NOT restart playback
+   744→    saveNow();
+   745→    if (hlsRef.current) hlsRef.current.currentLevel = q === "auto" ? -1 : q;
+   746→  };
+   747→
+   748→  /** Switch stream server mid-playback without losing the spot. */
+   749→  const switchServer = (next: "zoko" | "kiwi") => {
+   750→    if (next === server || castStateRef.current === "casting") return;
+   751→    const pos = videoRef.current?.currentTime ?? 0;
+   752→    saveNow(); // save your spot RIGHT NOW
+   753→    pendingSeekRef.current = pos; // the new source resumes exactly here
+   754→    setPanel(null);
+   755→    onEpisodeChange(episode, lang, next);
+   756→  };
+   757→
+   758→  const applySpeed = (s: number) => {
+   759→    setSpeed(s);
+   760→    if (videoRef.current) videoRef.current.playbackRate = s;
+   761→  };
+   762→
+   763→  const toggleSubs = (on: boolean) => {
+   764→    setSubsOn(on);
+   765→    const video = videoRef.current;
+   766→    if (!video) return;
+   767→    for (const t of Array.from(video.textTracks)) t.mode = on ? "showing" : "hidden";
+   768→  };
+   769→
+   770→  const fullscreen = () => {
+   771→    const el = shellRef.current;
+   772→    if (!el) return;
+   773→    if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
+   774→    else el.requestFullscreen?.().catch(() => undefined);
+   775→  };
+   776→
+   777→  /* -------- Chromecast actions -------- */
+   778→  const startCasting = async () => {
+   779→    if (!stream) return;
+   780→    const res = await castLoad({
+   781→      src: castMediaUrlRef.current,
+   782→      title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+   783→      imageUrl: anime.image,
+   784→      startTime: videoRef.current ? videoRef.current.currentTime : resumeAtRef.current,
+   785→      captions: subTrack
+   786→        ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(subTrack.src)}`, label: subTrack.label || "English" }
+   787→        : undefined,
+   788→    });
+   789→    if (res.ok) {
+   790→      videoRef.current?.pause();
+   791→      setCastMsg(null);
+   792→    } else {
+   793→      setCastMsg(res.error ?? "Cast failed");
+   794→      window.setTimeout(() => setCastMsg(null), 12_000);
+   795→    }
+   796→  };
+   797→
+   798→  const stopCasting = () => {
+   799→    // save the TV's position before handing playback back
+   800→    const pos = castPosition();
+   801→    const dur = castDuration();
+   802→    if (pos != null) {
+   803→      saveProgressDetailed({
+   804→        malId: anime.malId, episode, lang, server,
+   805→        position: pos, duration: dur || 0,
+   806→        title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+   807→      });
+   808→    }
+   809→    castStop();
+   810→  };
+   811→
+   812→  // Skip buttons — three-tier data: Zoko payload → AniSkip dataset (merged
+   813→  // server-side in /api/stream) → crowd-learned scrub medians → last-resort
+   814→  // heuristic window (~90s OP) for TV-length episodes only, so we never cut
+   815→  // movies or shorts blindly.
+   816→  const introSkip: { start: number; end: number } | undefined =
+   817→    stream?.skip?.intro ?? (duration >= 300 && duration <= 1800 ? { start: 8, end: 90 } : undefined);
+   818→  const outroSkip = stream?.skip?.outro;
+   819→  const showSkipIntro = introSkip && currentTime >= introSkip.start && currentTime <= introSkip.end && !locked;
+   820→  const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
+   821→  // Zoko tags EVERY subtitle track lang:"en" and often lists English NOT first
+   822→  // (FMA:B ep1: Arabic, Chinese, Chinese, Danish, Dutch, English, ...) — pick
+   823→  // the real English track instead of blindly playing subtitles[0].
+   824→  const subTrack = pickSubtitleTrack(stream?.subtitles);
+   825→
+   826→  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+   827→  const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
+   828→  const casting = castState === "casting";
+   829→  const castUsable = castState !== "unavailable";
+   830→  const ui = uiVisible; // shorthand for JSX below
+   831→
+   832→  // Skip buttons fade away after 3s untapped; any player-UI summon (tap on
+   833→  // the video) brings them straight back while the window is still active.
+   834→  const [skipAwake, setSkipAwake] = useState(true);
+   835→  const skipFadeTimer = useRef<number | null>(null);
+   836→  useEffect(() => {
+   837→    const inWindow = Boolean((showSkipIntro || showSkipOutro) && !casting && !iframeFallback);
+   838→    if (skipFadeTimer.current) window.clearTimeout(skipFadeTimer.current);
+   839→    if (!inWindow) {
+   840→      setSkipAwake(true);
+   841→      return;
+   842→    }
+   843→    setSkipAwake(true);
+   844→    skipFadeTimer.current = window.setTimeout(() => setSkipAwake(false), 3_000);
+   845→    return () => {
+   846→      if (skipFadeTimer.current) window.clearTimeout(skipFadeTimer.current);
+   847→    };
+   848→  }, [showSkipIntro, showSkipOutro, ui, casting, iframeFallback]);
+   849→
+   850→  return (
+   851→    <div className="fixed inset-0 z-50 bg-black select-none" ref={shellRef}>
+   852→      {/* player surface — full screen; every control is overlaid INSIDE it */}
+   853→      <div
+   854→        className={`relative w-full h-full flex items-center justify-center overflow-hidden bg-black ${resizeMode === 2 ? "" : "py-2"}`}
+   855→        onPointerMove={handlePointerMove}
+   856→        onClick={() => {
+   857→          // tap the video to show/hide the in-player controls
+   858→          if (!playing || panel || locked || streamError) {
+   859→            showUi(false);
+   860→          } else if (ui) {
+   861→            setUiVisible(false);
+   862→            if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+   863→          } else {
+   864→            showUi();
+   865→          }
+   866→        }}
+   867→      >
+   868→        {!iframeFallback ? (
+   869→          <>
+   870→            <video
+   871→              ref={videoRef}
+   872→              playsInline
+   873→              // AirPlay on iOS Safari (Chromecast is Chrome/Android-only)
+   874→              {...({ "x-webkit-airplay": "allow" } as Record<string, string>)}
+   875→              poster={artUrl(anime.banner ?? anime.image)}
+   876→              className={`w-full h-full border-0 bg-black object-contain ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
+   877→            >
+   878→              {subTrack && subsOn ? (
+   879→                <track
+   880→                  key={subTrack.src}
+   881→                  kind="subtitles"
+   882→                  srcLang={subTrack.lang || "en"}
+   883→                  label={subTrack.label || "English"}
+   884→                  src={proxyUrl(subTrack.src, "vtt")}
+   885→                  default
+   886→                />
+   887→              ) : null}
+   888→            </video>
+   889→
+   890→            {/* casting overlay — playback lives on the TV now; the phone is
+   891→                the remote: play/pause, ±10s, a scrub bar, and next-episode
+   892→                (side-loaded into the LIVE session — the TV never disconnects
+   893→                between episodes). */}
+   894→            {casting ? (
+   895→              <div
+   896→                className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-30"
+   897→                onClick={(e) => e.stopPropagation()}
+   898→              >
+   899→                <div className="shrink-0 flex flex-col items-center gap-2 pt-12 md:pt-14 px-6 text-center">
+   900→                  <span className="w-12 h-12 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
+   901→                    <Cast className="w-6 h-6 text-[#ff5252]" />
+   902→                  </span>
+   903→                  <p className="text-[14px] font-bold">Casting to your TV</p>
+   904→                  <p className="text-[11.5px] text-gray-400 max-w-[300px] md:max-w-[440px] truncate">
+   905→                    {anime.title} · Episode {episode} ({lang.toUpperCase()})
+   906→                  </p>
+   907→                </div>
+   908→
+   909→                <div className="flex-1" />
+   910→
+   911→                <div className="shrink-0 px-8 pb-10 md:pb-14 flex flex-col items-center gap-6">
+   912→                  {/* transport row */}
+   913→                  <div className="flex items-center gap-9 md:gap-14">
+   914→                    <button
+   915→                      onClick={() => castSkip(-10)}
+   916→                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+   917→                      aria-label="Back 10 seconds"
+   918→                    >
+   919→                      <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
+   920→                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+   921→                    </button>
+   922→                    <button
+   923→                      onClick={castToggle}
+   924→                      className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
+   925→                      aria-label={castUi.playing ? "Pause on TV" : "Play on TV"}
+   926→                    >
+   927→                      {castUi.playing ? (
+   928→                        <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
+   929→                      ) : (
+   930→                        <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
+   931→                      )}
+   932→                    </button>
+   933→                    <button
+   934→                      onClick={() => castSkip(10)}
+   935→                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+   936→                      aria-label="Forward 10 seconds"
+   937→                    >
+   938→                      <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
+   939→                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+   940→                    </button>
+   941→                  </div>
+   942→
+   943→                  {/* progress bar (below the buttons) — scrubbing seeks the TV */}
+   944→                  <div className="w-full max-w-[340px] md:max-w-[560px] lg:max-w-[680px] flex items-center gap-2">
+   945→                    <span className="text-[10.5px] text-gray-300 tabular-nums w-11 text-right shrink-0">{fmtTime(castScrub ?? castUi.pos)}</span>
+   946→                    <div className="relative h-4 flex items-center flex-1">
+   947→                      <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full">
+   948→                        <div
+   949→                          className="h-full bg-[#d32f2f] rounded-full"
+   950→                          style={{ width: `${castUi.dur > 0 ? ((castScrub ?? castUi.pos) / castUi.dur) * 100 : 0}%` }}
+   951→                        />
+   952→                      </div>
+   953→                      <input
+   954→                        type="range"
+   955→                        min={0}
+   956→                        max={castUi.dur || 0}
+   957→                        step={1}
+   958→                        value={castScrub ?? Math.min(castUi.pos, castUi.dur || castUi.pos)}
+   959→                        onChange={(e) => setCastScrub(parseFloat(e.target.value))}
+   960→                        onPointerUp={commitCastScrub}
+   961→                        onPointerCancel={() => setCastScrub(null)}
+   962→                        onKeyUp={(e) => {
+   963→                          if (e.key === "ArrowLeft" || e.key === "ArrowRight") commitCastScrub();
+   964→                        }}
+   965→                        className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
+   966→                        aria-label="Seek on TV"
+   967→                      />
+   968→                    </div>
+   969→                    <span className="text-[10.5px] text-gray-300 tabular-nums w-11 shrink-0">{fmtTime(castUi.dur)}</span>
+   970→                  </div>
+   971→
+   972→                  {/* next episode — side-loads into the live cast session, so
+   973→                      the TV keeps playing without ever disconnecting */}
+   974→                  <button
+   975→                    onClick={() => go(episode + 1)}
+   976→                    disabled={episode >= total}
+   977→                    className="flex items-center gap-2 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[13px] font-bold rounded-full px-6 py-2.5 transition active:scale-95 disabled:opacity-30"
+   978→                  >
+   979→                    <SkipForward className="w-4 h-4 fill-white" />
+   980→                    Next episode
+   981→                  </button>
+   982→                  <button
+   983→                    onClick={stopCasting}
+   984→                    className="text-[12px] font-bold text-gray-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-4 py-1.5 transition active:scale-95"
+   985→                  >
+   986→                    Stop casting
+   987→                  </button>
+   988→                </div>
+   989→              </div>
+   990→            ) : null}
+   991→
+   992→            {/* center transport cluster — [back 10s] [play/pause] [forward 10s],
+   993→                like the reference player. The wrapper is pointer-events-none so
+   994→                taps between the buttons still fall through to the surface
+   995→                (show/hide controls); only the three buttons capture taps. */}
+   996→            {ready && !casting && !streamError && !locked ? (
+   997→              <div
+   998→                className={`absolute inset-0 flex items-center justify-center gap-8 md:gap-14 z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+   999→              >
+  1000→                <button
+  1001→                  onClick={(e) => {
+  1002→                    e.stopPropagation();
+  1003→                    seekTo(Math.max(0, currentTime - 10));
+  1004→                    showUi();
+  1005→                  }}
+  1006→                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+  1007→                  aria-label="Back 10 seconds"
+  1008→                >
+  1009→                  <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
+  1010→                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+  1011→                </button>
+  1012→                <button
+  1013→                  onClick={(e) => {
+  1014→                    e.stopPropagation();
+  1015→                    togglePlay();
+  1016→                  }}
+  1017→                  className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition pointer-events-auto"
+  1018→                  aria-label={playing ? "Pause" : "Play"}
+  1019→                >
+  1020→                  {playing ? (
+  1021→                    <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
+  1022→                  ) : (
+  1023→                    <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
+  1024→                  )}
+  1025→                </button>
+  1026→                <button
+  1027→                  onClick={(e) => {
+  1028→                    e.stopPropagation();
+  1029→                    seekTo(Math.min(duration || 0, currentTime + 10));
+  1030→                    showUi();
+  1031→                  }}
+  1032→                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+  1033→                  aria-label="Forward 10 seconds"
+  1034→                >
+  1035→                  <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
+  1036→                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+  1037→                </button>
+  1038→              </div>
+  1039→            ) : null}
+  1040→
+  1041→            {/* buffering spinner */}
+  1042→            {!ready && !streamError && !casting ? (
+  1043→              <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+  1044→                <div className="w-9 h-9 border-2 border-[#d32f2f] border-t-transparent rounded-full animate-spin" />
+  1045→              </div>
+  1046→            ) : null}
+  1047→          </>
+  1048→        ) : (
+  1049→          /* hard-sandboxed Zoko iframe fallback (no popups, no top navigation).
+  1050→             Cross-origin internals can't be recolored, so the fallback gets a
+  1051→             red-themed frame + our own red chrome around it. */
+  1052→          <div className={`w-full h-full flex items-center justify-center ${resizeMode === 2 ? "" : "px-2"}`}>
+  1053→            <div className="relative w-full h-full rounded-md overflow-hidden ring-2 ring-[#d32f2f]/80 shadow-[0_0_24px_rgba(211,47,47,0.35)] bg-black">
+  1054→              <iframe
+  1055→                key={`zoko-${episode}-${lang}`}
+  1056→                src={zokoPlayerUrl(anime.malId, episode, lang)}
+  1057→                title={`${anime.title} — Episode ${episode} (${lang})`}
+  1058→                className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
+  1059→                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+  1060→                referrerPolicy="no-referrer"
+  1061→                sandbox="allow-scripts allow-same-origin allow-presentation"
+  1062→              />
+  1063→              <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-[#d32f2f]/25 to-transparent" />
+  1064→              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#d32f2f]/25 to-transparent" />
+  1065→            </div>
+  1066→          </div>
+  1067→        )}
+  1068→
+  1069→        {/* resumed pill — "picked up where you left off" */}
+  1070→        {resumedFrom != null && !casting ? (
+  1071→          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 player-layer" style={{ top: "3.25rem" }}>
+  1072→            <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
+  1073→            <button
+  1074→              onClick={(e) => {
+  1075→                e.stopPropagation();
+  1076→                seekTo(0);
+  1077→                setResumedFrom(null);
+  1078→              }}
+  1079→              className="text-[11px] font-bold text-[#ff8a80] hover:text-white bg-white/10 hover:bg-[#d32f2f] rounded-full px-2.5 py-1 transition"
+  1080→            >
+  1081→              Start over
+  1082→            </button>
+  1083→          </div>
+  1084→        ) : null}
+  1085→
+  1086→        {/* skip intro / skip ending — appear when the window opens, fade out
+  1087→            after 3s untapped, come back whenever the player UI is summoned */}
+  1088→        {showSkipOutro && !casting && !iframeFallback ? (
+  1089→          <button
+  1090→            onClick={(e) => {
+  1091→              e.stopPropagation();
+  1092→              seekTo(outroSkip!.end);
+  1093→              showUi();
+  1094→            }}
+  1095→            className={`absolute bottom-44 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
+  1096→              skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
+  1097→            }`}
+  1098→          >
+  1099→            <FastForward className="w-4 h-4 text-[#35d5bf]" /> Skip Ending
+  1100→          </button>
+  1101→        ) : null}
+  1102→        {showSkipIntro && !casting && !iframeFallback ? (
+  1103→          <button
+  1104→            onClick={(e) => {
+  1105→              e.stopPropagation();
+  1106→              seekTo(introSkip!.end);
+  1107→              showUi();
+  1108→            }}
+  1109→            className={`absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
+  1110→              skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
+  1111→            }`}
+  1112→          >
+  1113→            <Zap className="w-4 h-4 text-[#35d5bf]" /> Skip Intro
+  1114→          </button>
+  1115→        ) : null}
+  1116→
+  1117→        {/* player toast: cast failures + dub-fallback notices (never both) */}
+  1118→        {castMsg || playerMsg ? (
+  1119→          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center">
+  1120→            {castMsg ?? playerMsg}
+
+[showing lines 561-1120 of 1427; use offset=1121 with limit to continue reading]
