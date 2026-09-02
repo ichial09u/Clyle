@@ -4,11 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls, { type Level } from "hls.js";
 import {
   ChevronLeft, Download, Lock, Unlock, SlidersHorizontal, Gauge, Scan, SkipBack, SkipForward,
-  Check, Play, Pause, Maximize, Subtitles, Zap, RotateCcw, RotateCw, FastForward,
+  Check, Play, Pause, Maximize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref } from "@/lib/client-store";
+import {
+  ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
+  castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
+  onCastMediaError, type CastState,
+} from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
 
@@ -58,7 +63,7 @@ export default function WatchView({
   // which servers carry that dub ("zoko", "kiwi") — when the player's current
   // server isn't one of them, toggling DUB auto-switches to one that is
   const [dubServers, setDubServers] = useState<Array<ServerId> | null>(null);
-  // generic in-player toast (dub fallback notices)
+  // generic in-player toast (dub fallback notices); cast errors use castMsg
   const [playerMsg, setPlayerMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -94,8 +99,10 @@ export default function WatchView({
   const [resizeMode, setResizeMode] = useState<0 | 1 | 2>(0);
   const [ready, setReady] = useState(false);
 
-  // resume state
+  // resume + cast state
   const [resumedFrom, setResumedFrom] = useState<number | null>(null);
+  const [castState, setCastState] = useState<CastState>(getCastState());
+  const [castMsg, setCastMsg] = useState<string | null>(null);
   // in-player overlay visibility (controls live INSIDE the player surface)
   const [uiVisible, setUiVisible] = useState(true);
 
@@ -107,6 +114,8 @@ export default function WatchView({
   // set when the user switches stream server mid-play so the new source
   // resumes at the exact second instead of restarting
   const pendingSeekRef = useRef<number | null>(null);
+  const castStateRef = useRef<CastState>(getCastState());
+  const castMediaUrlRef = useRef("");
   const hideTimerRef = useRef<number | null>(null);
   const panelRef = useRef<Panel>(null);
   panelRef.current = panel;
@@ -136,13 +145,13 @@ export default function WatchView({
 
   useEffect(() => {
     // always show controls while paused, a panel is open, or locked
-    if (!playing || panel || locked || streamError) {
+    if (!playing || panel || locked || streamError || castMsg) {
       if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
       setUiVisible(true);
     } else {
       showUi();
     }
-  }, [playing, panel, locked, streamError, showUi]);
+  }, [playing, panel, locked, streamError, castMsg, showUi]);
 
   useEffect(() => () => {
     if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
@@ -239,6 +248,31 @@ export default function WatchView({
   const total = anime.totalEpisodes || episode;
   const downloadUrl = zokoDownloadUrl(anime.malId, episode, lang);
 
+  /* -------- Chromecast: load the CAF sender SDK + track session state -------- */
+  useEffect(() => {
+    ensureCastSdk();
+    setCastState(getCastState());
+    const off = onCastStateChange((s) => {
+      castStateRef.current = s;
+      setCastState(s);
+    });
+    return off;
+  }, []);
+
+  /* -------- receiver-side playback failures surface as a player toast -------- */
+  useEffect(() => {
+    let timer: number | null = null;
+    const off = onCastMediaError((msg) => {
+      setCastMsg(msg);
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(() => setCastMsg(null), 12_000);
+    });
+    return () => {
+      if (timer) window.clearTimeout(timer);
+      off();
+    };
+  }, []);
+
   /* -------- figure out where to resume (local first, server fallback) -------- */
   useEffect(() => {
     let cancelled = false;
@@ -307,6 +341,8 @@ export default function WatchView({
         const data = (await res.json()) as Resolved;
         if (!cancelled) {
           setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip });
+          // absolute public URL the Chromecast receiver can fetch through our proxy
+          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=m3u8&u=${encodeURIComponent(data.src)}`;
         }
       } catch {
         if (!cancelled) setStreamError(true);
@@ -396,6 +432,88 @@ export default function WatchView({
     };
   }, [anime.malId, anime.title, anime.image, iframeFallback]);
 
+  /* -------- cast progress heartbeat (positions come from the TV) -------- */
+  useEffect(() => {
+    if (castState !== "casting") return;
+    let lastPos: number | null = castPosition();
+    let castActiveAt = Date.now();
+    const id = window.setInterval(() => {
+      const pos = castPosition();
+      const now = Date.now();
+      const delta = Math.min(120, (now - castActiveAt) / 1000);
+      if (pos == null || pos === lastPos) {
+        // TV paused or unreachable — wall time between these ticks doesn't count
+        lastPos = pos;
+        castActiveAt = now;
+        return;
+      }
+      lastPos = pos;
+      castActiveAt = now;
+      if (delta >= 1) {
+        recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta });
+      }
+      saveProgressDetailed({
+        malId: anime.malId,
+        episode,
+        lang,
+        server,
+        position: pos,
+        duration: castDuration() || 0,
+        title: anime.title,
+        image: anime.image,
+        total: anime.totalEpisodes || episode,
+      });
+    }, 10_000);
+    return () => {
+      window.clearInterval(id);
+      // flush any residual playing time since the last tick
+      const delta = Math.min(120, (Date.now() - castActiveAt) / 1000);
+      const pos = castPosition();
+      if (delta >= 1 && pos != null && pos !== lastPos) {
+        recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta });
+      }
+    };
+  }, [castState, anime.malId, anime.title, anime.image, anime.totalEpisodes, episode, lang, server]);
+
+  /* -------- cast remote: position/duration/playing straight from the TV.
+     Polled 2×/s — fast enough for a smooth-feeling bar (the receiver
+     interpolates via getEstimatedTime), cheap enough to ignore. -------- */
+  const [castUi, setCastUi] = useState({ pos: 0, dur: 0, playing: false });
+  // while the user drags the bar, their finger wins over the poll
+  const [castScrub, setCastScrub] = useState<number | null>(null);
+  useEffect(() => {
+    if (castState !== "casting") {
+      setCastScrub(null);
+      return;
+    }
+    const tick = () =>
+      setCastUi({ pos: castPosition() ?? 0, dur: castDuration() ?? 0, playing: castIsPlaying() });
+    tick();
+    const id = window.setInterval(tick, 500);
+    return () => window.clearInterval(id);
+  }, [castState, episode]); // episode: reset the readout the moment the TV loads the next one
+
+  const castToggle = () => {
+    // optimistic flip — the poll corrects us if the command failed
+    setCastUi((u) => ({ ...u, playing: !u.playing }));
+    void castTogglePlay();
+  };
+
+  const castSkip = (delta: number) => {
+    let target = (castScrub ?? castUi.pos) + delta;
+    if (castUi.dur > 0) target = Math.min(castUi.dur, target);
+    target = Math.max(0, target);
+    setCastUi((u) => ({ ...u, pos: target }));
+    void castSeek(target);
+  };
+
+  const commitCastScrub = () => {
+    setCastScrub((v) => {
+      if (v != null) void castSeek(v);
+      return null;
+    });
+  };
+
   /* -------- attach hls.js -------- */
   useEffect(() => {
     const video = videoRef.current;
@@ -408,6 +526,25 @@ export default function WatchView({
     const startPlayback = () => {
       if (destroyed) return;
       setReady(true);
+
+      // casting already? hand this episode straight to the TV, keep phone quiet
+      if (castStateRef.current === "casting") {
+        const cap = pickSubtitleTrack(stream.subtitles);
+        void castLoadNext({
+          src: castMediaUrlRef.current,
+          title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+          imageUrl: anime.image,
+          startTime: pendingSeekRef.current ?? resumeAtRef.current,
+          captions: cap ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(cap.src)}`, label: cap.label || "English" } : undefined,
+        }).then((ok) => {
+          if (!ok) {
+            setCastMsg("Couldn't load this episode on the TV — Stop casting, then cast again");
+            window.setTimeout(() => setCastMsg(null), 12_000);
+          }
+        });
+        pendingSeekRef.current = null;
+        return;
+      }
 
       // mid-play source switch (quality-server change) resumes exactly where
       // the user was; otherwise fall back to the saved resume point
@@ -513,7 +650,7 @@ export default function WatchView({
     const capture = () => {
       timer = 0;
       const v = videoRef.current;
-      if (!v || streamErrorRef.current) return;
+      if (!v || streamErrorRef.current || castStateRef.current === "casting") return;
       if (getEpThumb(anime.malId, episode, lang)) return; // captured meanwhile
       // wait for real frames: decoded video, actually playing, a few seconds in
       if (v.readyState < 2 || v.paused || v.ended || !v.videoWidth || v.currentTime < 3) {
@@ -562,14 +699,14 @@ export default function WatchView({
 
   const togglePlay = () => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || castStateRef.current === "casting") return;
     if (video.paused) video.play().catch(() => undefined);
     else video.pause();
   };
 
   const seekTo = (s: number) => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || castStateRef.current === "casting") return;
     video.currentTime = Math.max(0, Math.min(duration || s, s));
     setCurrentTime(video.currentTime);
   };
@@ -610,7 +747,7 @@ export default function WatchView({
 
   /** Switch stream server mid-playback without losing the spot. */
   const switchServer = (next: "zoko" | "kiwi") => {
-    if (next === server) return;
+    if (next === server || castStateRef.current === "casting") return;
     const pos = videoRef.current?.currentTime ?? 0;
     saveNow(); // save your spot RIGHT NOW
     pendingSeekRef.current = pos; // the new source resumes exactly here
@@ -637,6 +774,41 @@ export default function WatchView({
     else el.requestFullscreen?.().catch(() => undefined);
   };
 
+  /* -------- Chromecast actions -------- */
+  const startCasting = async () => {
+    if (!stream) return;
+    const res = await castLoad({
+      src: castMediaUrlRef.current,
+      title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+      imageUrl: anime.image,
+      startTime: videoRef.current ? videoRef.current.currentTime : resumeAtRef.current,
+      captions: subTrack
+        ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(subTrack.src)}`, label: subTrack.label || "English" }
+        : undefined,
+    });
+    if (res.ok) {
+      videoRef.current?.pause();
+      setCastMsg(null);
+    } else {
+      setCastMsg(res.error ?? "Cast failed");
+      window.setTimeout(() => setCastMsg(null), 12_000);
+    }
+  };
+
+  const stopCasting = () => {
+    // save the TV's position before handing playback back
+    const pos = castPosition();
+    const dur = castDuration();
+    if (pos != null) {
+      saveProgressDetailed({
+        malId: anime.malId, episode, lang, server,
+        position: pos, duration: dur || 0,
+        title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+      });
+    }
+    castStop();
+  };
+
   // Skip buttons — three-tier data: Zoko payload → AniSkip dataset (merged
   // server-side in /api/stream) → crowd-learned scrub medians → last-resort
   // heuristic window (~90s OP) for TV-length episodes only, so we never cut
@@ -653,6 +825,8 @@ export default function WatchView({
 
   const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
+  const casting = castState === "casting";
+  const castUsable = castState !== "unavailable";
   const ui = uiVisible; // shorthand for JSX below
 
   // Skip buttons fade away after 3s untapped; any player-UI summon (tap on
@@ -660,7 +834,7 @@ export default function WatchView({
   const [skipAwake, setSkipAwake] = useState(true);
   const skipFadeTimer = useRef<number | null>(null);
   useEffect(() => {
-    const inWindow = Boolean((showSkipIntro || showSkipOutro) && !iframeFallback);
+    const inWindow = Boolean((showSkipIntro || showSkipOutro) && !casting && !iframeFallback);
     if (skipFadeTimer.current) window.clearTimeout(skipFadeTimer.current);
     if (!inWindow) {
       setSkipAwake(true);
@@ -671,7 +845,7 @@ export default function WatchView({
     return () => {
       if (skipFadeTimer.current) window.clearTimeout(skipFadeTimer.current);
     };
-  }, [showSkipIntro, showSkipOutro, ui, iframeFallback]);
+  }, [showSkipIntro, showSkipOutro, ui, casting, iframeFallback]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black select-none" ref={shellRef}>
@@ -696,8 +870,7 @@ export default function WatchView({
             <video
               ref={videoRef}
               playsInline
-              // native AirPlay on iOS Safari; on desktop/Android use the
-              // browser's own cast menu (no custom Cast button)
+              // AirPlay on iOS Safari (Chromecast is Chrome/Android-only)
               {...({ "x-webkit-airplay": "allow" } as Record<string, string>)}
               poster={artUrl(anime.banner ?? anime.image)}
               className={`w-full h-full border-0 bg-black object-contain ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
@@ -714,11 +887,113 @@ export default function WatchView({
               ) : null}
             </video>
 
+            {/* casting overlay — playback lives on the TV now; the phone is
+                the remote: play/pause, ±10s, a scrub bar, and next-episode
+                (side-loaded into the LIVE session — the TV never disconnects
+                between episodes). */}
+            {casting ? (
+              <div
+                className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-30"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="shrink-0 flex flex-col items-center gap-2 pt-12 md:pt-14 px-6 text-center">
+                  <span className="w-12 h-12 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
+                    <Cast className="w-6 h-6 text-[#ff5252]" />
+                  </span>
+                  <p className="text-[14px] font-bold">Casting to your TV</p>
+                  <p className="text-[11.5px] text-gray-400 max-w-[300px] md:max-w-[440px] truncate">
+                    {anime.title} · Episode {episode} ({lang.toUpperCase()})
+                  </p>
+                </div>
+
+                <div className="flex-1" />
+
+                <div className="shrink-0 px-8 pb-10 md:pb-14 flex flex-col items-center gap-6">
+                  {/* transport row */}
+                  <div className="flex items-center gap-9 md:gap-14">
+                    <button
+                      onClick={() => castSkip(-10)}
+                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      aria-label="Back 10 seconds"
+                    >
+                      <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
+                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                    </button>
+                    <button
+                      onClick={castToggle}
+                      className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
+                      aria-label={castUi.playing ? "Pause on TV" : "Play on TV"}
+                    >
+                      {castUi.playing ? (
+                        <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
+                      ) : (
+                        <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
+                      )}
+                    </button>
+                    <button
+                      onClick={() => castSkip(10)}
+                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      aria-label="Forward 10 seconds"
+                    >
+                      <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
+                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                    </button>
+                  </div>
+
+                  {/* progress bar (below the buttons) — scrubbing seeks the TV */}
+                  <div className="w-full max-w-[340px] md:max-w-[560px] lg:max-w-[680px] flex items-center gap-2">
+                    <span className="text-[10.5px] text-gray-300 tabular-nums w-11 text-right shrink-0">{fmtTime(castScrub ?? castUi.pos)}</span>
+                    <div className="relative h-4 flex items-center flex-1">
+                      <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full">
+                        <div
+                          className="h-full bg-[#d32f2f] rounded-full"
+                          style={{ width: `${castUi.dur > 0 ? ((castScrub ?? castUi.pos) / castUi.dur) * 100 : 0}%` }}
+                        />
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={castUi.dur || 0}
+                        step={1}
+                        value={castScrub ?? Math.min(castUi.pos, castUi.dur || castUi.pos)}
+                        onChange={(e) => setCastScrub(parseFloat(e.target.value))}
+                        onPointerUp={commitCastScrub}
+                        onPointerCancel={() => setCastScrub(null)}
+                        onKeyUp={(e) => {
+                          if (e.key === "ArrowLeft" || e.key === "ArrowRight") commitCastScrub();
+                        }}
+                        className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
+                        aria-label="Seek on TV"
+                      />
+                    </div>
+                    <span className="text-[10.5px] text-gray-300 tabular-nums w-11 shrink-0">{fmtTime(castUi.dur)}</span>
+                  </div>
+
+                  {/* next episode — side-loads into the live cast session, so
+                      the TV keeps playing without ever disconnecting */}
+                  <button
+                    onClick={() => go(episode + 1)}
+                    disabled={episode >= total}
+                    className="flex items-center gap-2 bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[13px] font-bold rounded-full px-6 py-2.5 transition active:scale-95 disabled:opacity-30"
+                  >
+                    <SkipForward className="w-4 h-4 fill-white" />
+                    Next episode
+                  </button>
+                  <button
+                    onClick={stopCasting}
+                    className="text-[12px] font-bold text-gray-400 hover:text-white bg-white/10 hover:bg-white/20 rounded-full px-4 py-1.5 transition active:scale-95"
+                  >
+                    Stop casting
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             {/* center transport cluster — [back 10s] [play/pause] [forward 10s],
                 like the reference player. The wrapper is pointer-events-none so
                 taps between the buttons still fall through to the surface
                 (show/hide controls); only the three buttons capture taps. */}
-            {ready && !streamError && !locked ? (
+            {ready && !casting && !streamError && !locked ? (
               <div
                 className={`absolute inset-0 flex items-center justify-center gap-8 md:gap-14 z-10 player-layer ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
               >
@@ -764,7 +1039,7 @@ export default function WatchView({
             ) : null}
 
             {/* buffering spinner */}
-            {!ready && !streamError ? (
+            {!ready && !streamError && !casting ? (
               <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
                 <div className="w-9 h-9 border-2 border-[#d32f2f] border-t-transparent rounded-full animate-spin" />
               </div>
@@ -792,7 +1067,7 @@ export default function WatchView({
         )}
 
         {/* resumed pill — "picked up where you left off" */}
-        {resumedFrom != null ? (
+        {resumedFrom != null && !casting ? (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 player-layer" style={{ top: "3.25rem" }}>
             <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
             <button
@@ -810,7 +1085,7 @@ export default function WatchView({
 
         {/* skip intro / skip ending — appear when the window opens, fade out
             after 3s untapped, come back whenever the player UI is summoned */}
-        {showSkipOutro && !iframeFallback ? (
+        {showSkipOutro && !casting && !iframeFallback ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -824,7 +1099,7 @@ export default function WatchView({
             <FastForward className="w-4 h-4 text-[#35d5bf]" /> Skip Ending
           </button>
         ) : null}
-        {showSkipIntro && !iframeFallback ? (
+        {showSkipIntro && !casting && !iframeFallback ? (
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -839,14 +1114,14 @@ export default function WatchView({
           </button>
         ) : null}
 
-        {/* player toast: dub-fallback notices */}
-        {playerMsg ? (
+        {/* player toast: cast failures + dub-fallback notices (never both) */}
+        {castMsg || playerMsg ? (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center">
-            {playerMsg}
+            {castMsg ?? playerMsg}
           </div>
         ) : null}
 
-        {streamError && !iframeFallback ? (
+        {streamError && !casting && !iframeFallback ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
             <p className="text-[13px] text-gray-300">Our player couldn&apos;t load this stream.</p>
             <div className="flex gap-2">
@@ -879,7 +1154,7 @@ export default function WatchView({
 
         {/* ---- in-player TOP bar: back / title / download ---- */}
         <div
-          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 pt-3 pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 pt-3 pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Back">
@@ -915,7 +1190,7 @@ export default function WatchView({
 
         {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
         <div
-          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* controls stay readable on wide screens: cap their width, keep the
@@ -955,6 +1230,14 @@ export default function WatchView({
           label="Resize"
           onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
         />
+        {castUsable ? (
+          <ControlButton
+            icon={Cast}
+            label={casting ? "Stop" : "Cast"}
+            active={casting}
+            onClick={() => (casting ? stopCasting() : void startCasting())}
+          />
+        ) : null}
         <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
       </div>
           </div>

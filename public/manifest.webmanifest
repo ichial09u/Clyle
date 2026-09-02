@@ -1,7 +1,7 @@
 {
   "name": "Clyle",
   "short_name": "Clyle",
-  "description": "Anime catalog with its own player — episodes auto-import and resume where you left off.",
+  "description": "Anime catalog with its own player — episodes auto-import, resume where you left off, cast to your TV.",
   "id": "/",
   "start_url": "/",
   "scope": "/",

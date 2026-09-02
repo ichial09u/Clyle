@@ -7,7 +7,7 @@
  * playback, so the strategy is pure network pass-through:
  *
  *   - only same-origin GETs are handled; POSTs (progress/watchtime/import)
- *     and cross-origin requests (CDN posters) are untouched
+ *     and cross-origin requests (CDN posters, cast SDK) are untouched
  *   - responses are NEVER cached — every request goes to the network exactly
  *     like before, so HLS segments/range requests keep working unchanged
  *   - the only added value: if the network is gone while opening the app,
