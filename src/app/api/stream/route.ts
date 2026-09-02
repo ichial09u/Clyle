@@ -5,6 +5,8 @@ import { db } from "@/lib/db";
 import type { Lang, ServerId } from "@/lib/zoko";
 
 export const dynamic = "force-dynamic";
+// fake-dub verification (sub-vs-dub segment compare) can take a while cold
+export const maxDuration = 60;
 
 /**
  * GET /api/stream?malId=21&ep=1&lang=sub&server=zoko

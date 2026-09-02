@@ -22,7 +22,7 @@ if (!file) {
 }
 
 const data = JSON.parse(readFileSync(file, "utf8"));
-const stats = { users: 0, comments: 0, watchStats: 0, top10Events: 0, top10Meta: 0, tombstones: 0 };
+const stats = { users: 0, comments: 0, watchStats: 0, top10Events: 0, top10Meta: 0, tombstones: 0, anime: 0, episodes: 0, progress: 0 };
 
 // tombstones FIRST: remove comments deleted on the live site so a stale
 // bundled copy can't resurrect them (also keeps the local tombstone table)
@@ -110,6 +110,97 @@ if (lastSealed) {
   stats.top10Meta += 1;
 }
 
+// ---- catalog carry-forward (additive-only; local curation always wins) ----
+// The live catalog accumulates on prod (imports, sync). Without this block a
+// deploy would reset the catalog to whatever the local working tree has.
+for (const a of data.anime ?? []) {
+  const existing = await db.anime.findUnique({ where: { malId: a.malId } });
+  if (!existing) {
+    // strip row-identity fields Prisma must not receive on create
+    const { createdAt: _c, updatedAt: _u, lastSyncedAt: _l, ...rest } = a;
+    await db.anime.create({ data: { ...rest, createdAt: a.createdAt ? new Date(a.createdAt) : undefined } });
+    stats.anime += 1;
+  } else {
+    await db.anime.update({
+      where: { malId: a.malId },
+      data: {
+        inCatalog: true,
+        // truthful dub verdicts + episode-count growth flow in; art, titles,
+        // synopsis etc. stay LOCAL (manual overrides like One Piece's pinned
+        // key visual must never be reverted by an older prod row)
+        ...(a.totalEpisodes > existing.totalEpisodes ? { totalEpisodes: a.totalEpisodes } : {}),
+        ...(typeof a.hasDub === "boolean" ? { hasDub: a.hasDub } : {}),
+        ...(existing.logoUrl == null && a.logoUrl ? { logoUrl: a.logoUrl } : {}),
+      },
+    });
+  }
+}
+
+const epRows = data.episodes ?? [];
+if (epRows.length) {
+  const byAnime = new Map();
+  for (const e of epRows) {
+    if (!byAnime.has(e.animeId)) byAnime.set(e.animeId, []);
+    byAnime.get(e.animeId).push(e);
+  }
+  for (const [animeId, list] of byAnime) {
+    const have = new Set(
+      (await db.episode.findMany({ where: { animeId }, select: { number: true, lang: true } })).map(
+        (e) => `${e.lang}:${e.number}`,
+      ),
+    );
+    const missing = list.filter((e) => !have.has(`${e.lang}:${e.number}`));
+    if (missing.length) {
+      await db.episode.createMany({
+        data: missing.map((e) => ({
+          animeId: e.animeId,
+          number: e.number,
+          title: e.title ?? null,
+          aired: e.aired ?? null,
+          lang: e.lang === "dub" ? "dub" : "sub",
+          filler: !!e.filler,
+          recap: !!e.recap,
+          ...(e.addedAt ? { addedAt: new Date(e.addedAt) } : {}),
+        })),
+      }).catch(() => undefined);
+      stats.episodes += missing.length;
+    }
+  }
+}
+
+// continue-watching carry-forward: keep whichever row (local vs prod) is newer
+for (const p of data.watchProgress ?? []) {
+  // the User row must exist first (FK) — users were upserted above
+  await db.user.upsert({ where: { id: p.userId }, update: {}, create: { id: p.userId } }).catch(() => undefined);
+  const existing = await db.watchProgress.findUnique({
+    where: { userId_malId_episode: { userId: p.userId, malId: p.malId, episode: p.episode } },
+  });
+  const updated = p.updatedAt ? new Date(p.updatedAt) : new Date(0);
+  if (!existing) {
+    await db.watchProgress.create({
+      data: {
+        userId: p.userId, malId: p.malId, episode: p.episode,
+        lang: p.lang === "dub" ? "dub" : "sub",
+        server: p.server === "kiwi" ? "kiwi" : "zoko",
+        position: p.position ?? 0, duration: p.duration ?? 0,
+        completed: !!p.completed, title: p.title ?? null, image: p.image ?? null,
+        updatedAt: updated,
+      },
+    }).catch(() => undefined);
+    stats.progress += 1;
+  } else if (updated > existing.updatedAt) {
+    await db.watchProgress.update({
+      where: { id: existing.id },
+      data: {
+        position: p.position ?? existing.position,
+        duration: p.duration ?? existing.duration,
+        completed: !!p.completed,
+        updatedAt: updated,
+      },
+    }).catch(() => undefined);
+  }
+}
+
 try { unlinkSync(file); } catch { /* keep on failure */ }
-console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, lastSealed=${lastSealed ?? "n/a"}`);
+console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, anime +${stats.anime}, episodes +${stats.episodes}, progress +${stats.progress}, lastSealed=${lastSealed ?? "n/a"}`);
 process.exit(0);

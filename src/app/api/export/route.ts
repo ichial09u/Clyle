@@ -14,14 +14,25 @@ export const dynamic = "force-dynamic";
  * secrets). Used by scripts/merge-comments.mjs via scripts/deploy-vercel.mjs.
  */
 export async function GET() {
-  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds] = await Promise.all([
-    db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),
-    db.comment.findMany(),
-    db.watchStat.findMany(),
-    db.top10Event.findMany(),
-    db.top10Meta.findMany(),
-    db.deletedComment.findMany({ select: { id: true } }),
-  ]);
+  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress] =
+    await Promise.all([
+      db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),
+      db.comment.findMany(),
+      db.watchStat.findMany(),
+      db.top10Event.findMany(),
+      db.top10Meta.findMany(),
+      db.deletedComment.findMany({ select: { id: true } }),
+      // catalog + playback data so deploys never wipe what the live site
+      // accumulated (imports ran on the lambda's writable db copy — without
+      // carrying them forward the next deployment would reset the catalog)
+      db.anime.findMany({ where: { inCatalog: true } }),
+      db.episode.findMany({
+        select: { animeId: true, number: true, title: true, aired: true, lang: true, filler: true, recap: true, addedAt: true },
+      }),
+      db.watchProgress.findMany({
+        select: { userId: true, malId: true, episode: true, lang: true, server: true, position: true, duration: true, completed: true, title: true, image: true, updatedAt: true },
+      }),
+    ]);
   return NextResponse.json(
     {
       exportedAt: new Date().toISOString(),
@@ -31,6 +42,9 @@ export async function GET() {
       top10Events,
       top10Meta,
       deletedCommentIds: deletedCommentIds.map((d) => d.id),
+      anime,
+      episodes,
+      watchProgress,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

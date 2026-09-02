@@ -83,6 +83,8 @@ export function decodeStreamPayload(blob: string): Omit<ZokoStream, "resolvedFro
 }
 
 type CacheEntry = { data: ZokoStream | null; expires: number };
+/** what diskRead/diskWrite actually require — verdict booleans and streams both fit */
+type DiskEntry = { data: unknown; expires: number };
 const cache = new Map<string, CacheEntry>();
 const revalidating = new Set<string>();
 
@@ -95,15 +97,15 @@ function diskPath(key: string): string {
   return join(DISK_CACHE_DIR, `${hash}.json`);
 }
 
-async function diskRead(key: string): Promise<CacheEntry | null> {
+async function diskRead(key: string): Promise<DiskEntry | null> {
   try {
-    return JSON.parse(await readFile(diskPath(key), "utf8")) as CacheEntry;
+    return JSON.parse(await readFile(diskPath(key), "utf8")) as DiskEntry;
   } catch {
     return null;
   }
 }
 
-async function diskWrite(key: string, entry: CacheEntry): Promise<void> {
+async function diskWrite(key: string, entry: DiskEntry): Promise<void> {
   try {
     await mkdir(DISK_CACHE_DIR, { recursive: true });
     await writeFile(diskPath(key), JSON.stringify(entry), "utf8");
@@ -113,35 +115,13 @@ async function diskWrite(key: string, entry: CacheEntry): Promise<void> {
 }
 
 /**
- * Does Zoko have a DUB stream for this anime at all?
- *   true  = the dub page resolves to a real stream
- *   false = Zoko answered "no" (404 / no payload)
+ * Does Zoko have a REAL (non-fake) DUB stream for this anime at all?
+ *   true  = a dub page resolves AND carries different content than the sub
+ *   false = no dub page, or the dub is the sub file re-uploaded
  *   null  = couldn't ask right now (network) — caller should not cache a verdict
  */
 export async function probeDubAvailable(malId: number, ep = 1): Promise<boolean | null> {
-  try {
-    const pageUrl = zokoStreamPageUrl(malId, ep, "dub", "zoko");
-    const res = await fetch(pageUrl, {
-      headers: {
-        "User-Agent": UA,
-        Origin: ZOKO_ORIGIN,
-        Referer: `${ZOKO_ORIGIN}/`,
-        Accept: "text/html,application/xhtml+xml",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(12_000),
-      redirect: "follow",
-    });
-    if (!res.ok) return false;
-    const html = await res.text();
-    const m = html.match(/window\.__P="([^"]+)"/);
-    if (!m) return false;
-    const decoded = decodeStreamPayload(m[1]);
-    if (!decoded) return false;
-    return !!decoded.src;
-  } catch {
-    return null;
-  }
+  return verifyRealDub(malId, ep, "zoko");
 }
 
 async function fetchStream(malId: number, ep: number, lang: Lang, server: ServerId): Promise<ZokoStream | null> {
@@ -166,6 +146,109 @@ async function fetchStream(malId: number, ep: number, lang: Lang, server: Server
   return { ...decoded, resolvedFrom: pageUrl };
 }
 
+/* ---- fake-dub detection ----------------------------------------------
+ * Zoko sometimes ships a DUB entry whose video is BYTE-IDENTICAL to the SUB
+ * (the same Japanese-audio file re-uploaded under a second video id — Blue
+ * Box 57181 ep1: video_id 157730 vs 157729, both MD5s equal). Picking DUB
+ * then plays Japanese audio under a DUB label.
+ *
+ * Detection: fetch ONE media segment from each variant playlist and compare
+ * digests. Identical bytes -> fake dub. Real dubs mux a different audio
+ * track into the same video encode, so their segments always differ.
+ * Serverless-safe (plain fetch + sha1, no ffmpeg). The verdict is cached in
+ * memory + disk for a day, so the ~4 extra requests are paid once per
+ * anime/episode/server per day — Zoko does add real dubs over time.
+ * -------------------------------------------------------------------- */
+const DUB_CHECK_TTL_MS = 24 * 3600 * 1000;
+type DubVerdictEntry = { data: boolean; expires: number };
+const dubVerdicts = new Map<string, DubVerdictEntry>(); // true = REAL dub
+
+function dubCheckKey(malId: number, ep: number, server: ServerId): string {
+  return `dubcheck/${malId}/${ep}/${server}`;
+}
+
+async function cacheDubVerdict(key: string, verdict: boolean): Promise<void> {
+  const entry: DubVerdictEntry = { data: verdict, expires: Date.now() + DUB_CHECK_TTL_MS };
+  dubVerdicts.set(key, entry);
+  await diskWrite(key, entry);
+}
+
+/** master m3u8 -> first variant -> absolute URL of its second segment. */
+async function firstSegmentUrl(masterUrl: string): Promise<string | null> {
+  const headers = { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/` };
+  const mres = await fetch(masterUrl, { headers, cache: "no-store", signal: AbortSignal.timeout(12_000) });
+  if (!mres.ok) return null;
+  const master = await mres.text();
+  const variant = master.split("\n").find((l) => l.trim() && !l.startsWith("#"));
+  if (!variant) return null;
+  const vurl = new URL(variant.trim(), masterUrl).href;
+  const vres = await fetch(vurl, { headers, cache: "no-store", signal: AbortSignal.timeout(12_000) });
+  if (!vres.ok) return null;
+  const vtext = await vres.text();
+  // skip the first segment: some uploads prepend a thumbnail/intro card
+  const segs = vtext.split("\n").filter((l) => l.trim() && !l.startsWith("#"));
+  if (segs.length < 2) return null;
+  return new URL(segs[1].trim(), vurl).href;
+}
+
+async function segmentDigest(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return createHash("sha1").update(buf).digest("hex");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Does a REAL English dub exist for this episode?
+ *   true  = dub stream present AND its content differs from the sub
+ *   false = no dub at all, OR the dub is the sub's file re-uploaded (fake)
+ *   null  = couldn't tell right now (network) — caller must NOT block
+ */
+export async function verifyRealDub(malId: number, ep: number, server: ServerId): Promise<boolean | null> {
+  const key = dubCheckKey(malId, ep, server);
+  const mem = dubVerdicts.get(key);
+  if (mem && mem.expires > Date.now()) return mem.data;
+  const disk = (await diskRead(key)) as unknown as DubVerdictEntry | null;
+  if (disk && disk.expires > Date.now() && typeof disk.data === "boolean") {
+    dubVerdicts.set(key, disk);
+    return disk.data;
+  }
+
+  try {
+    const [sub, dub] = await Promise.all([
+      resolveStreamRaw(malId, ep, "sub", server).catch(() => null), // sub is never verified -> no recursion
+      fetchStream(malId, ep, "dub", server).catch(() => null),
+    ]);
+    if (!dub) {
+      // no dub page at all -> a stable "false"
+      await cacheDubVerdict(key, false);
+      return false;
+    }
+    if (!sub) return null; // can't compare — don't guess
+    if (sub.src === dub.src) {
+      await cacheDubVerdict(key, false); // literally the same stream
+      return false;
+    }
+    const [a, b] = await Promise.all([firstSegmentUrl(sub.src), firstSegmentUrl(dub.src)]);
+    if (!a || !b) return null; // network trouble — no verdict
+    const [da, dbb] = await Promise.all([segmentDigest(a), segmentDigest(b)]);
+    if (da == null || dbb == null) return null; // undecidable — don't block
+    const real = da !== dbb;
+    await cacheDubVerdict(key, real);
+    return real;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Resolve one episode's direct stream. Cached (memory + disk) with
  * stale-while-revalidate: an expired entry is served immediately while a
@@ -178,12 +261,30 @@ export async function resolveStream(
   server: ServerId,
   opts: { fresh?: boolean } = {},
 ): Promise<ZokoStream | null> {
+  const data = await resolveStreamRaw(malId, ep, lang, server, opts);
+  if (!data || lang !== "dub") return data;
+  // Fake-dub guard: Zoko re-uploads the SUB file under a DUB id for some
+  // shows — without this check "DUB" plays Japanese audio (Blue Box bug).
+  const real = await verifyRealDub(malId, ep, server);
+  if (real === false) return null;
+  return data;
+}
+
+async function resolveStreamRaw(
+  malId: number,
+  ep: number,
+  lang: Lang,
+  server: ServerId,
+  opts: { fresh?: boolean } = {},
+): Promise<ZokoStream | null> {
   const key = cacheKey(malId, ep, lang, server);
   const hit = cache.get(key);
   if (!opts.fresh && hit && hit.expires > Date.now()) return hit.data;
 
   if (!opts.fresh) {
-    const entry = await diskRead(key);
+    // stream-cache keys always store ZokoStream data (dubcheck keys store
+    // booleans — they go through verifyRealDub's own narrowing)
+    const entry = (await diskRead(key)) as CacheEntry | null;
     if (entry) {
       if (entry.expires > Date.now()) {
         cache.set(key, entry);
@@ -215,7 +316,7 @@ export async function resolveStream(
   } catch (err) {
     const stale = cache.get(key);
     if (stale) return stale.data;
-    const entry = await diskRead(key);
+    const entry = (await diskRead(key)) as CacheEntry | null;
     if (entry) return entry.data;
     console.error("[zoko-stream]", err instanceof Error ? err.message : err);
     return null;

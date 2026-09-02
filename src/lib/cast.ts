@@ -251,6 +251,57 @@ function attachCaptions(chromeCast: any, mediaInfo: any, request: any, captions?
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * Request a (possibly resumed) session. Rejects on user cancel; returns null
+ * when the retry after a transient failure also failed.
+ */
+async function requestSession(context: any): Promise<any | null> {
+  try {
+    const session = await context.requestSession(); // rejects on cancel/failure
+    return session ?? context.getCurrentSession();
+  } catch (err) {
+    const text = describeError(err).toLowerCase();
+    // user closed the chooser — do not retry, just report
+    if (text.includes("cancel")) throw err;
+    // first connect attempts fail transiently on flaky mesh/2.4GHz links;
+    // one quiet retry catches a good chunk of those
+    noteTrail("retry");
+    await sleep(1200);
+    try {
+      const session = await context.requestSession();
+      return session ?? context.getCurrentSession();
+    } catch {
+      return null;
+    }
+  }
+}
+
+/**
+ * The session wrapper the SDK handed us earlier can go STALE while the
+ * module-level ref survives (phone locked, app backgrounded, Wi-Fi blip —
+ * the receiver drops the socket, CAF tears the session down internally).
+ * Calling loadMedia() on the stale wrapper then explodes deep inside the SDK
+ * with e.g. "Cannot read properties of undefined (reading
+ * 'addUpdateListener')". Re-hydrate from CastContext before every reuse:
+ * it returns null/undefined once the session is really gone.
+ */
+function refreshLiveSession(context: any): boolean {
+  if (!refs.session) return false;
+  try {
+    const live = context.getCurrentSession?.();
+    if (live) {
+      refs.session = live;
+      return true;
+    }
+  } catch {
+    /* fall through — treat as dead */
+  }
+  refs.session = null;
+  refs.media = null;
+  setState("idle");
+  return false;
+}
+
 /** Ask the user to pick a device, then load the episode. Returns success. */
 export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -261,40 +312,13 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     setState("connecting");
     const context = framework.CastContext.getInstance();
 
+    if (refs.session) refreshLiveSession(context);
     if (!refs.session) {
-      const ask = async () => {
-        const session = await context.requestSession(); // rejects on cancel/failure
-        return session ?? context.getCurrentSession();
-      };
-      try {
-        refs.session = await ask();
-      } catch (err) {
-        const text = describeError(err).toLowerCase();
-        // user closed the chooser — do not retry, just report
-        if (text.includes("cancel")) throw err;
-        // first connect attempts fail transiently on flaky mesh/2.4GHz links;
-        // one quiet retry catches a good chunk of those
-        noteTrail("retry");
-        await sleep(1200);
-        refs.session = await ask();
-      }
+      refs.session = await requestSession(context);
     }
     if (!refs.session) throw new Error("No Chromecast selected");
 
-    const mediaInfo = new chromeCast.media.MediaInfo(req.src, "application/x-mpegurl");
-    const metadata = new chromeCast.media.GenericMediaMetadata();
-    metadata.title = req.title;
-    if (req.subtitle) metadata.subtitle = req.subtitle;
-    if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
-    mediaInfo.metadata = metadata;
-    mediaInfo.streamType = chromeCast.media.StreamType.BUFFERED;
-
-    const request = new chromeCast.media.LoadRequest(mediaInfo);
-    request.autoplay = true;
-    request.currentTime = Math.max(0, req.startTime ?? 0);
-    attachCaptions(chromeCast, mediaInfo, request, req.captions);
-
-    const media = await refs.session.loadMedia(request);
+    const media = await loadMediaWithRecovery(context, chromeCast, req);
     refs.media = media;
     media.addUpdateListener?.(() => {
       // if playback finished / errored on the big screen, keep state honest
@@ -332,12 +356,53 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
   }
 }
 
+/**
+ * loadMedia with one stale-session recovery: the SDK throws opaque TypeErrors
+ * (addUpdateListener of undefined) when the cached CastSession wrapper outlived
+ * its underlying connection. Discard the dead wrapper, re-ask for a session,
+ * retry once — the user just sees the cast succeed.
+ */
+async function loadMediaWithRecovery(context: any, chromeCast: any, req: CastMediaRequest): Promise<any> {
+  const build = () => {
+    const mediaInfo = new chromeCast.media.MediaInfo(req.src, "application/x-mpegurl");
+    const metadata = new chromeCast.media.GenericMediaMetadata();
+    metadata.title = req.title;
+    if (req.subtitle) metadata.subtitle = req.subtitle;
+    if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
+    mediaInfo.metadata = metadata;
+    mediaInfo.streamType = chromeCast.media.StreamType.BUFFERED;
+    const request = new chromeCast.media.LoadRequest(mediaInfo);
+    request.autoplay = true;
+    request.currentTime = Math.max(0, req.startTime ?? 0);
+    attachCaptions(chromeCast, mediaInfo, request, req.captions);
+    return request;
+  };
+  try {
+    return await refs.session.loadMedia(build());
+  } catch (err) {
+    // no live session underneath — drop it and retry once with a fresh one
+    noteTrail("stale-session");
+    refs.session = null;
+    refs.media = null;
+    setState("idle");
+    const fresh = await requestSession(context);
+    if (!fresh) throw err;
+    refs.session = fresh;
+    return await refs.session.loadMedia(build());
+  }
+}
+
 /** Load another episode into the live cast session (no re-prompt). */
 export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
   if (demoHook) return demoHook.loadNext();
-  if (!refs.session) return false;
   try {
+    const framework = cfw();
     const chromeCast = (window as any).chrome?.cast;
+    if (!framework || !chromeCast) return false;
+    const context = framework.CastContext.getInstance();
+    // a session that died since the last episode (phone slept, Wi-Fi blip)
+    // must not explode inside loadMedia — verify it is still alive first
+    if (!refreshLiveSession(context) || !refs.session) return false;
     const mediaInfo = new chromeCast.media.MediaInfo(req.src, "application/x-mpegurl");
     const metadata = new chromeCast.media.GenericMediaMetadata();
     metadata.title = req.title;
@@ -350,6 +415,10 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     refs.media = await refs.session.loadMedia(request);
     return true;
   } catch {
+    // the session died mid-series — drop it so the next Cast tap re-prompts
+    refs.session = null;
+    refs.media = null;
+    setState("idle");
     return false;
   }
 }

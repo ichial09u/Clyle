@@ -55,6 +55,30 @@ export default function WatchView({
   const [stream, setStream] = useState<Resolved | null>(null);
   const [streamError, setStreamError] = useState(false);
   const [iframeFallback, setIframeFallback] = useState(false);
+  // does this title have a REAL English dub? (null = still asking).
+  // The server /api/stream also validates every dub play, so a stale value
+  // can never put Japanese audio under a DUB label — this only drives the UI.
+  const [hasDub, setHasDub] = useState<boolean | null>(null);
+  // generic in-player toast (dub fallback notices); cast errors use castMsg
+  const [playerMsg, setPlayerMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    let ok = true;
+    fetch(`/api/anime/${anime.malId}/episodes`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { hasDub?: boolean } | null) => {
+        if (ok && d && typeof d.hasDub === "boolean") setHasDub(d.hasDub);
+      })
+      .catch(() => undefined);
+    return () => {
+      ok = false;
+    };
+  }, [anime.malId]);
+
+  const showPlayerMsg = (text: string, ms = 6_000) => {
+    setPlayerMsg(text);
+    window.setTimeout(() => setPlayerMsg((m) => (m === text ? null : m)), ms);
+  };
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -298,7 +322,17 @@ export default function WatchView({
     (async () => {
       try {
         const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}`);
-        if (!res.ok) throw new Error("unavailable");
+        if (!res.ok) {
+          // DUB asked for but the server refuses (no dub page, or Zoko's
+          // "dub" is the sub file re-uploaded — fake dub). Fall back to the
+          // sub instead of showing an error: the viewer just wants to watch.
+          if (lang === "dub") {
+            showPlayerMsg("No English DUB available for this episode yet — playing SUB", 8_000);
+            setLang("sub");
+            return;
+          }
+          throw new Error("unavailable");
+        }
         const data = (await res.json()) as Resolved;
         if (!cancelled) {
           setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip });
@@ -1075,10 +1109,10 @@ export default function WatchView({
           </button>
         ) : null}
 
-        {/* cast failure toast */}
-        {castMsg ? (
+        {/* player toast: cast failures + dub-fallback notices (never both) */}
+        {castMsg || playerMsg ? (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center">
-            {castMsg}
+            {castMsg ?? playerMsg}
           </div>
         ) : null}
 
@@ -1122,12 +1156,17 @@ export default function WatchView({
             <ChevronLeft className="w-6 h-6" />
           </button>
           <button
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
+              if (lang === "sub" && hasDub === false) {
+                showPlayerMsg("No English DUB available for this title yet");
+                return;
+              }
               const next: Lang = lang === "sub" ? "dub" : "sub";
               setLang(next);
             }}
             className="font-slab text-[16px] font-bold truncate"
-            title="Toggle SUB/DUB"
+            title={hasDub === false ? "No DUB available — tap does nothing" : "Toggle SUB/DUB"}
           >
             Episode {episode} {lang.toUpperCase()}
           </button>
