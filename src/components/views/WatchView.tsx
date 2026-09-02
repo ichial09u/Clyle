@@ -259,6 +259,13 @@ export default function WatchView({
     return off;
   }, []);
 
+  /* -------- casting = the TV is the only screen and speaker. The moment a
+     session goes live, pause the local video — this also closes the race
+     where the element started playing while the device chooser was open. -------- */
+  useEffect(() => {
+    if (castState === "casting") videoRef.current?.pause();
+  }, [castState]);
+
   /* -------- receiver-side playback failures surface as a player toast -------- */
   useEffect(() => {
     let timer: number | null = null;
@@ -606,6 +613,12 @@ export default function WatchView({
     };
     const onMeta = () => setDuration(video.duration || 0);
     const onPlay = () => {
+      // mid-cast the TV owns playback — any stray local play() (stale
+      // gesture promise, hls restart, double-tap) is silenced immediately
+      if (castStateRef.current === "casting") {
+        video.pause();
+        return;
+      }
       setPlaying(true);
       lastActiveRef.current = Date.now(); // playback resumed — start the clock
     };
@@ -777,6 +790,9 @@ export default function WatchView({
   /* -------- Chromecast actions -------- */
   const startCasting = async () => {
     if (!stream) return;
+    // the TV is about to own playback — silence THIS device right away so
+    // audio/video never double-plays during chooser + session negotiation
+    videoRef.current?.pause();
     const res = await castLoad({
       src: castMediaUrlRef.current,
       title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
@@ -805,6 +821,9 @@ export default function WatchView({
         position: pos, duration: dur || 0,
         title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
       });
+      // hand playback back to this device at the exact second the TV was at
+      const v = videoRef.current;
+      if (v && pos > 0) v.currentTime = pos;
     }
     castStop();
   };
@@ -1230,7 +1249,7 @@ export default function WatchView({
           label="Resize"
           onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
         />
-        {castUsable ? (
+        {castUsable && !iframeFallback ? (
           <ControlButton
             icon={Cast}
             label={casting ? "Stop" : "Cast"}
