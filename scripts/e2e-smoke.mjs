@@ -213,7 +213,7 @@ async function expectJson(name, path, init, validate) {
 
   // ---- 5d) Top 10 This Month (TMDB popularity ranking) ----
   await expectJson(
-    "GET /api/top10 (TMDB rank rail)",
+    "GET /api/top10 (Anime Trending rank rail)",
     "/api/top10",
     {},
     (r, b) => r.ok && Array.isArray(b?.items) && b.items.length > 0 && b.items.every((it) => Number.isFinite(it?.rank) && Number.isFinite(it?.malId)),
