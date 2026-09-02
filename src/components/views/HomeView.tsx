@@ -39,9 +39,9 @@ export default function HomeView({
     refreshContinue();
   }, [refreshContinue, progressVersion]);
 
-  // Top 10 This Month — ranked by TMDB anime popularity (server-side, active:
-  // titles swap ranks as TMDB's numbers shift; the bell carries the changes).
-  // The rail is always populated once TMDB's first pass lands.
+  // Top 10 This Month — ranked by Anime Trending's live chart (server-side,
+  // active: titles swap ranks as the community vote shifts; the bell carries
+  // the changes). The rail is always populated once the first pass lands.
   const refreshTop10 = useCallback(() => {
     lastTop10Fetch.current = Date.now();
     fetchTop10Month().then(setTop10).catch(() => undefined);
@@ -80,9 +80,11 @@ export default function HomeView({
     };
   }, []);
 
-  // auto-rotate the hero like a spotlight
+  // auto-rotate the hero like a spotlight — opening slide varies per visit
+  // so the same background isn't shown first every time
   useEffect(() => {
     if (!data?.hero?.length || data.hero.length < 2) return;
+    setHeroIdx(Math.floor(Math.random() * data.hero.length));
     const t = setInterval(() => setHeroIdx((i) => (i + 1) % data.hero.length), 9000);
     return () => clearInterval(t);
   }, [data]);
@@ -152,7 +154,7 @@ export default function HomeView({
         </>
       ) : null}
 
-      {/* Top 10 This Month — TMDB popularity ranking, active (ranks swap) */}
+      {/* Top 10 This Month — Anime Trending chart ranking, active (ranks swap) */}
       {top10.length ? (
         <section className="mt-6">
           <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Top 10 This Month</h2>
@@ -177,7 +179,7 @@ export default function HomeView({
                     ) : isNew ? (
                       <span className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide">NEW</span>
                     ) : null}
-                    <span className="text-gray-500 truncate">TMDB popularity</span>
+                    <span className="text-gray-500 truncate">Anime Trending</span>
                   </p>
                 </div>
               );

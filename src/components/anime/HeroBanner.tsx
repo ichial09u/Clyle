@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import { Heart, Share2 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { useMyList } from "@/lib/client-store";
+import { artUrl } from "@/lib/art";
 
 interface HeroBannerProps {
   /** All hero slides; `index` is the active one. Backdrops crossfade between slides. */
@@ -23,6 +25,8 @@ function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children
   return <span className={`${cls} px-1.5 py-[1px] rounded text-[10px] font-bold tracking-wide`}>{children}</span>;
 }
 
+type ArtStatus = "loading" | "loaded" | "error";
+
 export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: HeroBannerProps) {
   const { has, toggle } = useMyList();
   // defensive: props can arrive unsettled during fast-refresh/dev transitions
@@ -31,6 +35,48 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
   // hand-rolled minimal anime objects (MAL import cards, related titles) can
   // lack array fields — never trust genres to exist
   const genres = anime && Array.isArray(anime.genres) ? anime.genres : [];
+
+  /* ---------- backdrop load tracking (the desktop background fix) ----------
+   * The hero used to crossfade purely on `index`: the moment the rotation
+   * moved on, the new slide's <img> got opacity 1 even if its file hadn't
+   * loaded yet (slow/filtered CDNs are common on desktop browsers, e.g.
+   * school Chromebooks blocking AniList's CDN). Result: the background
+   * seemed to show one image once and never follow the featured anime.
+   *
+   * Now every slide's art is load-tracked (through the same-origin /api/art
+   * proxy), and the VISIBLE backdrop is always a slide that has actually
+   * decoded — the active one as soon as it's ready, the previous good one
+   * until then, never a blank frame. Broken URLs are dropped from the
+   * rotation entirely.
+   *
+   * Status is keyed by URL and deliberately NEVER reset: URLs are
+   * content-addressed, so a slide list refresh that reuses a URL reuses its
+   * still-valid loaded state, and only genuinely new URLs start loading. */
+  const [status, setStatus] = useState<Record<string, ArtStatus>>({});
+  const srcs = list.map((it) => artUrl(it.banner || it.image));
+
+  const mark = (src: string, next: ArtStatus) =>
+    setStatus((s) => (s[src] === next ? s : { ...s, [src]: next }));
+
+  /** The slide whose art is actually on screen (−1 = nothing loaded yet). */
+  let shownIdx = -1;
+  for (let i = index; i >= 0; i--) {
+    const s = srcs[i];
+    if (s && status[s] === "loaded") {
+      shownIdx = i;
+      break;
+    }
+  }
+  if (shownIdx === -1) {
+    for (let i = 0; i < srcs.length; i++) {
+      const s = srcs[i];
+      if (s && status[s] === "loaded") {
+        shownIdx = i;
+        break;
+      }
+    }
+  }
+
   if (!anime) {
     return <div className="h-[470px] md:h-[560px] lg:h-[640px] bg-black animate-pulse" />;
   }
@@ -38,18 +84,21 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
 
   return (
     <div className="relative w-full h-[470px] md:h-[560px] lg:h-[640px] overflow-hidden bg-[#0a0a0a]">
-      {/* backdrop — all slides stacked, opacity crossfades between them */}
+      {/* backdrop — all slides stacked, opacity crossfades between LOADED ones */}
       {list.map((it, i) => {
-        const src = it.banner || it.image;
-        if (!src) return null;
+        const src = srcs[i];
+        if (!src || status[src] === "error") return null;
         return (
           <img
             key={`${it.malId}-${i}`}
             src={src}
             alt=""
             draggable={false}
+            decoding="async"
+            onLoad={() => mark(src, "loaded")}
+            onError={() => mark(src, "error")}
             className="absolute inset-0 w-full h-full object-cover transition-opacity duration-1000 ease-in-out"
-            style={{ opacity: i === index ? 1 : 0 }}
+            style={{ opacity: i === shownIdx ? 1 : 0 }}
           />
         );
       })}

@@ -4,15 +4,16 @@ import { lite } from "@/lib/serialize";
 import { db } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60; // cold start = one live TMDB pass
+export const maxDuration = 60; // cold start = one live Anime Trending pass
 
 /**
  * GET /api/top10 — "Top 10 This Month".
  *
- * Catalog titles ranked by TMDB's anime popularity order (see
- * src/lib/top10-month.ts). The ranking is ACTIVE: every refresh re-reads
- * TMDB, so when a title's popularity passes the one above it, the two swap
- * ranks; each swap / drop / new entry also records a bell notification.
+ * Catalog titles ranked by Anime Trending's community-voted "Top Anime"
+ * chart (see src/lib/top10-month.ts). The ranking is ACTIVE: every refresh
+ * re-reads the live chart, so when a title's standing passes the one above
+ * it, the two swap ranks; each swap / drop / new entry also records a bell
+ * notification.
  *
  * Response: { day, items: [{ ...AnimeLite, rank, prevRank }] }
  *   prevRank = the rank before the most recent change (null = new entry),

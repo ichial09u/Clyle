@@ -2,42 +2,40 @@ import { db } from "@/lib/db";
 import { top10UtcToday } from "@/lib/top10";
 
 /**
- * Top 10 This Month — TMDB-popularity-driven active ranking.
+ * Top 10 This Month — Anime Trending-driven active ranking.
  *
- * The ranking comes from The Movie Database's own popularity ordering of
- * anime (their public keyword browse pages are server-rendered and sorted by
- * popularity — no API key needed). The top 10 is the first ten titles of
- * TMDB's anime order that exist in this catalog.
+ * The ranking comes from Anime Trending (anitrendz.com) — the community-voted
+ * "Top Anime" chart they publish for the current season (their site ships the
+ * full ranked chart as JSON inside its __NEXT_DATA__ payload, so we read the
+ * SAME live data their charts page renders — no third-party mirror, no AniDB).
  *
- * ACTIVE ranking: every refresh re-reads TMDB's order. When a title's TMDB
- * popularity rises enough to pass the one above it, the two swap ranks here
- * too; a title crossing into (or out of) the bottom of the list enters/leaves.
- * Every swap/drop/entry records a Top10Event so the bell stays quiet until
- * something ACTUALLY happens, exactly like the user asked:
+ * ACTIVE ranking: every refresh re-reads Anime Trending's chart. When a
+ * title's standing rises enough to pass the one above it, the two swap ranks
+ * here too; a title crossing into (or out of) the bottom of the list
+ * enters/leaves. Every swap/drop/entry records a Top10Event so the bell stays
+ * quiet until something ACTUALLY happens, exactly like the user asked:
  *   "clear the notifications so it stays empty until an anime surpasses
  *    another or goes down a rank or if a new anime is in the top 10".
  *
- * Refresh cadence: at most every 6 hours (lazy, on request + daily cron).
+ * Refresh cadence: at most every 2 hours (lazy, on request + daily cron).
  * Snapshots live in Top10Meta so the rail survives cold serverless starts
- * and TMDB hiccups (last known list is always servable).
+ * and anitrendz hiccups (last known list is always servable).
  */
 
 const SNAPSHOT_KEY = "top10month.snapshot";
 const REFRESHED_KEY = "top10month.refreshedAt";
-const REFRESH_TTL_MS = 6 * 3600 * 1000;
+const REFRESH_TTL_MS = 2 * 3600 * 1000;
 
-const TMDB_BASE = "https://www.themoviedb.org";
-const TMDB_UA =
+const AT_BASE = "https://www.anitrendz.com/charts/top-anime";
+const AT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
-const ANIME_KEYWORD_ID = 210024;
-/** how deep into TMDB's anime order we look (pages of 20, TV + movies) */
-const TV_PAGES = 10;
-const MOVIE_PAGES = 5;
 
-export interface TmdbRankedTitle {
-  tmdbId: number;
+export interface AtRankedTitle {
+  /** chart position on anitrendz (1 = #1) */
+  position: number;
   title: string;
-  kind: "tv" | "movie";
+  titleAlt: string | null;
+  votes: number | null;
 }
 
 export interface Top10MonthItem {
@@ -50,91 +48,91 @@ export interface Top10MonthItem {
 
 interface Snapshot {
   day: string;
+  source: string;
   items: Array<{ malId: number; rank: number; prevRank: number | null; title: string; image: string | null }>;
 }
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/>/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&#x27;/g, "'");
+/* ---------------- Anime Trending chart fetch ---------------- */
+
+interface AtChoice {
+  name?: string;
+  nameAlt?: string | null;
+  position?: number;
+  total?: number;
+  unranked?: boolean;
 }
 
-/** Parse one server-rendered TMDB keyword browse page into ordered cards. */
-function parseBrowseCards(html: string, kind: "tv" | "movie"): TmdbRankedTitle[] {
-  const out: TmdbRankedTitle[] = [];
-  const seen = new Set<number>();
-  // href="/tv/37854-one-piece?language=en-US" … <img … alt="Title"
-  const re = new RegExp(`href="/${kind}/(\\d+)(?:-[a-z0-9-]+)?\\?language=en-US"[^>]*>[\\s\\S]{0,800}?<img[^>]+alt="([^"]*)"`, "g");
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(html))) {
-    const tmdbId = Number(m[1]);
-    if (!tmdbId || seen.has(tmdbId)) continue;
-    seen.add(tmdbId);
-    out.push({ tmdbId, title: decodeEntities(m[2]).trim(), kind });
-  }
-  // some cards lack the slug-less alt pairing — fall back to bare links
-  if (out.length === 0) {
-    const re2 = new RegExp(`href="/${kind}/(\\d+)(?:-[a-z0-9-]+)?\\?language=en-US"`, "g");
-    while ((m = re2.exec(html))) {
-      const tmdbId = Number(m[1]);
-      if (!tmdbId || seen.has(tmdbId)) continue;
-      seen.add(tmdbId);
-      out.push({ tmdbId, title: "", kind });
-    }
-  }
+interface AtChartPayload {
+  /** __NEXT_DATA__ nests pageProps under props; the .json data route has it top-level */
+  props?: { pageProps?: AtChartPageProps };
+  pageProps?: AtChartPageProps;
+}
+
+interface AtChartPageProps {
+  charts?: Array<{
+    name?: string;
+    slug?: string;
+    season?: string;
+    week?: string;
+    date?: string;
+    unpublished?: boolean;
+    choices?: AtChoice[];
+  }>;
+}
+
+/** Pull the embedded Next.js data payload out of the server-rendered page. */
+function parseChartChoices(html: string): AtRankedTitle[] {
+  const m = html.match(/<script id="__NEXT_DATA__" type="application\/json"[^>]*>([\s\S]*?)<\/script>/i);
+  if (!m) throw new Error("anitrendz: __NEXT_DATA__ not found");
+  const data = JSON.parse(m[1]) as AtChartPayload;
+  const pageProps = data.props?.pageProps ?? data.pageProps;
+  const chart = pageProps?.charts?.find((c) => c.slug === "top-anime") ?? pageProps?.charts?.[0];
+  if (!chart || !Array.isArray(chart.choices) || !chart.choices.length) throw new Error("anitrendz: chart empty");
+
+  const out: AtRankedTitle[] = [];
+  const seen = new Set<string>();
+  chart.choices.forEach((c, i) => {
+    const title = (c.name ?? "").trim();
+    if (!title || c.unranked) return;
+    const key = title.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({
+      position: typeof c.position === "number" && c.position > 0 ? c.position : i + 1,
+      title,
+      titleAlt: (c.nameAlt ?? "").trim() || null,
+      votes: typeof c.total === "number" ? c.total : null,
+    });
+  });
+  // positions can be sparse/absent — trust array order as the tiebreak
+  out.sort((a, b) => a.position - b.position);
   return out;
 }
 
-async function fetchBrowsePage(kind: "tv" | "movie", page: number): Promise<string | null> {
-  const url = `${TMDB_BASE}/keyword/${ANIME_KEYWORD_ID}-anime/${kind}?language=en-US&page=${page}`;
-  try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": TMDB_UA, "Accept-Language": "en-US,en", Referer: `${TMDB_BASE}/` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) return null;
-    return await res.text();
-  } catch {
-    return null;
-  }
-}
-
-/** TMDB's popularity-ordered anime list (TV first, then movies). */
-export async function fetchTmdbAnimeOrder(): Promise<TmdbRankedTitle[]> {
-  // pages are fetched concurrently but reassembled in strict page order —
-  // completion order is nondeterministic and would scramble TMDB's ranking
-  const jobs: Array<{ kind: "tv" | "movie"; page: number }> = [];
-  for (let p = 1; p <= TV_PAGES; p++) jobs.push({ kind: "tv", page: p });
-  for (let p = 1; p <= MOVIE_PAGES; p++) jobs.push({ kind: "movie", page: p });
-
-  const fetched = await Promise.all(
-    jobs.map(async (job) => ({ ...job, html: await fetchBrowsePage(job.kind, job.page) })),
-  );
-  // a partially-fetched scrape would compact TMDB's order and fire a wave of
-  // bogus rank-change notifications — abort instead; the next window retries
-  const failed = fetched.filter((f) => !f.html).length;
-  if (failed > 0) throw new Error(`tmdb scrape incomplete: ${failed}/${fetched.length} pages failed`);
-
-  const results: TmdbRankedTitle[] = [];
-  const seen = new Set<number>();
-  for (const { kind, html } of fetched) {
-    if (!html) continue;
-    for (const card of parseBrowseCards(html, kind)) {
-      if (seen.has(card.tmdbId)) continue;
-      seen.add(card.tmdbId);
-      results.push(card);
+/** Fetch Anime Trending's live "Top Anime" chart (1 retry, 15s cap each). */
+export async function fetchAnimeTrendingChart(): Promise<AtRankedTitle[]> {
+  let lastErr: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(AT_BASE, {
+        headers: { "User-Agent": AT_UA, Accept: "text/html,application/xhtml+xml", "Accept-Language": "en-US,en" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!res.ok) throw new Error(`anitrendz HTTP ${res.status}`);
+      const html = await res.text();
+      const choices = parseChartChoices(html);
+      if (choices.length < 20) throw new Error(`anitrendz chart too thin (${choices.length})`);
+      return choices;
+    } catch (err) {
+      lastErr = err;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, 2_000));
     }
   }
-  return results;
+  throw lastErr instanceof Error ? lastErr : new Error("anitrendz fetch failed");
 }
 
-/* ---------------- TMDB id -> catalog mapping ---------------- */
+/* ---------------- Anime Trending title -> catalog mapping ---------------- */
 
 function normalizeTitle(s: string): string {
   return s
@@ -145,54 +143,103 @@ function normalizeTitle(s: string): string {
 }
 
 /**
- * Map TMDB's ordered list onto catalog malIds.
- *  1. anime.tmdbId (persisted cache from earlier runs),
- *  2. the anime-lists.org community mapping (tmdbid attribute),
- *  3. normalized-title match against title / titleEnglish.
- * Newly learned mappings are persisted so later runs are exact.
+ * Strip season/sequel markers so "…S3", "…Season 3", "…3rd Season",
+ * "…Part 2" and "…II" all compare equal to the base title.
  */
-async function mapToCatalog(ordered: TmdbRankedTitle[]): Promise<Map<number, number>> {
-  const catalog = await db.anime.findMany({
-    where: { inCatalog: true },
-    select: { malId: true, title: true, titleEnglish: true, tmdbId: true },
-  });
+function stripSeason(s: string): string {
+  return s
+    .replace(/[\s:—–-]*\b(?:2nd|3rd|4th|5th)\s+season\b/gi, "")
+    .replace(/[\s:—–-]*\bseason\s+\d+\b/gi, "")
+    .replace(/[\s:—–-]*\bpart\s+\d+\b/gi, "")
+    .replace(/[\s:—–-]*\bS\d{1,2}\b/gi, "")
+    .replace(/[\s:—–-]+\b(?:II|III|IV|V|VI|VII|VIII|IX|X)\b$/i, "")
+    .replace(/[\s:—–-]+\d+$/i, "");
+}
 
-  const byTmdb = new Map<number, number>();
-  const byNormTitle = new Map<string, number>();
+function titleKeys(s: string): string[] {
+  const out = new Set<string>();
+  const full = normalizeTitle(s);
+  if (full) out.add(full);
+  const base = normalizeTitle(stripSeason(s));
+  if (base) out.add(base);
+  return [...out];
+}
+
+/** Extract an explicit season number ("S4", "Season 4", "4th Season", "III"). */
+function seasonOf(s: string): number | null {
+  const sN = s.match(/\bS(\d{1,2})\b/i);
+  if (sN) return Number(sN[1]);
+  const wN = s.match(/\bseason\s+(\d{1,2})\b/i);
+  if (wN) return Number(wN[1]);
+  const ord = s.match(/\b(\d{1,2})(?:st|nd|rd|th)\s+season\b/i);
+  if (ord) return Number(ord[1]);
+  const roman = s.match(/\b(II|III|IV|V|VI|VII|VIII|IX|X)\b\s*$/i);
+  if (roman) {
+    const ROMANS: Record<string, number> = { I: 1, II: 2, III: 3, IV: 4, V: 5, VI: 6, VII: 7, VIII: 8, IX: 9, X: 10 };
+    return ROMANS[roman[1].toUpperCase()] ?? null;
+  }
+  return null;
+}
+
+/**
+ * Map Anime Trending's ordered chart onto catalog malIds:
+ *  1. exact normalized title (or season-stripped base) match on
+ *     title / titleEnglish,
+ *  2. season-stripped base match with season-aware disambiguation — AT's
+ *     "Re:ZERO -…- S4: The Recapture Arc" lands on our "Re:ZERO -…- Season
+ *     4" row, not the bare S1 entry that shares the same base,
+ *  3. long-prefix match on the base (AT appends arc subtitles we don't
+ *     carry) — guarded by a 14-char minimum so short bases like "Bleach"
+ *     can never swallow their spin-offs.
+ * Chart titles Zoko doesn't carry simply don't map (the rail is
+ * catalog-only by design).
+ */
+function mapToCatalog(ordered: AtRankedTitle[], catalog: Array<{ malId: number; title: string; titleEnglish: string | null }>): Map<number, number> {
+  const byFull = new Map<string, number>();
+  const byBase = new Map<string, Array<{ malId: number; season: number | null }>>();
   for (const a of catalog) {
-    if (a.tmdbId != null) byTmdb.set(a.tmdbId, a.malId);
     for (const t of [a.title, a.titleEnglish]) {
-      const n = t ? normalizeTitle(t) : "";
-      if (n && !byNormTitle.has(n)) byNormTitle.set(n, a.malId);
+      if (!t) continue;
+      for (const k of titleKeys(t)) if (!byFull.has(k)) byFull.set(k, a.malId);
+      const b = normalizeTitle(stripSeason(t));
+      if (b && !byBase.has(b)) byBase.set(b, []);
+      const list = byBase.get(b);
+      if (b && list && !list.some((c) => c.malId === a.malId)) list.push({ malId: a.malId, season: seasonOf(t) });
     }
   }
+
+  const pickBySeason = (candidates: Array<{ malId: number; season: number | null }> | undefined, atSeason: number | null): number | null => {
+    if (!candidates || !candidates.length) return null;
+    if (atSeason == null) return (candidates.find((c) => c.season == null) ?? candidates[0]).malId;
+    return (candidates.find((c) => c.season === atSeason) ?? candidates[0]).malId;
+  };
 
   const out = new Map<number, number>();
-  const learned: Array<{ malId: number; tmdbId: number }> = [];
   for (const t of ordered) {
-    if (out.has(t.tmdbId)) continue; // first (highest) occurrence wins
-    let malId = byTmdb.get(t.tmdbId) ?? null;
-    if (malId == null && t.title) {
-      const n = normalizeTitle(t.title);
-      const hit = byNormTitle.get(n);
-      if (hit != null) malId = hit;
+    let malId: number | null = null;
+    for (const src of [t.title, t.titleAlt]) {
+      if (!src || malId != null) continue;
+      for (const k of titleKeys(src)) {
+        if (byFull.has(k)) {
+          malId = byFull.get(k)!;
+          break;
+        }
+      }
+      if (malId == null) {
+        const base = normalizeTitle(stripSeason(src));
+        malId = pickBySeason(byBase.get(base), seasonOf(src));
+        if (malId == null && base.length >= 14) {
+          for (const [k, candidates] of byBase) {
+            if (k.startsWith(base) || base.startsWith(k)) {
+              malId = pickBySeason(candidates, seasonOf(src));
+              break;
+            }
+          }
+        }
+      }
+      if (malId != null) break;
     }
-    if (malId != null) {
-      out.set(t.tmdbId, malId);
-      learned.push({ malId, tmdbId: t.tmdbId });
-    }
-  }
-  // persist newly learned ids (best-effort, deduped per anime)
-  const known = new Map(catalog.map((a) => [a.malId, a.tmdbId]));
-  const fresh = learned.filter((l) => known.get(l.malId) !== l.tmdbId);
-  if (fresh.length) {
-    try {
-      await db.$transaction(
-        fresh.slice(0, 100).map((l) => db.anime.update({ where: { malId: l.malId }, data: { tmdbId: l.tmdbId } })),
-      );
-    } catch {
-      /* mapping cache is an optimization */
-    }
+    if (malId != null && !out.has(t.position)) out.set(t.position, malId);
   }
   return out;
 }
@@ -280,7 +327,7 @@ async function insertRankEvents(day: string, events: RankEvent[]): Promise<void>
 
 let refreshing: Promise<void> | null = null;
 
-/** Re-read TMDB's anime popularity order, re-rank, emit change events. */
+/** Re-read Anime Trending's chart, re-rank, emit change events. */
 export async function refreshTop10Month(force = false): Promise<void> {
   if (refreshing) return refreshing;
   refreshing = (async () => {
@@ -290,23 +337,26 @@ export async function refreshTop10Month(force = false): Promise<void> {
         const at = meta?.value ? Date.parse(meta.value) : 0;
         if (Number.isFinite(at) && Date.now() - at < REFRESH_TTL_MS) return;
       }
-      const ordered = await fetchTmdbAnimeOrder();
-      if (ordered.length < 20) throw new Error(`tmdb scrape too thin (${ordered.length})`);
+      const chart = await fetchAnimeTrendingChart();
 
-      const mapping = await mapToCatalog(ordered);
+      const catalog = await db.anime.findMany({
+        where: { inCatalog: true },
+        select: { malId: true, title: true, titleEnglish: true },
+      });
+      const mapping = mapToCatalog(chart, catalog);
       const day = top10UtcToday();
 
-      // ordered TMDB list -> catalog members, in TMDB popularity order
+      // ordered chart -> catalog members, in Anime Trending rank order
       const ranked: Array<{ malId: number; title: string; image: string | null }> = [];
       const used = new Set<number>();
-      for (const t of ordered) {
-        const malId = mapping.get(t.tmdbId);
+      for (const t of chart) {
+        const malId = mapping.get(t.position);
         if (malId == null || used.has(malId)) continue;
         used.add(malId);
         ranked.push({ malId, title: "", image: null });
         if (ranked.length >= 30) break; // headroom above the 10 we show
       }
-      if (!ranked.length) throw new Error("no catalog matches in TMDB order");
+      if (!ranked.length) throw new Error("no catalog matches in anitrendz chart");
 
       // hydrate titles/posters (logos come from the catalog at render time)
       const cat = await db.anime.findMany({
@@ -334,7 +384,11 @@ export async function refreshTop10Month(force = false): Promise<void> {
 
       const events = diffRanks(prev, nextItems);
       await insertRankEvents(day, events);
-      await writeSnapshot({ day, items: nextItems });
+      await writeSnapshot({
+        day,
+        source: "anitrendz:top-anime",
+        items: nextItems,
+      });
       await db.top10Meta.upsert({
         where: { key: REFRESHED_KEY },
         create: { key: REFRESHED_KEY, value: new Date().toISOString() },
@@ -350,9 +404,9 @@ export async function refreshTop10Month(force = false): Promise<void> {
 }
 
 /**
- * The current Top 10 This Month (catalog titles in TMDB popularity order).
- * Serves the last known list instantly; refreshes in the background when
- * stale. Falls back to a fresh scrape when no snapshot exists yet.
+ * The current Top 10 This Month (catalog titles in Anime Trending's chart
+ * order). Serves the last known list instantly; refreshes in the background
+ * when stale. Falls back to a fresh fetch when no snapshot exists yet.
  */
 export async function getTop10Month(): Promise<Top10MonthItem[]> {
   let snap = await readSnapshot();

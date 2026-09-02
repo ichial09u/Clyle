@@ -15,6 +15,7 @@ import {
   onCastMediaError, type CastState,
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
+import { artUrl } from "@/lib/art";
 
 type Panel = null | "quality" | "speed" | "subs";
 type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } };
@@ -871,7 +872,7 @@ export default function WatchView({
               playsInline
               // AirPlay on iOS Safari (Chromecast is Chrome/Android-only)
               {...({ "x-webkit-airplay": "allow" } as Record<string, string>)}
-              poster={anime.banner ?? anime.image ?? undefined}
+              poster={artUrl(anime.banner ?? anime.image)}
               className={`w-full h-full border-0 bg-black object-contain ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
             >
               {subTrack && subsOn ? (

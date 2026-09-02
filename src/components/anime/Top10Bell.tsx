@@ -12,6 +12,7 @@ import {
   useTop10ReadId,
   type Top10EventItem,
 } from "@/lib/client-store";
+import { artUrl } from "@/lib/art";
 
 /**
  * Netflix-style Top 10 notifications: a floating bell on Home (unread badge)
@@ -131,7 +132,7 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                           >
                             {e.image ? (
                               <img
-                                src={e.image}
+                                src={artUrl(e.image)}
                                 alt=""
                                 draggable={false}
                                 className="w-10 h-[56px] object-cover rounded-[4px] bg-[#161616] shrink-0"

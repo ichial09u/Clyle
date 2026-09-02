@@ -1,6 +1,6 @@
 /**
  * Local end-to-end test of the Top 10 This Month engine (no Next.js needed):
- * TMDB scrape -> catalog mapping -> snapshot + events -> getTop10Month().
+ * Anime Trending chart fetch -> catalog mapping -> snapshot + events -> getTop10Month().
  * Run with: npx tsx scripts/test-top10-month.ts
  */
 import { refreshTop10Month, getTop10Month } from "../src/lib/top10-month";

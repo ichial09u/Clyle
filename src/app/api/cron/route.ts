@@ -160,9 +160,9 @@ export async function GET(req: Request) {
     checks.push({ name: "watchtime-today", ok: false, detail: String(err).slice(0, 200) });
   }
 
-  // ---- 9) top 10 rank notifications (bell data path) + TMDB refresh ----
+  // ---- 9) top 10 rank notifications (bell data path) + Anime Trending refresh ----
   try {
-    await refreshTop10Month(); // rate-limited inside (6h TTL)
+    await refreshTop10Month(); // rate-limited inside (2h TTL)
     const total = await db.top10Event.count();
     const latest = await db.top10Event.findFirst({
       orderBy: { id: "desc" },
