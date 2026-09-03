@@ -38,7 +38,7 @@ export interface SkipData {
   intro?: SkipInterval;
   outro?: SkipInterval;
   /** where the data came from — handy for debugging */
-  source?: "zoko" | "aniskip" | "aniskip-live" | "crowd";
+  source?: "zoko" | "scout" | "aniskip" | "aniskip-live" | "crowd";
 }
 
 type EpisodeEntry = { op?: [number, number]; ed?: [number, number] };
@@ -118,6 +118,66 @@ export function withSkipData<T extends { skip?: SkipData }>(malId: number, ep: n
   }
 
   return { ...stream, skip: Object.keys(merged).length ? merged : undefined };
+}
+
+/* ------------------------------------------------------------------ *
+ * Tier 2.5 — the intro-scout fleet. Bots watch the first minutes of
+ * every catalog episode (the SAME streams the player serves) and
+ * cross-match loudness envelopes across episodes: the opening is the
+ * one part of a show that repeats identically, so where episodes align
+ * IS the opening. Because these intervals are measured on OUR encodes,
+ * they beat AniSkip's community timings (taken on other encodes, often
+ * offset by recaps/stream bumps — the "skip intro is inaccurate" bug).
+ * Priority: Zoko native (frame-accurate) > scout > AniSkip > crowd.
+ * ---------------------------------------------------------------- */
+
+const SCOUT_CACHE_TTL_MS = 60_000;
+const scoutCache = new Map<number, { rows: Array<{ ep: number; start: number; end: number }>; at: number }>();
+
+async function scoutRows(malId: number): Promise<Array<{ ep: number; start: number; end: number }>> {
+  const hit = scoutCache.get(malId);
+  if (hit && Date.now() - hit.at < SCOUT_CACHE_TTL_MS) return hit.rows;
+  const rows = await db.introScout.findMany({
+    where: { malId },
+    orderBy: { updatedAt: "desc" },
+    take: 15,
+    select: { ep: true, start: true, end: true },
+  });
+  scoutCache.set(malId, { rows, at: Date.now() });
+  return rows;
+}
+
+/**
+ * The fleet's opening interval for one episode: the episode's own measured
+ * row, else the anime-wide median (openings are the same video across
+ * episodes; needs 2+ measured rows). Null when the fleet has nothing.
+ * `exact` marks a per-episode measurement — those are trusted over ALL
+ * other tiers (Zoko's own payload is wrong on plenty of episodes: it
+ * includes the repeated cold-open as "intro start" on many shows).
+ */
+export async function scoutIntro(
+  malId: number,
+  ep: number,
+): Promise<{ interval: SkipInterval; exact: boolean } | null> {
+  try {
+    const rows = await scoutRows(malId);
+    const exact = rows.find((r) => r.ep === ep);
+    if (exact) return { interval: { start: exact.start, end: exact.end }, exact: true };
+    if (rows.length >= 2) {
+      const med = (xs: number[]) => {
+        const s = [...xs].sort((a, b) => a - b);
+        return s[Math.floor(s.length / 2)];
+      };
+      const start = med(rows.map((r) => r.start));
+      const end = med(rows.map((r) => r.end));
+      if (end > start && end - start <= 150 && start <= 320) {
+        return { interval: { start, end }, exact: false };
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -255,15 +315,29 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   opts: { episodeLengthMin?: number | null } = {},
 ): Promise<T & { skip?: SkipData }> {
   const merged = withSkipData(malId, ep, stream);
-  if (merged.skip?.intro && merged.skip?.outro) return merged; // nothing to ask
+  let skip: SkipData = { ...(merged.skip ?? {}) };
+
+  // scout tier — measured on OUR encodes by the fleet. An exact per-episode
+  // measurement outranks everything (including Zoko's payload, which marks
+  // the repeated cold-open as "intro start" on many shows); the anime-wide
+  // median only fills gaps (Zoko/frame data wins there).
+  const scout = await scoutIntro(malId, ep);
+  if (scout && (scout.exact || !valid(stream.skip?.intro))) {
+    skip.intro = scout.interval;
+    skip.source = "scout";
+  }
+  if (skip.intro && skip.outro) return { ...merged, skip }; // nothing left to ask
+
   try {
     const live = await liveLookup(malId, ep, opts.episodeLengthMin ?? undefined);
     if (live) {
-      const skip: SkipData = { ...(merged.skip ?? {}) };
-      if (!skip.intro && live.op) skip.intro = { start: live.op[0], end: live.op[1] };
+      if (!skip.intro && live.op) {
+        skip.intro = { start: live.op[0], end: live.op[1] };
+        skip.source = "aniskip-live";
+      }
       if (!skip.outro && live.ed) skip.outro = { start: live.ed[0], end: live.ed[1] };
       if (skip.intro || skip.outro) {
-        skip.source = merged.skip?.source ?? "aniskip-live";
+        if (!skip.source) skip.source = "aniskip-live";
         return { ...merged, skip };
       }
     }
@@ -275,17 +349,16 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   try {
     const crowd = await crowdIntroTarget(malId, ep);
     if (crowd != null) {
-      const skip: SkipData = { ...(merged.skip ?? {}) };
-      if (!skip.intro) skip.intro = { start: 8, end: crowd };
-      if (skip.intro || skip.outro) {
-        skip.source = merged.skip?.source ?? "crowd";
-        return { ...merged, skip };
+      if (!skip.intro) {
+        skip.intro = { start: 8, end: crowd };
+        skip.source = "crowd";
       }
+      if (skip.intro || skip.outro) return { ...merged, skip };
     }
   } catch {
     /* votes are best-effort too */
   }
-  return merged;
+  return { ...merged, skip };
 }
 
 /**
@@ -299,7 +372,7 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
 export interface SkipCoverage {
   intro?: SkipInterval;
   outro?: SkipInterval;
-  source: "exact" | "consensus" | "live" | "crowd";
+  source: "scout" | "exact" | "consensus" | "live" | "crowd";
 }
 
 export async function skipCoverage(
@@ -307,6 +380,10 @@ export async function skipCoverage(
   ep: number,
   opts: { allowLiveFetch?: boolean; episodeLengthMin?: number | null } = {},
 ): Promise<SkipCoverage | null> {
+  // scout tier first — what the player would actually use (see the priority
+  // in withSkipDataLive)
+  const scout = await scoutIntro(malId, ep);
+  if (scout) return { source: "scout", intro: scout.interval };
   const byEp = data[String(malId)];
   const exact = byEp?.[String(ep)];
   if (exact?.op || exact?.ed) {

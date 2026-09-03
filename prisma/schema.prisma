@@ -193,6 +193,60 @@ model SkipVote {
   @@index([malId])
 }
 
+// Intro-scout fleet: VERIFIED OP openings measured from the actual streams
+// the player serves (the fleet bots watch the first minutes of every episode
+// and cross-match loudness envelopes across episodes — the opening is the
+// one part of a show that repeats identically). One row per episode; the
+// stream API prefers these over the vendored AniSkip dataset because they
+// are measured on OUR encodes, not community-submitted ones.
+model IntroScout {
+  id         String   @id @default(cuid())
+  malId      Int
+  ep         Int
+  start      Float // seconds — the measured (shared cold-open +) opening block
+  end        Float
+  quality    Float    @default(0) // envelope correlation 0-1 at match time
+  bots       Int      @default(1) // how many independent bot detections agree
+  server     String   @default("zoko")
+  detail     String? // JSON: gain, analyzedSec, block notes
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([malId, ep])
+  @@index([malId])
+}
+
+// Per-anime reference fingerprint for the fleet: the opening's normalized
+// loudness envelope (0.5 s steps, JSON array) plus its interval. Bots verify
+// every other episode against this instead of re-downloading a pair.
+model ScoutRef {
+  malId     Int      @id
+  start     Float
+  end       Float
+  env       String // JSON array of normalized RMS values (0.5 s steps)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// The fleet's report feed ("scout-07: One Piece ep 2 -> OP 31.0-111.0").
+// Ephemeral telemetry: regenerated as the bots loop, so deploys do not carry
+// it forward (IntroScout + ScoutRef are the durable artifacts).
+model ScoutFinding {
+  id        Int      @id @default(autoincrement())
+  bot       String
+  malId     Int
+  ep        Int
+  title     String
+  status    String // "ok" | "nodetect" | "error" | "establish"
+  start     Float?
+  end       Float?
+  quality   Float?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 // Community comment on an anime (shows nickname + avatar snapshot at post time).
 // Supports one level of replies (parentId -> parent comment) and likes
 // (likedBy = JSON array of userIds; count = array length, so double-likes are

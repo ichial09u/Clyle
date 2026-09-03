@@ -133,7 +133,7 @@ export async function GET(req: Request) {
     checks.push({
       name: "skip-intro-audit",
       ok: audit.ok,
-      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.heuristic} heuristic / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
+      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.scout} scout / ${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.heuristic} heuristic / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
     });
     if (!audit.ok) {
       const bad = audit.anime.filter((a) => !a.ok).slice(0, 5).map((a) => `${a.title} (${a.episodes.filter((e) => e.source === "uncovered").map((e) => `ep${e.ep}`).join(",")})`);
@@ -186,6 +186,24 @@ export async function GET(req: Request) {
   } catch (err) {
     healthy = false;
     checks.push({ name: "top10-events", ok: false, detail: String(err).slice(0, 200) });
+  }
+
+  // ---- 10) intro-scout fleet status (the 24/7 bots that measure openings;
+  // report-only — the fleet runs off-site and reports via its own API) ----
+  try {
+    const [measured, refs, latest] = await Promise.all([
+      db.introScout.count(),
+      db.scoutRef.count(),
+      db.scoutFinding.findFirst({ orderBy: { id: "desc" }, select: { bot: true, title: true, ep: true, start: true, end: true, status: true, createdAt: true } }),
+    ]);
+    const ago = latest ? Math.round((Date.now() - latest.createdAt.getTime()) / 60000) : null;
+    checks.push({
+      name: "intro-scout-fleet",
+      ok: true,
+      detail: `${measured} episode opening(s) measured, ${refs} anime reference(s); latest: ${latest ? `${latest.bot} -> ${latest.title} ep${latest.ep} ${latest.status}${latest.start != null ? ` ${latest.start}-${latest.end}s` : ""} (${ago} min ago)` : "no reports yet"}`,
+    });
+  } catch (err) {
+    checks.push({ name: "intro-scout-fleet", ok: false, detail: String(err).slice(0, 200) });
   }
 
   const report = {

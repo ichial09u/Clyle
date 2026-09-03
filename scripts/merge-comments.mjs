@@ -196,6 +196,30 @@ for (const p of data.watchProgress ?? []) {
   }
 }
 
+// intro-scout fleet carry-forward: measured openings + per-anime reference
+// fingerprints (Skip Intro accuracy data). Merge keeps the more-agreed row
+// (bots is the agreement counter) so neither side can silently downgrade.
+for (const s of data.introScout ?? []) {
+  const existing = await db.introScout.findUnique({ where: { malId_ep: { malId: s.malId, ep: s.ep } } });
+  if (!existing) {
+    await db.introScout.create({
+      data: { malId: s.malId, ep: s.ep, start: s.start, end: s.end, quality: s.quality ?? 0, bots: s.bots ?? 1, server: s.server === "kiwi" ? "kiwi" : "zoko", detail: s.detail ?? null },
+    }).catch(() => undefined);
+  } else if ((s.bots ?? 1) > existing.bots) {
+    await db.introScout.update({
+      where: { id: existing.id },
+      data: { start: s.start, end: s.end, quality: s.quality ?? existing.quality, bots: s.bots ?? existing.bots },
+    }).catch(() => undefined);
+  }
+}
+for (const r of data.scoutRef ?? []) {
+  await db.scoutRef.upsert({
+    where: { malId: r.malId },
+    update: {},
+    create: { malId: r.malId, start: r.start, end: r.end, env: r.env ?? "[]" },
+  }).catch(() => undefined);
+}
+
 try { unlinkSync(file); } catch { /* keep on failure */ }
 console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, anime +${stats.anime}, episodes +${stats.episodes}, progress +${stats.progress}, lastSealed=${lastSealed ?? "n/a"}`);
 process.exit(0);

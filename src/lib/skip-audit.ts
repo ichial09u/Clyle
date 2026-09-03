@@ -8,6 +8,8 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
  * latest) and verifies a Skip Intro button will actually appear when the
  * opening plays:
  *
+ *   scout      — the intro-scout fleet measured this exact episode on our
+ *                own stream (highest-quality data after Zoko itself)
  *   exact      — the vendored AniSkip dataset has this exact episode
  *   consensus  — openings are the same video across episodes, so the
  *                anime's median interval applies
@@ -30,7 +32,7 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
 
 export interface SkipAuditEpisode {
   ep: number;
-  source: "exact" | "consensus" | "live" | "crowd" | "heuristic" | "na" | "uncovered";
+  source: "scout" | "exact" | "consensus" | "live" | "crowd" | "heuristic" | "na" | "uncovered";
   introEnd: number | null;
 }
 
@@ -48,6 +50,7 @@ export interface SkipAuditReport {
   totals: {
     anime: number;
     sampled: number;
+    scout: number;
     exact: number;
     consensus: number;
     live: number;
@@ -68,7 +71,7 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
     orderBy: { popularity: "asc" },
   });
 
-  const totals = { anime: animes.length, sampled: 0, exact: 0, consensus: 0, live: 0, crowd: 0, heuristic: 0, na: 0, uncovered: 0 };
+  const totals = { anime: animes.length, sampled: 0, scout: 0, exact: 0, consensus: 0, live: 0, crowd: 0, heuristic: 0, na: 0, uncovered: 0 };
   const uncoveredList: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
   const rows: SkipAuditRow[] = [];
 
