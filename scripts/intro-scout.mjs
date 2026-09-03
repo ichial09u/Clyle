@@ -52,6 +52,7 @@ const MIN_QUALITY = 0.72; // envelope match gate
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let queuedFindings = [];
+let queuedDubFindings = [];
 let flushTimer = null;
 const stats = { ok: 0, nodetect: 0, error: 0, refs: 0, dubprobes: 0, scannedSec: 0, started: Date.now() };
 
@@ -82,16 +83,20 @@ function scheduleFlush() {
 async function flush() {
   if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
   const batch = queuedFindings;
+  const dubBatch = queuedDubFindings;
   queuedFindings = [];
-  if (!batch.length) return;
+  queuedDubFindings = [];
+  if (!batch.length && !dubBatch.length) return;
   const refs = batch.filter((f) => f._ref).map((f) => f._ref);
   const payload = JSON.stringify({
-    bot: batch[0]?.bot ?? "scout",
+    bot: batch[0]?.bot ?? dubBatch[0]?.bot ?? "scout",
     findings: batch.map(({ _ref, ...f }) => f),
     refs,
+    dubFindings: dubBatch,
   });
   // report to prod (what users get NOW) + mirror to the local site (what
-  // survives in the committed db and ships with the next deploy)
+  // survives in the committed db and ships with the next deploy) — prod's
+  // serverless db is per-instance ephemeral, the local db is the durable store
   const targets = [PROD, MIRROR].filter(Boolean);
   await Promise.allSettled(
     targets.map(async (base) => {
@@ -255,6 +260,10 @@ async function jobDubProbe(item, bot) {
   const v = d.verdict ? "HAS DUB" : "no dub";
   const b = d.boundaries ? ` (thru s1=${d.boundaries.s1} s2=${d.boundaries.s2})` : "";
   log(`${bot} DUBPROBE ${title} [${malId}] ep${ep} ${chain}: ${v}${b}`);
+  // mirror the verdict into the local db too — prod's instance-local db is
+  // ephemeral; the committed local db is what survives deploys
+  queuedDubFindings.push({ bot, malId, ep, chain, ok: !!d.verdict, detail: `fleet dubprobe` });
+  scheduleFlush();
   void logFinding({ bot, title, ep, status: "dubprobe", verdict: d.verdict, chain });
 }
 

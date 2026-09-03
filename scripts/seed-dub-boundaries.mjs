@@ -4,6 +4,10 @@
  * modest concurrency, so the popular shows get per-episode DUB boundaries
  * immediately (the 24/7 fleet continues from there).
  *
+ * Prod's serverless db is per-instance EPHEMERAL — every verdict is therefore
+ * ALSO mirrored into the local site's db (durable, committed, deployed), the
+ * same contract the intro-scout fleet uses.
+ *
  *   node scripts/seed-dub-boundaries.mjs [--minutes 8] [--concurrency 8]
  */
 const args = process.argv.slice(2);
@@ -12,13 +16,32 @@ const opt = (name, def) => {
   return i >= 0 && args[i + 1] ? args[i + 1] : def;
 };
 const BASE = opt("prod", process.env.PROD_URL || "https://temporary-spry-granite-1f0h7ae.vercel.app");
+const MIRROR = opt("mirror", process.env.SCOUT_MIRROR || "http://localhost:3000");
 const TOKEN = opt("token", process.env.SCOUT_TOKEN || "clyle-scout-v1");
 const MINUTES = parseInt(opt("minutes", "8"), 10);
 const CONC = Math.max(1, parseInt(opt("concurrency", "8"), 10) || 8);
 const deadline = Date.now() + MINUTES * 60_000;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const stats = { true: 0, false: 0, transient: 0, errors: 0 };
+const stats = { true: 0, false: 0, transient: 0, errors: 0, mirrored: 0 };
+let pendingDubFindings = [];
+
+async function flushMirror() {
+  const batch = pendingDubFindings;
+  pendingDubFindings = [];
+  if (!batch.length || !MIRROR) return;
+  try {
+    await fetch(`${MIRROR}/api/bots/intro-scout?token=${encodeURIComponent(TOKEN)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bot: "seeder", dubFindings: batch }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    stats.mirrored += batch.length;
+  } catch {
+    console.log(`mirror POST failed (${batch.length} findings dropped — retried next sweep)`);
+  }
+}
 
 async function probe(item) {
   const url = `${BASE}/api/bots/dub-probe?token=${encodeURIComponent(TOKEN)}&malId=${item.malId}&ep=${item.ep}&chain=${item.chain}`;
@@ -27,16 +50,20 @@ async function probe(item) {
     if (!res.ok) { stats.errors++; return; }
     const d = await res.json();
     if (d.verdict === null || d.verdict === undefined) stats.transient++;
-    else stats[String(d.verdict)]++;
+    else {
+      stats[String(d.verdict)]++;
+      pendingDubFindings.push({ malId: item.malId, ep: item.ep, chain: item.chain, ok: !!d.verdict, detail: "boundary seeder" });
+    }
     console.log(`[${new Date().toISOString().slice(11, 19)}] ${item.title} [${item.malId}] ep${item.ep} ${item.chain} -> ${d.verdict}`);
   } catch (err) {
     stats.errors++;
     console.log(`ERR ${item.title} [${item.malId}] ep${item.ep}: ${String(err).slice(0, 80)}`);
   }
+  if (pendingDubFindings.length >= 40) await flushMirror();
 }
 
 async function main() {
-  console.log(`seeding dub boundaries -> ${BASE} (budget ${MINUTES} min, ${CONC} lanes)`);
+  console.log(`seeding dub boundaries -> ${BASE} (mirror ${MIRROR}, budget ${MINUTES} min, ${CONC} lanes)`);
   let round = 0;
   while (Date.now() < deadline) {
     round++;
@@ -55,7 +82,9 @@ async function main() {
         }
       }),
     );
+    await flushMirror();
   }
+  await flushMirror();
   console.log(`done: ${JSON.stringify(stats)}`);
 }
 
