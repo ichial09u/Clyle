@@ -60,6 +60,9 @@ export default function WatchView({
   // The server /api/stream also validates every dub play, so a stale value
   // can never put Japanese audio under a DUB label — this only drives the UI.
   const [hasDub, setHasDub] = useState<boolean | null>(null);
+  // real episode titles ("Ryomen Sukuna") from the episodes endpoint — the
+  // player header prefers them over the plain "Episode N" + language label
+  const [epTitles, setEpTitles] = useState<Record<number, string>>({});
   // which servers carry that dub ("zoko", "kiwi") — when the player's current
   // server isn't one of them, toggling DUB auto-switches to one that is
   const [dubServers, setDubServers] = useState<Array<ServerId> | null>(null);
@@ -70,9 +73,15 @@ export default function WatchView({
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean; dubServers?: ServerId[] } | null) => {
-        if (ok && d && typeof d.hasDub === "boolean") setHasDub(d.hasDub);
-        if (ok && d && Array.isArray(d.dubServers)) setDubServers(d.dubServers);
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
+        if (!ok || !d) return;
+        if (typeof d.hasDub === "boolean") setHasDub(d.hasDub);
+        if (Array.isArray(d.dubServers)) setDubServers(d.dubServers);
+        if (Array.isArray(d.episodes)) {
+          const map: Record<number, string> = {};
+          for (const e of d.episodes) if (e.title) map[e.number] = e.title;
+          setEpTitles(map);
+        }
       })
       .catch(() => undefined);
     return () => {
@@ -130,6 +139,20 @@ export default function WatchView({
   // watch-time accrual (Top 10 Today): wall clock of the last tick/transition;
   // deltas only ever accrue while playback is actually running
   const lastActiveRef = useRef(Date.now());
+
+  /* -------- player header titles -------- */
+  // Prefer the real episode title from MAL ("Episode 1: Ryomen Sukuna");
+  // fall back to the classic numbered label (which still shows the language)
+  // when no title exists yet or the list is still loading.
+  const epTitle = epTitles[episode]?.trim() || null;
+  const playerTitle = epTitle ? `Episode ${episode}: ${epTitle}` : `Episode ${episode} ${lang.toUpperCase()}`;
+  const castTitle = epTitle
+    ? `${anime.title} — Episode ${episode}: ${epTitle}`
+    : `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`;
+  // mirror for closures that outlive their render (the hls.js effect hands
+  // the episode to the TV on MANIFEST_PARSED — must read the latest title)
+  const castTitleRef = useRef(castTitle);
+  castTitleRef.current = castTitle;
 
   /* -------- auto-hide the in-player controls (like a real video app) -------- */
   const showUi = useCallback((autoHide = true) => {
@@ -539,7 +562,7 @@ export default function WatchView({
         const cap = pickSubtitleTrack(stream.subtitles);
         void castLoadNext({
           src: castMediaUrlRef.current,
-          title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+          title: castTitleRef.current,
           imageUrl: anime.image,
           startTime: pendingSeekRef.current ?? resumeAtRef.current,
           captions: cap ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(cap.src)}`, label: cap.label || "English" } : undefined,
@@ -795,7 +818,7 @@ export default function WatchView({
     videoRef.current?.pause();
     const res = await castLoad({
       src: castMediaUrlRef.current,
-      title: `${anime.title} — Episode ${episode} (${lang.toUpperCase()})`,
+      title: castTitle,
       imageUrl: anime.image,
       startTime: videoRef.current ? videoRef.current.currentTime : resumeAtRef.current,
       captions: subTrack
@@ -921,7 +944,7 @@ export default function WatchView({
                   </span>
                   <p className="text-[14px] font-bold">Casting to your TV</p>
                   <p className="text-[11.5px] text-gray-400 max-w-[300px] md:max-w-[440px] truncate">
-                    {anime.title} · Episode {episode} ({lang.toUpperCase()})
+                    {castTitle}
                   </p>
                 </div>
 
@@ -1073,7 +1096,7 @@ export default function WatchView({
               <iframe
                 key={`zoko-${episode}-${lang}`}
                 src={zokoPlayerUrl(anime.malId, episode, lang)}
-                title={`${anime.title} — Episode ${episode} (${lang})`}
+                title={castTitle}
                 className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
                 allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                 referrerPolicy="no-referrer"
@@ -1199,7 +1222,7 @@ export default function WatchView({
             className="font-slab text-[16px] font-bold truncate"
             title={hasDub === false ? "No DUB available — tap does nothing" : "Toggle SUB/DUB"}
           >
-            Episode {episode} {lang.toUpperCase()}
+            {playerTitle}
           </button>
           <div className="flex-1" />
           <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">

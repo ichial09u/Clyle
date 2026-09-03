@@ -1,7 +1,7 @@
 import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { freshMediaByMal, airedEpisodeCount } from "@/lib/anilist";
-import { importEpisodes, importEpisodesFromList } from "@/lib/sync";
+import { importEpisodes, importEpisodesFromList, episodeTitleBackfillPages, backfillEpisodeTitles } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { probeDubAvailable } from "@/lib/zoko-stream";
 
@@ -50,6 +50,20 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     // brand-new episodes import their skip intro/ending along with them
     // (background, rate-limited, after the response is flushed)
     if (freshEpisodes.length) after(() => prefetchSkipTimes(freshEpisodes.map((ep) => ({ malId, ep, lenMin: anime.durationMin })), 8));
+  }
+
+  // real episode titles ("Episode 1: Ryomen Sukuna") — rows created from
+  // AniList's aired count have none. Small gaps fill inline (one Jikan page
+  // for a normal show, so even the very first visit sees titles); large
+  // gaps (long-runners) run after the response flushes so this route stays
+  // snappy. Fully-titled anime skip all of this for the price of one query.
+  const titlePages = await episodeTitleBackfillPages(malId);
+  if (titlePages > 0) {
+    if (titlePages <= 2) {
+      await backfillEpisodeTitles(malId).catch(() => undefined);
+    } else {
+      after(() => backfillEpisodeTitles(malId).catch(() => undefined));
+    }
   }
 
   const episodes = await db.episode.findMany({

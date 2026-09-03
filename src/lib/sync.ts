@@ -145,6 +145,7 @@ export async function importEpisodes(malId: number, count: number): Promise<numb
 interface JikanEpisodeEntry {
   mal_id: number;
   title: string | null;
+  title_english?: string | null;
   aired: string | null;
   filler?: boolean;
   recap?: boolean;
@@ -193,6 +194,90 @@ export async function importEpisodesFromList(malId: number): Promise<number[]> {
   const maxEp = Math.max(...Array.from(have));
   await db.anime.updateMany({ where: { malId, totalEpisodes: { lt: maxEp } }, data: { totalEpisodes: maxEp } });
   return added;
+}
+
+/**
+ * Anime whose MAL episode list 404s (Raijin-sha-era specials, music videos,
+ * etc) — remembered per server instance so repeat visits never re-probe them.
+ */
+const noEpisodeList = new Set<number>();
+
+/**
+ * Acceptance filter for imported episode titles: drop empty strings and
+ * MAL's "Episode 24" placeholders (a title like that would render as
+ * "Episode 24: Episode 24" in the player — the plain numbered fallback
+ * label is strictly better).
+ */
+export function cleanEpisodeTitle(raw: string | null | undefined): string | null {
+  const t = raw?.trim();
+  if (!t) return null;
+  // bare placeholder: "Episode 12", "Ep. 12", "Episode 12 End" — nothing else
+  if (/^ep(isode)?\.?\s*\d+(\s*(end|final))?$/i.test(t)) return null;
+  return t;
+}
+
+/**
+ * How many Jikan pages a title backfill for this anime would need right now
+ * (0 = nothing missing; -1 = known to have no MAL episode list). The episodes
+ * route uses this to decide between doing the work inline (small gap, first
+ * visitor gets titles immediately) vs deferring it past the response.
+ */
+export async function episodeTitleBackfillPages(malId: number): Promise<number> {
+  if (noEpisodeList.has(malId)) return -1;
+  const missing = await db.episode.findMany({
+    where: { animeId: malId, lang: "sub", title: null },
+    select: { number: true },
+  });
+  if (missing.length === 0) return 0;
+  const pages = new Set<number>();
+  for (const e of missing) pages.add(Math.floor((e.number - 1) / 100) + 1);
+  return pages.size;
+}
+
+/**
+ * Fill in missing episode titles from MAL's paginated episode list (Jikan).
+ * Episode rows created from AniList's aired count carry no title, so the
+ * player would otherwise show "Episode 1 DUB" instead of
+ * "Episode 1: Ryomen Sukuna". Only the pages holding untitled episodes are
+ * fetched (100 episodes per page) — a normal 12-24 episode show costs one
+ * request, and the whole thing is a no-op once titles are present.
+ */
+export async function backfillEpisodeTitles(malId: number): Promise<number> {
+  if (noEpisodeList.has(malId)) return 0;
+  const missing = await db.episode.findMany({
+    where: { animeId: malId, lang: "sub", title: null },
+    select: { number: true },
+    orderBy: { number: "asc" },
+  });
+  if (missing.length === 0) return 0;
+
+  const wantTitle = new Set(missing.map((e) => e.number));
+  const pages = [...new Set(missing.map((e) => Math.floor((e.number - 1) / 100) + 1))].sort((a, b) => a - b);
+
+  let filled = 0;
+  let listedPages = 0;
+  for (const page of pages) {
+    const res = await jikan<{ data: JikanEpisodeEntry[] }>(`/anime/${malId}/episodes?page=${page}`).catch(
+      () => null,
+    );
+    if (!res?.data?.length) continue;
+    listedPages++;
+    for (const e of res.data) {
+      if (!wantTitle.has(e.mal_id)) continue;
+      const title = cleanEpisodeTitle(e.title) ?? cleanEpisodeTitle(e.title_english) ?? null;
+      if (!title) continue;
+      const r = await db.episode.updateMany({
+        where: { animeId: malId, number: e.mal_id, lang: "sub", title: null },
+        data: { title },
+      });
+      filled += r.count;
+    }
+  }
+
+  // page 1 exists but holds nothing (or every probed page 404s) — MAL simply
+  // has no episode list for this anime; stop probing on future visits
+  if (listedPages === 0) noEpisodeList.add(malId);
+  return filled;
 }
 
 async function runSync(_force = false): Promise<SyncResult> {
@@ -255,6 +340,15 @@ async function runSync(_force = false): Promise<SyncResult> {
       const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
       newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
       animeAdded++;
+    }
+
+    // ---------------------------------------------------------------
+    // 3) Titles for the episodes this sync just imported — the AniList
+    //    aired-count path creates bare rows; MAL's list has the names
+    //    ("Ryomen Sukuna"). Bounded: only pages with untitled episodes.
+    // ---------------------------------------------------------------
+    for (const malId of new Set(newEpisodes.map((n) => n.malId))) {
+      await backfillEpisodeTitles(malId).catch(() => undefined);
     }
 
     await db.syncLog.update({
