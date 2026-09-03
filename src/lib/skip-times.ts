@@ -100,21 +100,52 @@ function valid(iv: unknown): iv is SkipInterval {
 }
 
 /**
+ * Plausibility gate — a "skip intro" that STARTS 10 minutes into a
+ * 24-minute episode is not an opening (Zoko mis-tags recap blocks and
+ * random chapters as intro/outro on plenty of shows — Grand Blue ep9
+ * "intro 619-709"). Since the blind 8-90s guess was removed, a WRONG
+ * interval shows a wrong button — worse than no button. Anything that
+ * fails the sanity shape is dropped: the Skip Intro button must actually
+ * skip the opening, or not exist.
+ */
+export function plausibleIntro(iv: SkipInterval | undefined | null, lenMin?: number | null): iv is SkipInterval {
+  if (!iv || !valid(iv)) return false;
+  const cap = lenMin && lenMin > 30 ? 420 : 320; // hour-long formats may open late
+  return iv.start <= cap && iv.end - iv.start <= 180;
+}
+
+export function plausibleOutro(iv: SkipInterval | undefined | null): iv is SkipInterval {
+  return !!iv && valid(iv) && iv.end - iv.start <= 300;
+}
+
+/**
  * Merge Zoko's native skip payload with the AniSkip dataset.
  * Zoko wins per-field (it is frame-accurate for its own encodes);
- * the dataset fills whatever Zoko left blank.
+ * the dataset fills whatever Zoko left blank. BOTH sources pass the
+ * plausibility gate here — this is where early-returning callers
+ * (withSkipDataLive's "nothing left to ask") would otherwise leak a
+ * mis-tagged interval (Grand Blue ep9 "intro 619-709") into the player.
  */
-export function withSkipData<T extends { skip?: SkipData }>(malId: number, ep: number, stream: T): T & { skip?: SkipData } {
+export function withSkipData<T extends { skip?: SkipData }>(
+  malId: number,
+  ep: number,
+  stream: T,
+  opts: { episodeLengthMin?: number | null } = {},
+): T & { skip?: SkipData } {
   const zoko = stream.skip ?? {};
   const filled = lookupSkipTimes(malId, ep);
 
   const merged: SkipData = {};
-  const intro = valid(zoko.intro) ? zoko.intro : valid(filled.intro) ? filled.intro : undefined;
-  const outro = valid(zoko.outro) ? zoko.outro : valid(filled.outro) ? filled.outro : undefined;
+  const zi = valid(zoko.intro) && plausibleIntro(zoko.intro, opts.episodeLengthMin) ? zoko.intro : undefined;
+  const zo = valid(zoko.outro) && plausibleOutro(zoko.outro) ? zoko.outro : undefined;
+  const fi = valid(filled.intro) && plausibleIntro(filled.intro, opts.episodeLengthMin) ? filled.intro : undefined;
+  const fo = valid(filled.outro) && plausibleOutro(filled.outro) ? filled.outro : undefined;
+  const intro = zi ?? fi;
+  const outro = zo ?? fo;
   if (intro) merged.intro = intro;
   if (outro) merged.outro = outro;
   if (intro || outro) {
-    merged.source = valid(zoko.intro) || valid(zoko.outro) ? "zoko" : "aniskip";
+    merged.source = zi || zo ? "zoko" : "aniskip";
   }
 
   return { ...stream, skip: Object.keys(merged).length ? merged : undefined };
@@ -319,7 +350,7 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   stream: T,
   opts: { episodeLengthMin?: number | null } = {},
 ): Promise<T & { skip?: SkipData }> {
-  const merged = withSkipData(malId, ep, stream);
+  const merged = withSkipData(malId, ep, stream, opts);
   let skip: SkipData = { ...(merged.skip ?? {}) };
 
   // scout tier — measured on OUR encodes by the fleet. An exact per-episode
@@ -373,6 +404,16 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
       /* votes are best-effort too */
     }
   }
+  // final plausibility gate — the button must actually skip the opening:
+  // drop any interval that fails the sanity shape (wrong data < no button)
+  if (skip.intro && !plausibleIntro(skip.intro, opts.episodeLengthMin)) {
+    delete skip.intro;
+    if (!skip.outro) delete skip.source;
+  }
+  if (skip.outro && !plausibleOutro(skip.outro)) {
+    delete skip.outro;
+    if (!skip.intro) delete skip.source;
+  }
   return { ...merged, skip };
 }
 
@@ -405,35 +446,40 @@ export async function skipCoverage(
   if (scout?.interval) return { source: "scout", intro: scout.interval };
   const byEp = data[String(malId)];
   const exact = byEp?.[String(ep)];
-  if (exact?.op || exact?.ed) {
+  const exOp = exact?.op ? { start: exact.op[0], end: exact.op[1] } : null;
+  const exEd = exact?.ed ? { start: exact.ed[0], end: exact.ed[1] } : null;
+  if (exOp || exEd) {
     const cov: SkipCoverage = { source: "exact" };
-    if (exact.op) cov.intro = { start: exact.op[0], end: exact.op[1] };
-    if (exact.ed) cov.outro = { start: exact.ed[0], end: exact.ed[1] };
-    return cov;
+    if (plausibleIntro(exOp, opts.episodeLengthMin)) cov.intro = exOp;
+    if (plausibleOutro(exEd)) cov.outro = exEd;
+    if (cov.intro || cov.outro) return cov;
   }
   const cons = consensus(malId);
-  if (cons.op || cons.ed) {
+  const coOp = cons.op ? { start: cons.op[0], end: cons.op[1] } : null;
+  const coEd = cons.ed ? { start: cons.ed[0], end: cons.ed[1] } : null;
+  if (coOp || coEd) {
     const cov: SkipCoverage = { source: "consensus" };
-    if (cons.op) cov.intro = { start: cons.op[0], end: cons.op[1] };
-    if (cons.ed) cov.outro = { start: cons.ed[0], end: cons.ed[1] };
-    return cov;
+    if (plausibleIntro(coOp, opts.episodeLengthMin)) cov.intro = coOp;
+    if (plausibleOutro(coEd)) cov.outro = coEd;
+    if (cov.intro || cov.outro) return cov;
   }
+  const liveCov = (op?: [number, number], ed?: [number, number]): SkipCoverage | null => {
+    const i = op ? { start: op[0], end: op[1] } : null;
+    const o = ed ? { start: ed[0], end: ed[1] } : null;
+    if (!plausibleIntro(i, opts.episodeLengthMin) && !plausibleOutro(o)) return null;
+    const cov: SkipCoverage = { source: "live" };
+    if (plausibleIntro(i, opts.episodeLengthMin)) cov.intro = i;
+    if (plausibleOutro(o)) cov.outro = o;
+    return cov;
+  };
   if (opts.allowLiveFetch) {
     const live = await liveLookup(malId, ep, opts.episodeLengthMin ?? undefined);
-    if (live?.op || live?.ed) {
-      const cov: SkipCoverage = { source: "live" };
-      if (live.op) cov.intro = { start: live.op[0], end: live.op[1] };
-      if (live.ed) cov.outro = { start: live.ed[0], end: live.ed[1] };
-      return cov;
-    }
+    const cov = live ? liveCov(live.op, live.ed) : null;
+    if (cov) return cov;
   } else {
     const cached = (await liveRead(malId))[String(ep)];
-    if (cached && !cached.miss && (cached.op || cached.ed)) {
-      const cov: SkipCoverage = { source: "live" };
-      if (cached.op) cov.intro = { start: cached.op[0], end: cached.op[1] };
-      if (cached.ed) cov.outro = { start: cached.ed[0], end: cached.ed[1] };
-      return cov;
-    }
+    const cov = cached && !cached.miss ? liveCov(cached.op, cached.ed) : null;
+    if (cov) return cov;
   }
   // crowd tier — viewers' scrub medians count as coverage too (the player
   // shows a working Skip Intro button for them)

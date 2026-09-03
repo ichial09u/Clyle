@@ -79,6 +79,20 @@ async function expectJson(name, path, init, validate) {
   if (!anime) record("catalog anime detail", false, "missing");
   if (!eps) record("catalog episodes", false, "missing");
 
+  // ---- 3b-2) per-episode dub gating (the Elbaph fix): One Piece carries
+  // dub servers but its newest arc episodes were never dubbed — the episodes
+  // payload must carry a proven per-episode boundary (dubThrough) inside the
+  // episode range, so the UI can hide DUB on the undubbed tail.
+  if (eps) {
+    const thru = eps.dubThrough?.s1 ?? null;
+    record(
+      "per-episode dub boundary (One Piece dubbed through N<total)",
+      thru != null && thru > 0 && thru < (eps.total ?? 0),
+      `dubThrough=${JSON.stringify(eps?.dubThrough)} total=${eps?.total}`,
+    );
+    if (thru != null) console.log(`      One Piece: real dub through ep ${thru}/${eps.total} — DUB buttons hidden past it`);
+  }
+
   // ---- 3b) skip-intro data (three-tier: Zoko payload -> AniSkip dataset) ----
   // One Piece carries Zoko-native skip data; Frieren is covered by the vendored
   // AniSkip dataset instead. Both must expose a usable intro interval.
@@ -96,18 +110,21 @@ async function expectJson(name, path, init, validate) {
   );
 
   // ---- 3c) skip-intro audit: the bot walks EVERY anime in the catalog and
-  // verifies a Skip Intro button will appear (exact AniSkip row, per-anime
-  // consensus, cached live tier, or the TV-length heuristic window). Any
-  // uncovered TV episode fails the run.
+  // verifies the Skip Intro data pipeline is healthy. Since the blind 8-90s
+  // heuristic was removed, an episode with no measured data shows NO button
+  // (by design) — the fleet measures those over time. The smoke check now
+  // asserts the audit RUNS and the fleet+datasets carry a healthy majority
+  // of samples (scout + exact + consensus + live + crowd), not a perfect 100%.
   const audit = await expectJson(
-    "GET /api/skip-audit (every anime shows Skip Intro)",
+    "GET /api/skip-audit (skip data pipeline healthy)",
     "/api/skip-audit",
     {},
     (r, b) =>
-      b?.ok === true &&
+      r?.status === 200 &&
       typeof b?.totals?.coveragePct === "number" &&
-      b.totals.coveragePct >= 95 &&
+      b.totals.coveragePct >= 60 &&
       b?.totals?.sampled > 0 &&
+      (b.totals.scout ?? 0) > 0 && // the fleet is measuring
       Array.isArray(b?.anime) &&
       b.anime.length > 0,
     60_000,
@@ -116,7 +133,7 @@ async function expectJson(name, path, init, validate) {
     const t = audit.totals;
     console.log(
       `      skip-intro coverage: ${t.coveragePct}% of ${t.sampled} sampled episodes across ${t.anime} anime` +
-        ` (exact ${t.exact} · consensus ${t.consensus} · live ${t.live} · heuristic ${t.heuristic} · uncovered ${t.uncovered})`,
+        ` (scout ${t.scout} · exact ${t.exact} · consensus ${t.consensus} · live ${t.live} · crowd ${t.crowd} · na ${t.na} · uncovered ${t.uncovered})`,
     );
   }
 
