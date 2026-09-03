@@ -119,11 +119,6 @@ export default function DetailsView({
         index={0}
         ctaLabel="Watch"
         onCta={() => onWatch(anime)}
-        onShare={() => {
-          const url = `https://zokoanime.video/download/mal/${anime.malId}/1/sub`;
-          if (navigator.share) navigator.share({ title: anime.title, url }).catch(() => undefined);
-          else navigator.clipboard?.writeText(url).catch(() => undefined);
-        }}
       />
 
       <div className="px-4 lg:max-w-[1100px] lg:mx-auto">

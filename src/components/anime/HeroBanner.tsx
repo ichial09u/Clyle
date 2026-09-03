@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, Share2 } from "lucide-react";
+import { Heart } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { useMyList } from "@/lib/client-store";
 import { artUrl } from "@/lib/art";
@@ -12,7 +12,6 @@ interface HeroBannerProps {
   index: number;
   ctaLabel: "Details" | "Watch";
   onCta: () => void;
-  onShare: () => void;
 }
 
 function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children: React.ReactNode }) {
@@ -27,7 +26,7 @@ function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children
 
 type ArtStatus = "loading" | "loaded" | "error";
 
-export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: HeroBannerProps) {
+export default function HeroBanner({ items, index, ctaLabel, onCta }: HeroBannerProps) {
   const { has, toggle } = useMyList();
   // defensive: props can arrive unsettled during fast-refresh/dev transitions
   const list = Array.isArray(items) ? items : [];
@@ -136,29 +135,26 @@ export default function HeroBanner({ items, index, ctaLabel, onCta, onShare }: H
           <div className="mt-1.5 text-[13px] md:text-[14.5px] text-gray-200">{genres.slice(0, 3).join(", ")}</div>
         ) : null}
 
-        {/* action row */}
+        {/* action row — Details pill centered (reference layout), My List right.
+            Share was removed: an empty first grid cell keeps the pill truly
+            centered exactly like the reference app. */}
         <div className="mt-4 mb-1 w-full max-w-[360px] md:max-w-[430px] grid grid-cols-3 items-center">
-          <button
-            onClick={onShare}
-            className="flex flex-col items-center gap-1 text-gray-200 hover:text-white active:scale-95 transition"
-            aria-label="Share"
-          >
-            <Share2 className="w-5 h-5" />
-            <span className="text-[11px]">Share</span>
-          </button>
+          <span aria-hidden className="flex flex-col items-center" />
 
           <button
             onClick={onCta}
-            className="justify-self-center flex items-center gap-2 bg-white text-black font-bold text-[15px] md:text-[16.5px] rounded-full px-7 py-2.5 md:px-9 md:py-3 hover:bg-gray-200 active:scale-95 transition shadow-lg"
+            className="justify-self-center flex items-center gap-2.5 bg-white text-black font-bold text-[17px] md:text-[19px] rounded-full px-10 py-3 md:px-12 md:py-3.5 hover:bg-gray-200 active:scale-95 transition shadow-[0_4px_18px_rgba(0,0,0,0.55)]"
           >
             {ctaLabel === "Watch" ? (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M8 5v14l11-7z" />
               </svg>
             ) : (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 16v-5M12 8h.01" />
+              /* filled ⓘ — matches the reference app's solid info badge */
+              <svg width="17" height="17" viewBox="0 0 24 24">
+                <circle cx="12" cy="12" r="10" fill="currentColor" />
+                <rect x="10.9" y="10" width="2.2" height="7" rx="1.1" fill="#fff" />
+                <circle cx="12" cy="7" r="1.3" fill="#fff" />
               </svg>
             )}
             {ctaLabel}

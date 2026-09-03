@@ -130,12 +130,6 @@ export default function HomeView({
         index={heroIdx}
         ctaLabel="Details"
         onCta={() => hero && onDetails(hero)}
-        onShare={() => {
-          if (!hero) return;
-          const url = `https://zokoanime.video/download/mal/${hero.malId}/1/sub`;
-          if (navigator.share) navigator.share({ title: hero.title, url }).catch(() => undefined);
-          else navigator.clipboard?.writeText(url).catch(() => undefined);
-        }}
       />
 
       {/* Continue Watching — resumes the exact episode + second */}

@@ -1,33 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, X, Plus, Check } from "lucide-react";
-import type { AnimeLite, SearchResult } from "@/lib/types";
-import { minimalLite } from "@/lib/client-store";
+import { Search, X } from "lucide-react";
+import type { AnimeLite } from "@/lib/types";
 import PosterCard from "@/components/anime/PosterCard";
 
 export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => void }) {
   const [query, setQuery] = useState("");
   const [catalog, setCatalog] = useState<AnimeLite[]>([]);
-  const [mal, setMal] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [imported, setImported] = useState<Set<number>>(new Set());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     if (query.trim().length < 2) {
       setCatalog([]);
-      setMal([]);
       return;
     }
     setLoading(true);
     timer.current = setTimeout(async () => {
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
-        const payload = (await res.json()) as { catalog: AnimeLite[]; mal: SearchResult[] };
-        setCatalog(payload.catalog);
-        setMal(payload.mal);
+        const payload = (await res.json()) as { catalog: AnimeLite[] };
+        setCatalog(payload.catalog ?? []);
       } catch {
         /* keep previous */
       } finally {
@@ -38,15 +33,6 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
       if (timer.current) clearTimeout(timer.current);
     };
   }, [query]);
-
-  async function importOne(malId: number) {
-    setImported((prev) => new Set(prev).add(malId));
-    await fetch("/api/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ malId }),
-    }).catch(() => undefined);
-  }
 
   const hasQuery = query.trim().length >= 2;
 
@@ -79,7 +65,7 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
         </div>
       ) : null}
 
-      {!loading && hasQuery && catalog.length === 0 && mal.length === 0 ? (
+      {!loading && hasQuery && catalog.length === 0 ? (
         <p className="px-4 mt-10 text-center text-gray-400 text-sm">No results for “{query}”.</p>
       ) : null}
 
@@ -91,39 +77,6 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
               <div key={a.malId}>
                 <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
                 <p className="mt-1 text-[11px] text-gray-400 truncate">{a.title}</p>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : null}
-
-      {!loading && mal.length ? (
-        <>
-          <h2 className="font-slab text-[16px] font-bold px-4 mt-6 mb-2">
-            More from MAL <span className="text-[12px] font-normal text-gray-500">— tap + to import into Zoko catalog</span>
-          </h2>
-          <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 md:gap-2.5 px-4">
-            {mal.map((s) => (
-              <div key={s.malId}>
-                <div className="relative">
-                  <PosterCard
-                    image={s.image}
-                    title={s.title}
-                    onClick={() => importOne(s.malId).then(() => onSelect({ ...minimalLite(s.malId, s.title, s.image), inCatalog: true }))}
-                    className="w-full aspect-[2/3]"
-                  />
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      importOne(s.malId);
-                    }}
-                    className={`absolute top-1.5 right-1.5 w-7 h-7 rounded-full flex items-center justify-center transition ${imported.has(s.malId) ? "bg-[#00c853]" : "bg-black/70 hover:bg-black"}`}
-                    aria-label={`Import ${s.title}`}
-                  >
-                    {imported.has(s.malId) ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-                  </button>
-                </div>
-                <p className="mt-1 text-[11px] text-gray-400 truncate">{s.title}</p>
               </div>
             ))}
           </div>
