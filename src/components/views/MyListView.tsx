@@ -66,7 +66,7 @@ export default function MyListView({ onSelect }: { onSelect: (a: AnimeLite) => v
         <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-1.5 md:gap-2.5 px-4">
           {effective.map((a) => (
             <div key={a.malId}>
-              <PosterCard image={a.image} title={a.title} logo={a.logo} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
+              <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-full aspect-[2/3]" />
               <p className="mt-1 text-[11px] text-gray-400 truncate">{a.title}</p>
             </div>
           ))}

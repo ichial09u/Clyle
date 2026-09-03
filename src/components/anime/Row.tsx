@@ -35,7 +35,7 @@ export default function Row({
             key={`${title}-${a.malId}`}
             image={a.image}
             title={a.title}
-            logo={a.logo}
+           
             onClick={() => onSelect(a)}
             className="w-[126px] h-[178px] md:w-[150px] md:h-[212px] lg:w-[172px] lg:h-[243px]"
           />
