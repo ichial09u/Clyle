@@ -126,6 +126,19 @@ for (const a of data.anime ?? []) {
         ...(a.totalEpisodes > existing.totalEpisodes ? { totalEpisodes: a.totalEpisodes } : {}),
         ...(typeof a.hasDub === "boolean" ? { hasDub: a.hasDub } : {}),
         ...(existing.logoUrl == null && a.logoUrl ? { logoUrl: a.logoUrl } : {}),
+        // per-episode dub boundaries: whichever side was probed more recently
+        // wins (checkedAt advances on every definitive probe; the boundaries
+        // are monotonic between checks)
+        ...((a.dubThruCheckedAt ? new Date(a.dubThruCheckedAt).getTime() : 0) >
+        (existing.dubThruCheckedAt ? existing.dubThruCheckedAt.getTime() : 0)
+          ? {
+              dubThruS1: a.dubThruS1 ?? null,
+              dubHiS1: a.dubHiS1 ?? null,
+              dubThruS2: a.dubThruS2 ?? null,
+              dubHiS2: a.dubHiS2 ?? null,
+              dubThruCheckedAt: a.dubThruCheckedAt ? new Date(a.dubThruCheckedAt) : null,
+            }
+          : {}),
       },
     });
   }
@@ -220,6 +233,24 @@ for (const r of data.scoutRef ?? []) {
   }).catch(() => undefined);
 }
 
+// per-episode dub probes (ground truth behind the DUB button gating) —
+// newest measurement wins per (malId, ep, chain)
+let dubProbes = 0;
+for (const d of data.dubProbe ?? []) {
+  const chain = d.chain === "s2" ? "s2" : "s1";
+  const existing = await db.dubProbe.findUnique({ where: { malId_ep_chain: { malId: d.malId, ep: d.ep, chain } } });
+  const prodAt = d.updatedAt ? new Date(d.updatedAt).getTime() : 0;
+  const localAt = existing ? existing.updatedAt.getTime() : 0;
+  if (!existing || prodAt > localAt) {
+    await db.dubProbe.upsert({
+      where: { malId_ep_chain: { malId: d.malId, ep: d.ep, chain } },
+      update: { ok: !!d.ok, provider: d.provider ?? null, detail: d.detail ?? null },
+      create: { malId: d.malId, ep: d.ep, chain, ok: !!d.ok, provider: d.provider ?? null, detail: d.detail ?? null },
+    }).catch(() => undefined);
+    dubProbes++;
+  }
+}
+
 try { unlinkSync(file); } catch { /* keep on failure */ }
-console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, anime +${stats.anime}, episodes +${stats.episodes}, progress +${stats.progress}, lastSealed=${lastSealed ?? "n/a"}`);
+console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, anime +${stats.anime}, episodes +${stats.episodes}, progress +${stats.progress}, dubProbes ${dubProbes}, lastSealed=${lastSealed ?? "n/a"}`);
 process.exit(0);

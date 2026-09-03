@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * secrets). Used by scripts/merge-comments.mjs via scripts/deploy-vercel.mjs.
  */
 export async function GET() {
-  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, introScout, scoutRef] =
+  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, introScout, scoutRef, dubProbe] =
     await Promise.all([
       db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),
       db.comment.findMany(),
@@ -37,6 +37,8 @@ export async function GET() {
       // button accurate through the deploy itself)
       db.introScout.findMany(),
       db.scoutRef.findMany(),
+      // per-episode dub probes (ground truth behind the DUB button gating)
+      db.dubProbe.findMany(),
     ]);
   return NextResponse.json(
     {
@@ -52,6 +54,7 @@ export async function GET() {
       watchProgress,
       introScout,
       scoutRef,
+      dubProbe,
     },
     { headers: { "Cache-Control": "no-store" } },
   );
