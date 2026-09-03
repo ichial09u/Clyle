@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { recordProbeResult, nextDubProbeEp, type DubChain } from "@/lib/dub-boundary";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -43,6 +44,13 @@ type BacklogItem =
       title: string;
       ep: number;
       ref: { start: number; end: number; env: number[] };
+    }
+  | {
+      kind: "dubprobe";
+      malId: number;
+      title: string;
+      ep: number;
+      chain: "s1" | "s2";
     };
 
 export async function GET(req: Request) {
@@ -54,7 +62,12 @@ export async function GET(req: Request) {
     const [animes, refs, covered, recent] = await Promise.all([
       db.anime.findMany({
         where: { inCatalog: true },
-        select: { malId: true, title: true, popularity: true },
+        select: {
+          malId: true, title: true, popularity: true, totalEpisodes: true, airing: true,
+          hasDub: true, hasDubKiwi: true, hasDubMega: true,
+          dubThruS1: true, dubHiS1: true, dubThruS2: true, dubHiS2: true,
+          dubThruCheckedAt: true,
+        },
         orderBy: { popularity: "asc" },
       }),
       db.scoutRef.findMany({ select: { malId: true, start: true, end: true, env: true } }),
@@ -66,6 +79,27 @@ export async function GET(req: Request) {
         take: 4000,
       }),
     ]);
+
+    // ---- dub boundary search items (the fleet literally clicks the DUB
+    // server: the probe endpoint runs the exact resolution chain the player's
+    // DUB button runs, fake-dub checks included, and records the verdict).
+    // Popularity order — the shows people actually watch get boundaries first.
+    // Sub-only anime (every source verdict false) need no probes.
+    const dubprobes: BacklogItem[] = [];
+    for (const a of animes) {
+      if (!a.totalEpisodes) continue;
+      const anyDubPossible = a.hasDub !== false || a.hasDubKiwi !== false || a.hasDubMega !== false;
+      if (!anyDubPossible) continue;
+      // closed boundaries re-test their edge only when stale (dubs catch up
+      // weekly on airing shows) — otherwise leave settled searches alone
+      const checkedAge = Date.now() - (a.dubThruCheckedAt?.getTime() ?? 0);
+      const recheck = a.airing && checkedAge > 12 * 3600_000;
+      for (const chain of ["s1", "s2"] as const) {
+        const ep = nextDubProbeEp(a, chain, { recheck });
+        if (ep != null) dubprobes.push({ kind: "dubprobe", malId: a.malId, title: a.title, ep, chain });
+      }
+      if (dubprobes.length >= 300) break; // bounded — intro work continues too
+    }
 
     const refByAnime = new Map(refs.map((r) => [r.malId, r]));
     const coveredSet = new Set(covered.filter((c) => Date.now() - c.updatedAt.getTime() < REVERIFY_MS).map((c) => `${c.malId}/${c.ep}`));
@@ -120,7 +154,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const backlog = [...establish, ...verify];
+    const backlog = [...dubprobes, ...establish, ...verify];
 
     return NextResponse.json(
       {
@@ -129,6 +163,7 @@ export async function GET(req: Request) {
           animes: animes.length,
           refs: refs.length,
           measured: covered.length,
+          dubprobes: dubprobes.length,
           establish: establish.length,
           verify: verify.length,
         },
@@ -148,6 +183,7 @@ export async function POST(req: Request) {
     bot?: string;
     findings?: Array<{ malId: number; ep: number; status: string; start?: number; end?: number; quality?: number; detail?: string }>;
     refs?: Array<{ malId: number; start: number; end: number; env: number[] }>;
+    dubFindings?: Array<{ malId: number; ep: number; chain: string; ok: boolean; provider?: string; detail?: string }>;
   };
   try {
     body = await req.json();
@@ -155,7 +191,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad json" }, { status: 400 });
   }
   const bot = (body.bot ?? "scout").slice(0, 32);
-  let accepted = 0, refs = 0, rejected = 0;
+  let accepted = 0, refs = 0, rejected = 0, dubAccepted = 0, suppressed = 0;
 
   try {
     for (const f of body.findings ?? []) {
@@ -188,6 +224,7 @@ export async function POST(req: Request) {
               end: f.end!,
               quality: Number.isFinite(f.quality) ? f.quality : prev.quality,
               bots: agree ? Math.min(99, prev.bots + 1) : 1,
+              nodetect: false, // a real measurement clears any earlier no-OP verdict
               detail: f.detail ? String(f.detail).slice(0, 300) : prev.detail,
             },
           });
@@ -204,7 +241,48 @@ export async function POST(req: Request) {
           });
         }
         accepted++;
+      } else if (
+        f.status === "nodetect" &&
+        !(f.detail ?? "").includes("stream unavailable") // no stream = no evidence
+      ) {
+        // The bots WATCHED this episode and found no opening — suppress the
+        // Skip Intro button for it (exact-episode rows outrank every other
+        // tier; a later "ok" measurement clears the flag). This is the
+        // "just remove the skip button for that episode" contract.
+        const prev = await db.introScout.findUnique({ where: { malId_ep: { malId: f.malId, ep: f.ep } } });
+        if (prev) {
+          if (!prev.nodetect) suppressed++;
+          await db.introScout.update({
+            where: { id: prev.id },
+            data: { nodetect: true, start: 0, end: 0, detail: f.detail ? String(f.detail).slice(0, 300) : prev.detail },
+          });
+        } else {
+          await db.introScout.create({
+            data: {
+              malId: f.malId,
+              ep: f.ep,
+              start: 0,
+              end: 0,
+              nodetect: true,
+              detail: f.detail ? String(f.detail).slice(0, 300) : null,
+            },
+          });
+          suppressed++;
+        }
+        rejected++;
       } else {
+        rejected++;
+      }
+    }
+
+    // ---- per-episode dub verdicts (the fleet clicked the DUB server) ----
+    for (const d of body.dubFindings ?? []) {
+      const chain: DubChain = d.chain === "s2" ? "s2" : "s1";
+      if (!Number.isFinite(d.malId) || !Number.isFinite(d.ep) || d.ep < 1) { rejected++; continue; }
+      try {
+        await recordProbeResult(d.malId, d.ep, chain, !!d.ok, d.provider ?? null, d.detail ?? `bot ${bot}`);
+        dubAccepted++;
+      } catch {
         rejected++;
       }
     }
@@ -233,7 +311,7 @@ export async function POST(req: Request) {
       if (old.length) await db.scoutFinding.deleteMany({ where: { id: { in: old.map((o) => o.id) } } });
     }
 
-    return NextResponse.json({ ok: true, accepted, refs, rejected, bot }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, accepted, refs, rejected, dubAccepted, suppressed, bot }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err).slice(0, 300) }, { status: 500 });
   }

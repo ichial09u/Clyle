@@ -26,6 +26,20 @@ export class ZokoNoPageError extends Error {
   }
 }
 
+/**
+ * The page EXISTS but carries no decodable stream payload — Zoko's dead dub
+ * entries do this (a 200 page with no/undecodable __P, e.g. a dub slot that
+ * was created for an episode whose dub never actually shipped). Treating it
+ * as transient would stall the per-episode dub boundary search forever, so
+ * it is DEFINITIVE evidence that no playable stream exists there.
+ */
+export class ZokoNoStreamError extends Error {
+  constructor(reason: string) {
+    super(`zoko stream missing: ${reason}`);
+    this.name = "ZokoNoStreamError";
+  }
+}
+
 const OBF_KEY = "otaku-embed-v1";
 const ZOKO_ORIGIN = "https://zokoanime.video";
 const UA =
@@ -154,9 +168,9 @@ async function fetchStream(malId: number, ep: number, lang: Lang, server: Server
   if (!res.ok) throw new Error(`zoko stream page -> ${res.status}`);
   const html = await res.text();
   const m = html.match(/window\.__P="([^"]+)"/);
-  if (!m) throw new Error("no __P payload");
+  if (!m) throw new ZokoNoStreamError(`no __P payload (${lang})`);
   const decoded = decodeStreamPayload(m[1]);
-  if (!decoded) throw new Error("payload decode failed");
+  if (!decoded) throw new ZokoNoStreamError(`payload decode failed (${lang})`);
   return { ...decoded, resolvedFrom: pageUrl };
 }
 
@@ -241,29 +255,26 @@ export async function verifyRealDub(malId: number, ep: number, server: ServerId)
   }
 
   try {
-    const [sub, dubResult] = await Promise.all([
-      resolveStreamRaw(malId, ep, "sub", server).catch(() => null), // sub is never verified -> no recursion
-      fetchStream(malId, ep, "dub", server).then(
-        (d) => d as ZokoStream | null,
-        (err: unknown) => ({ __error: err }),
-      ),
-    ]);
+    // fetch the DUB first: when it is definitively missing we can answer
+    // false WITHOUT the sub comparison (faster, and fewer chances for a
+    // sub hiccup to mask a definitive dub absence)
     let dub: ZokoStream | null = null;
-    let dubErr: unknown = null;
-    if (dubResult && typeof dubResult === "object" && "__error" in (dubResult as Record<string, unknown>)) {
-      dubErr = (dubResult as { __error: unknown }).__error;
-    } else if (dubResult) {
-      dub = dubResult as ZokoStream;
-    }
-    if (!dub) {
-      if (dubErr instanceof ZokoNoPageError) {
-        // definitive: Zoko has no dub page for this episode -> stable false
-        await cacheDubVerdict(key, false);
-        return false;
+    let dubMissing = false;
+    try {
+      dub = await fetchStream(malId, ep, "dub", server);
+    } catch (err) {
+      if (err instanceof ZokoNoPageError || err instanceof ZokoNoStreamError) {
+        dubMissing = true; // no dub page at all, or a dead dub entry
+      } else {
+        return null; // transient (timeout, 5xx) — do not cache, do not block
       }
-      // transient failure (timeout, 5xx, rate limit) — DO NOT cache, do not block
-      return null;
     }
+    if (dubMissing || !dub) {
+      // definitive: no playable dub for this episode
+      await cacheDubVerdict(key, false);
+      return false;
+    }
+    const sub = await resolveStreamRaw(malId, ep, "sub", server).catch(() => null); // sub is never verified -> no recursion
     if (!sub) return null; // can't compare — don't guess
     if (sub.src === dub.src) {
       await cacheDubVerdict(key, false); // literally the same stream

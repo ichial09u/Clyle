@@ -124,16 +124,16 @@ export async function GET(req: Request) {
   }
 
   // ---- 7) skip intro audit — the bot walks EVERY anime and verifies a
-  // Skip Intro button will appear (exact dataset row / consensus / live tier
-  // / TV-length heuristic). `probe` asks AniSkip live for gaps and caches
-  // the answers, which heals them in place.
+  // Skip Intro button will appear (scout measurement / exact dataset row /
+  // consensus / live tier / crowd medians — no guessing). `probe` asks
+  // AniSkip live for gaps and caches the answers, which heals them in place.
   try {
     const audit = await runSkipAudit(true, 5);
     const t = audit.totals;
     checks.push({
       name: "skip-intro-audit",
       ok: audit.ok,
-      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.scout} scout / ${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.heuristic} heuristic / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
+      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.scout} scout / ${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
     });
     if (!audit.ok) {
       const bad = audit.anime.filter((a) => !a.ok).slice(0, 5).map((a) => `${a.title} (${a.episodes.filter((e) => e.source === "uncovered").map((e) => `ep${e.ep}`).join(",")})`);

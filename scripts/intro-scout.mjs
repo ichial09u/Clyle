@@ -53,7 +53,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let queuedFindings = [];
 let flushTimer = null;
-const stats = { ok: 0, nodetect: 0, error: 0, refs: 0, scannedSec: 0, started: Date.now() };
+const stats = { ok: 0, nodetect: 0, error: 0, refs: 0, dubprobes: 0, scannedSec: 0, started: Date.now() };
 
 function log(...parts) {
   const ts = new Date().toISOString().slice(11, 19);
@@ -225,7 +225,7 @@ async function jobVerify(item, bot) {
     stats.ok++;
     log(`${bot} OK ${title} [${malId}] ep${ep} -> opening ${m.start}-${m.end} (q=${m.quality})`);
     enqueueFinding({ bot, malId, ep, status: "ok", start: m.start, end: m.end, quality: m.quality });
-    void logFinding({ bot, malId, title, ep, status: "ok", start: m.start, end: m.end, quality: m.quality });
+    void logFinding({ bot, title, ep, status: "ok", start: m.start, end: m.end, quality: m.quality });
   } else {
     stats.nodetect++;
     log(`${bot} MISS ${title} [${malId}] ep${ep} (m=${JSON.stringify(m)})`);
@@ -233,12 +233,37 @@ async function jobVerify(item, bot) {
   }
 }
 
+/**
+ * Dub boundary probe — one step of the per-episode binary search. The
+ * endpoint literally clicks the DUB server (runs the player's full dub
+ * resolution chain, fake-dub verification included) and records the verdict;
+ * the bot just executes and logs it.
+ */
+async function jobDubProbe(item, bot) {
+  const { malId, title, ep, chain } = item;
+  const res = await fetch(
+    `${PROD}/api/bots/dub-probe?token=${encodeURIComponent(TOKEN)}&malId=${malId}&ep=${ep}&chain=${chain}`,
+    { signal: AbortSignal.timeout(90_000) },
+  );
+  if (!res.ok) throw new Error(`dub-probe ${res.status}`);
+  const d = await res.json();
+  if (d.verdict === null || d.verdict === undefined) {
+    log(`${bot} DUBPROBE ${title} [${malId}] ep${ep} ${chain}: transient — retry later`);
+    return;
+  }
+  stats.dubprobes++;
+  const v = d.verdict ? "HAS DUB" : "no dub";
+  const b = d.boundaries ? ` (thru s1=${d.boundaries.s1} s2=${d.boundaries.s2})` : "";
+  log(`${bot} DUBPROBE ${title} [${malId}] ep${ep} ${chain}: ${v}${b}`);
+  void logFinding({ bot, title, ep, status: "dubprobe", verdict: d.verdict, chain });
+}
+
 /* ---------------- worker pool ---------------- */
 
 const doneThisSession = new Set(); // malId/ep already reported — skip on later sweeps
 const markDone = (item) => {
   const eps = item.kind === "establish" ? [item.epA, item.epB] : [item.ep];
-  for (const ep of eps) doneThisSession.add(`${item.malId}/${ep}`);
+  for (const ep of eps) doneThisSession.add(`${item.kind === "dubprobe" ? "dub" : "intro"}/${item.malId}/${ep}`);
 };
 
 async function runQueue(items, lanes) {
@@ -255,16 +280,22 @@ async function runQueue(items, lanes) {
       while (active < lanes && idx < total) {
         const item = items[idx++];
         const itemEps = item.kind === "establish" ? [item.epA, item.epB] : [item.ep];
-        if (itemEps.every((ep) => doneThisSession.has(`${item.malId}/${ep}`))) continue; // already measured this session
+        const ns = item.kind === "dubprobe" ? "dub" : "intro";
+        if (itemEps.every((ep) => doneThisSession.has(`${ns}/${item.malId}/${ep}`))) continue; // already measured this session
         markDone(item);
         active++;
         const bot = `scout-${String((idx % lanes) + 1).padStart(2, "0")}`;
-        const job = item.kind === "establish" ? jobEstablish(item, bot) : jobVerify(item, bot);
+        const job =
+          item.kind === "establish" ? jobEstablish(item, bot)
+          : item.kind === "dubprobe" ? jobDubProbe(item, bot)
+          : jobVerify(item, bot);
         job.then(done).catch(async (err) => {
           stats.error++;
           const malId = item.malId, ep = item.kind === "establish" ? item.epA : item.ep;
           log(`${bot} ERROR ${item.title} [${malId}] ep${ep}: ${String(err).slice(0, 120)}`);
-          enqueueFinding({ bot, malId, ep, status: "error", detail: String(err).slice(0, 200) });
+          if (item.kind !== "dubprobe") {
+            enqueueFinding({ bot, malId, ep, status: "error", detail: String(err).slice(0, 200) });
+          }
           done();
         });
       }
@@ -284,14 +315,49 @@ async function fetchBacklog(limit) {
   return res.json();
 }
 
+/**
+ * The fleet's dub report — "which anime still require dub". Fetched after
+ * every sweep, logged to the console and appended to dub-report.log so the
+ * list survives between runs.
+ */
+async function fetchDubReport() {
+  try {
+    const res = await fetch(`${PROD}/api/bots/dub-report?token=${encodeURIComponent(TOKEN)}`, {
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      log(`dub-report -> ${res.status}`);
+      return;
+    }
+    const r = await res.json();
+    if (!r.ok) return;
+    const line = `DUB REPORT ${r.generatedAt}: ${r.totals.anime} anime — ${r.totals.dubBehind} have dub behind the latest episodes, ${r.totals.noDubAtAll} sub-only, ${r.totals.unprobed} unprobed`;
+    log(line);
+    const still = (r.stillRequiringDub ?? []).slice(0, 60);
+    if (still.length) {
+      log(`still requiring dub (top ${still.length}):`);
+      for (const a of still) log(`  - ${a.title} [${a.malId}] dubbed through ep ${a.dubThrough}/${a.total} (${a.episodesMissingDub} episodes missing dub)`);
+    }
+    try {
+      await appendFile(
+        new URL("./dub-report.log", import.meta.url).pathname,
+        JSON.stringify({ at: new Date().toISOString(), totals: r.totals, stillRequiringDub: r.stillRequiringDub, noDubAtAll: (r.noDubAtAll ?? []).slice(0, 500) }) + "\n",
+      );
+    } catch { /* logging never blocks */ }
+  } catch (err) {
+    log(`dub-report failed: ${String(err).slice(0, 100)}`);
+  }
+}
+
 async function cycle(round) {
   const data = await fetchBacklog(900);
   if (!data.ok) throw new Error("backlog not ok");
   const items = MAX_ITEMS ? data.backlog.slice(0, MAX_ITEMS) : data.backlog;
-  log(`round ${round}: backlog ${items.length} items (establish ${data.totals.establish} / verify ${data.totals.verify}; refs ${data.totals.refs}, measured ${data.totals.measured}/${data.totals.animes} animes)`);
+  log(`round ${round}: backlog ${items.length} items (dubprobes ${data.totals.dubprobes} / establish ${data.totals.establish} / verify ${data.totals.verify}; refs ${data.totals.refs}, measured ${data.totals.measured}/${data.totals.animes} animes)`);
   if (!items.length) return 0;
   await runQueue(items, LANES);
   await flush();
+  await fetchDubReport();
   return items.length;
 }
 
@@ -300,7 +366,7 @@ async function main() {
   let round = 0;
   const statLine = () => {
     const mins = ((Date.now() - stats.started) / 60000).toFixed(0);
-    log(`stats: ${stats.ok} openings measured, ${stats.nodetect} misses, ${stats.error} errors, ${stats.refs} refs, ${Math.round(stats.scannedSec / 60)} episode-minutes scanned in ${mins} min`);
+    log(`stats: ${stats.ok} openings measured, ${stats.nodetect} misses, ${stats.dubprobes} dub probes, ${stats.error} errors, ${stats.refs} refs, ${Math.round(stats.scannedSec / 60)} episode-minutes scanned in ${mins} min`);
   };
   const statTimer = LOOP ? setInterval(statLine, 10 * 60_000) : null;
 

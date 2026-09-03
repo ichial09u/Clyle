@@ -38,6 +38,18 @@ model Anime {
   hasDub        Boolean? // Zoko dub verdict: does a REAL (non-fake) English dub stream exist? (null = not probed yet)
   hasDubKiwi    Boolean? // Kiwi dub verdict — same probe against the Kiwi server (null = not probed)
   hasDubMega    Boolean? // Megaplay (yenime/flikhub) dub verdict — same probe, used to backfill missing DUB (null = not probed)
+  // Per-EPISODE dub boundaries (the Elbaph fix: One Piece has dub servers, but
+  // the newest arc episodes aren't dubbed yet — the anime-level verdict can't
+  // express that). dubThru = highest episode a REAL dub is proven for (prefix
+  // boundary; 0 = proven none, null = unknown); dubHi = highest episode PROVEN
+  // dub-less (the binary search's hi bound). Maintained by the fleet bots
+  // (they literally click the DUB server and verify real audio) and by the
+  // episodes route in the background.
+  dubThruS1     Int? // Server #1 chain: zoko -> kiwi -> supaplay -> megaplay
+  dubHiS1       Int?
+  dubThruS2     Int? // Server #2 chain: kiwi -> zoko -> megaplay
+  dubHiS2       Int?
+  dubThruCheckedAt DateTime?
   supaplayPath  String?  // SupaPlay MW detailPath (e.g. "jujutsu-kaisen-english-KD0jSM9ot5") — enables the SupaPlay DUB source for Server #1 (dub only)
   tmdbId        Int?    // The Movie Database id (TV or Movie), for TMDB popularity ranking
   source        String  @default("seed") // seed | season-import | manual
@@ -210,12 +222,34 @@ model IntroScout {
   quality    Float    @default(0) // envelope correlation 0-1 at match time
   bots       Int      @default(1) // how many independent bot detections agree
   server     String   @default("zoko")
+  nodetect   Boolean  @default(false) // true = bots watched this episode and found NO opening — the Skip Intro button is suppressed for it
   detail     String? // JSON: gain, analyzedSec, block notes
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@unique([malId, ep])
   @@index([malId])
+}
+
+// Per-episode dub ground truth, measured by the fleet bots: a probe literally
+// clicks the DUB server — it runs the exact resolution chain the player's DUB
+// button runs (including fake-dub segment verification), so a miss is PROOF
+// the dub isn't there, never a sub-vs-dub detection error. Feeds the per-
+// episode dub boundaries on Anime (dubThruS1/S2).
+model DubProbe {
+  id        String   @id @default(cuid())
+  malId     Int
+  ep        Int
+  chain     String   @default("s1") // "s1" (zoko->kiwi->supaplay->megaplay) | "s2" (kiwi->zoko->megaplay)
+  ok        Boolean // true = real English dub served (provider set); false = proven absent for this episode
+  provider  String? // "zoko" | "kiwi" | "supaplay" | "yenime" when ok
+  detail    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([malId, ep, chain])
+  @@index([malId, chain])
+  @@index([updatedAt])
 }
 
 // Per-anime reference fingerprint for the fleet: the opening's normalized

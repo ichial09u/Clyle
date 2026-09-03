@@ -15,14 +15,16 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
  *                anime's median interval applies
  *   live       — the live AniSkip tier has it (cached from a probe or an
  *                earlier open)
- *   heuristic  — no data, but it's a TV-length episode (5-30 min per MAL),
- *                so the player's 8-90s window guarantees the button
  *   crowd      — viewers' scrub medians taught the app where the OP ends
- *   na         — no Skip Intro by design: non-TV content (movies, music,
- *                ONA/OVA/specials) and TV episodes longer than 30 min (the
- *                8-90s guess would be wrong there) — neither ok nor
- *                uncovered, so imports can't fail the audit
- *   uncovered  — nothing covers it and it SHOULD have a button
+ *   na         — no button BY DESIGN: non-TV content (movies, music,
+ *                ONA/OVA/specials), TV episodes longer than 30 min (no
+ *                standard OP position — the crowd tier self-learns those),
+ *                and episodes where the fleet CONFIRMED there is no
+ *                opening (nodetect — the button is suppressed on purpose)
+ *   uncovered  — nothing covers it and it SHOULD have a button. With the
+ *                blind 8-90s heuristic gone, an uncovered episode simply
+ *                shows no Skip Intro button — the fleet is the way to heal
+ *                it.
  *
  * `probe: true` additionally asks AniSkip live for up to `probeBudget`
  * uncovered samples (and caches the answers), which heals gaps in place —
@@ -32,7 +34,7 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
 
 export interface SkipAuditEpisode {
   ep: number;
-  source: "scout" | "exact" | "consensus" | "live" | "crowd" | "heuristic" | "na" | "uncovered";
+  source: "scout" | "exact" | "consensus" | "live" | "crowd" | "na" | "uncovered";
   introEnd: number | null;
 }
 
@@ -55,7 +57,6 @@ export interface SkipAuditReport {
     consensus: number;
     live: number;
     crowd: number;
-    heuristic: number;
     na: number;
     uncovered: number;
     coveragePct: number;
@@ -71,7 +72,7 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
     orderBy: { popularity: "asc" },
   });
 
-  const totals = { anime: animes.length, sampled: 0, scout: 0, exact: 0, consensus: 0, live: 0, crowd: 0, heuristic: 0, na: 0, uncovered: 0 };
+  const totals = { anime: animes.length, sampled: 0, scout: 0, exact: 0, consensus: 0, live: 0, crowd: 0, na: 0, uncovered: 0 };
   const uncoveredList: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
   const rows: SkipAuditRow[] = [];
 
@@ -89,27 +90,24 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
       let introEnd: number | null = cov?.intro?.end ?? null;
       if (cov?.intro) {
         source = cov.source;
-      } else if (
-        // the player's last-resort window: any TV-length episode shows the
-        // button. Unknown metadata counts as TV here — the catalog's TV
-        // shows are seeded from Zoko's catalog; movies always carry a type.
-        (a.type === "TV" || a.type == null) &&
-        (a.durationMin == null || (a.durationMin >= 5 && a.durationMin <= 30))
-      ) {
-        source = "heuristic";
-        introEnd = 90;
+      } else if (cov?.confirmedNone) {
+        // the fleet watched this episode: there IS no opening — the button
+        // is suppressed on purpose, exactly as designed
+        source = "na";
       } else if (
         // non-TV content (movies, music videos, ONA/OVA/special episodes)
         // AND TV episodes longer than 30 min (PSYCHO-PASS 3, RIN — hour-long
-        // formats): Skip Intro intentionally never guesses there — the 8-90s
-        // guess is far likelier wrong than right, hour-long formats have no
-        // standard OP position, and the crowd-scrub tier self-learns them.
+        // formats): Skip Intro intentionally never guesses there — there is
+        // no standard OP position and the crowd-scrub tier self-learns them.
         // Count as not-applicable so imports can't fail the audit.
         (a.type != null && a.type !== "TV") ||
         ((a.type === "TV" || a.type == null) && a.durationMin != null && a.durationMin > 30)
       ) {
         source = "na";
       } else {
+        // no data at all — since the blind heuristic was removed this
+        // episode simply shows NO Skip Intro button until the fleet or
+        // AniSkip measures it
         ok = false;
         uncoveredList.push({ malId: a.malId, ep, lenMin: a.durationMin });
       }

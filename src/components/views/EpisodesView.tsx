@@ -238,15 +238,26 @@ export default function EpisodesView({
               <p className="px-4 pb-3 text-[11.5px] text-gray-400">Choose a server &amp; a server doesn&apos;t work, please choose another</p>
               <div className="px-3" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}>
                 {(() => {
-                  // SUB is always on both servers; DUB only on the servers
-                  // whose probe says a REAL (non-fake) dub exists. When one
-                  // server lacks the dub, only the other server's DUB button
-                  // is shown (e.g. Zoko's Blue Box dub is the sub re-uploaded).
-                  const dubServers = episodesData?.dubServers ?? ["zoko", "kiwi"];
+                  // SUB is always on both servers. DUB buttons appear ONLY
+                  // where a real dub actually exists for THIS episode:
+                  // the per-episode boundary (dubThrough) gates them — an
+                  // anime can be dubbed while its newest arc isn't yet
+                  // (One Piece/Elbaph), and sub-only / not-yet-dubbed shows
+                  // get no DUB buttons at all. null boundary = unprobed —
+                  // fall back to the anime-level dubServers verdict.
+                  const bt = episodesData?.dubThrough ?? { s1: null, s2: null };
+                  const animeLevel = episodesData?.dubServers ?? ["zoko", "kiwi"];
+                  const dubFor = (server: "zoko" | "kiwi"): boolean => {
+                    const thru = server === "zoko" ? bt.s1 : bt.s2;
+                    if (thru != null) return picked! <= thru; // 0 = no dub anywhere
+                    return animeLevel.includes(server);
+                  };
                   const all = [
                     { lang: "sub" as Lang, server: "zoko" as const },
                     { lang: "sub" as Lang, server: "kiwi" as const },
-                    ...dubServers.map((s) => ({ lang: "dub" as Lang, server: s })),
+                    ...([["zoko", "s1"] as const, ["kiwi", "s2"] as const] as Array<["zoko" | "kiwi", "s1" | "s2"]>)
+                      .filter(([s]) => dubFor(s))
+                      .map(([s]) => ({ lang: "dub" as Lang, server: s })),
                   ];
                   // your last-used language first (so the top-left button is
                   // what you were watching), then the other language
@@ -277,9 +288,23 @@ export default function EpisodesView({
                     </div>
                   );
               })()}
-                {episodesData?.dubServers?.length === 0 ? (
-                  <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>
-                ) : null}
+                {(() => {
+                  // no DUB on this episode at all — say which kind of "not yet"
+                  const bt = episodesData?.dubThrough ?? { s1: null, s2: null };
+                  const noneAtAll =
+                    bt.s1 != null && bt.s1 === 0 && bt.s2 != null && bt.s2 === 0;
+                  const behindBoundary =
+                    (bt.s1 != null && picked! > bt.s1 && bt.s1 > 0) ||
+                    (bt.s2 != null && picked! > bt.s2 && bt.s2 > 0);
+                  const nonePerLevel = (episodesData?.dubServers?.length ?? 0) === 0;
+                  if (noneAtAll || (!bt.s1 && !bt.s2 && nonePerLevel)) {
+                    return <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>;
+                  }
+                  if (behindBoundary) {
+                    return <p className="mt-2 text-center text-[10.5px] text-gray-500">The English DUB hasn&apos;t reached this episode yet — SUB only for now</p>;
+                  }
+                  return null;
+                })()}
               </div>
             </div>
           </div>,

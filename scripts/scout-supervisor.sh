@@ -4,7 +4,7 @@
 cd /home/z/my-project
 while true; do
   echo "[supervisor] $(date -Is) starting fleet"
-  node scripts/intro-scout.mjs --loop --lanes 20 >> scripts/scout-fleet.log 2>&1
+  node scripts/intro-scout.mjs --loop --lanes 21 >> scripts/scout-fleet.log 2>&1
   echo "[supervisor] $(date -Is) fleet exited ($?) — restarting in 30s"
   sleep 30
 done

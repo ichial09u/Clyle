@@ -54,6 +54,13 @@ export interface EpisodesPayload {
   hasDub: boolean;
   /** which servers carry a real DUB for this title ("zoko", "kiwi") */
   dubServers: Array<"zoko" | "kiwi">;
+  /**
+   * Per-EPISODE dub boundaries (highest episode with a proven REAL dub per
+   * server chain; 0 = none, null = unknown -> fall back to hasDub/dubServers).
+   * Episodes past the boundary show no DUB button (e.g. One Piece's Elbaph
+   * arc — the anime is dubbed but those episodes aren't yet).
+   */
+  dubThrough: { s1: number | null; s2: number | null };
   episodes: EpisodeInfo[];
   newlyAdded: number;
 }

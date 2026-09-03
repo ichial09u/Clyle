@@ -5,6 +5,7 @@ import { importEpisodes, importEpisodesFromList, episodeTitleBackfillPages, back
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { probeDubAvailable } from "@/lib/zoko-stream";
 import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
+import { recomputeDubBoundaries } from "@/lib/dub-boundary";
 
 export const dynamic = "force-dynamic";
 
@@ -125,6 +126,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // buttons; /api/stream transparently lands them on the backfill source
   if (!dubServers.length && hasDubMega === true) dubServers.push("zoko", "kiwi");
 
+  // ---- per-EPISODE dub boundaries (the Elbaph fix) ------------------------
+  // An anime-level "has dub" can't express "the dub hasn't reached the
+  // current arc yet": One Piece carries DUB buttons on episodes that were
+  // never dubbed. dubThru is the highest episode a REAL dub is proven for
+  // per server chain (0 = proven none; null = unknown -> keep the optimistic
+  // anime-level behaviour above). Maintained by the fleet bots + refreshed
+  // here in the background.
+  const totalNum = total;
+  const checkedAt = anime.dubThruCheckedAt?.getTime() ?? 0;
+  const anyDubPossible = anime.hasDub !== false || anime.hasDubKiwi !== false || anime.hasDubMega !== false;
+  // a chain's search is CLOSED only when its boundary converged (thru = hi-1,
+  // thru = total, or thru = 0 proven-none); anything else keeps probing
+  const chainClosed = (thru: number | null, hi: number | null) => {
+    if (thru == null) return false; // unknown — search open
+    if (thru <= 0) return true; // proven no dub anywhere
+    return thru >= (hi ?? totalNum + 1) - 1; // converged at the hi bound
+  };
+  const gapOpen =
+    !chainClosed(anime.dubThruS1, anime.dubHiS1) || !chainClosed(anime.dubThruS2, anime.dubHiS2);
+  const stale =
+    anyDubPossible &&
+    (gapOpen ||
+      (((anime.dubThruS1 ?? 0) < totalNum || (anime.dubThruS2 ?? 0) < totalNum) &&
+        anime.airing &&
+        Date.now() - checkedAt > 12 * 3600_000));
+  if (stale) {
+    after(() => recomputeDubBoundaries(malId, 6, { recheck: anime.airing }).catch(() => undefined));
+  }
+
   return NextResponse.json({
     malId,
     title: anime.titleEnglish?.trim() || anime.title,
@@ -134,6 +164,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     total,
     hasDub: dubServers.length > 0,
     dubServers,
+    dubThrough: { s1: anime.dubThruS1 ?? null, s2: anime.dubThruS2 ?? null },
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
   });

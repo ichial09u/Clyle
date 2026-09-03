@@ -132,44 +132,49 @@ export function withSkipData<T extends { skip?: SkipData }>(malId: number, ep: n
  * ---------------------------------------------------------------- */
 
 const SCOUT_CACHE_TTL_MS = 60_000;
-const scoutCache = new Map<number, { rows: Array<{ ep: number; start: number; end: number }>; at: number }>();
+const scoutCache = new Map<number, { rows: Array<{ ep: number; start: number; end: number; nodetect: boolean }>; at: number }>();
 
-async function scoutRows(malId: number): Promise<Array<{ ep: number; start: number; end: number }>> {
+async function scoutRows(malId: number): Promise<Array<{ ep: number; start: number; end: number; nodetect: boolean }>> {
   const hit = scoutCache.get(malId);
   if (hit && Date.now() - hit.at < SCOUT_CACHE_TTL_MS) return hit.rows;
   const rows = await db.introScout.findMany({
     where: { malId },
     orderBy: { updatedAt: "desc" },
-    take: 15,
-    select: { ep: true, start: true, end: true },
+    take: 60, // room for nodetect rows too — real measurements are filtered below
+    select: { ep: true, start: true, end: true, nodetect: true },
   });
   scoutCache.set(malId, { rows, at: Date.now() });
   return rows;
 }
 
 /**
- * The fleet's opening interval for one episode: the episode's own measured
- * row, else the anime-wide median (openings are the same video across
- * episodes; needs 2+ measured rows). Null when the fleet has nothing.
- * `exact` marks a per-episode measurement — those are trusted over ALL
- * other tiers (Zoko's own payload is wrong on plenty of episodes: it
- * includes the repeated cold-open as "intro start" on many shows).
+ * The fleet's verdict for one episode:
+ *   interval set    — the opening interval (exact per-episode row, or the
+ *                     anime-wide median when 2+ episodes agree)
+ *   confirmedNone   — bots WATCHED this exact episode and found NO opening:
+ *                     the Skip Intro button must not appear for it (no
+ *                     guessing, no AniSkip resurrection)
+ *   null            — the fleet has nothing on this anime
  */
 export async function scoutIntro(
   malId: number,
   ep: number,
-): Promise<{ interval: SkipInterval; exact: boolean } | null> {
+): Promise<{ interval: SkipInterval | null; exact: boolean; confirmedNone?: boolean } | null> {
   try {
     const rows = await scoutRows(malId);
     const exact = rows.find((r) => r.ep === ep);
-    if (exact) return { interval: { start: exact.start, end: exact.end }, exact: true };
-    if (rows.length >= 2) {
+    if (exact) {
+      if (exact.nodetect) return { interval: null, exact: true, confirmedNone: true };
+      return { interval: { start: exact.start, end: exact.end }, exact: true };
+    }
+    const measured = rows.filter((r) => !r.nodetect);
+    if (measured.length >= 2) {
       const med = (xs: number[]) => {
         const s = [...xs].sort((a, b) => a - b);
         return s[Math.floor(s.length / 2)];
       };
-      const start = med(rows.map((r) => r.start));
-      const end = med(rows.map((r) => r.end));
+      const start = med(measured.map((r) => r.start));
+      const end = med(measured.map((r) => r.end));
       if (end > start && end - start <= 150 && start <= 320) {
         return { interval: { start, end }, exact: false };
       }
@@ -321,8 +326,15 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   // measurement outranks everything (including Zoko's payload, which marks
   // the repeated cold-open as "intro start" on many shows); the anime-wide
   // median only fills gaps (Zoko/frame data wins there).
+  // A CONFIRMED-NONE verdict wins over everything too: bots watched this
+  // episode and found no opening, so no Skip Intro button — other tiers are
+  // never allowed to resurrect it for this episode.
   const scout = await scoutIntro(malId, ep);
-  if (scout && (scout.exact || !valid(stream.skip?.intro))) {
+  const suppressIntro = !!scout?.confirmedNone;
+  if (suppressIntro) {
+    delete skip.intro;
+    if (!skip.outro) delete skip.source;
+  } else if (scout?.interval && (scout.exact || !valid(stream.skip?.intro))) {
     skip.intro = scout.interval;
     skip.source = "scout";
   }
@@ -331,7 +343,7 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   try {
     const live = await liveLookup(malId, ep, opts.episodeLengthMin ?? undefined);
     if (live) {
-      if (!skip.intro && live.op) {
+      if (!skip.intro && live.op && !suppressIntro) {
         skip.intro = { start: live.op[0], end: live.op[1] };
         skip.source = "aniskip-live";
       }
@@ -346,17 +358,20 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   }
   // crowd tier — for shows nobody has submitted anywhere yet, viewers who
   // scrubbed past the opening have already taught us where it ends
-  try {
-    const crowd = await crowdIntroTarget(malId, ep);
-    if (crowd != null) {
-      if (!skip.intro) {
-        skip.intro = { start: 8, end: crowd };
-        skip.source = "crowd";
+  // (never applied when the fleet confirmed there IS no opening)
+  if (!suppressIntro) {
+    try {
+      const crowd = await crowdIntroTarget(malId, ep);
+      if (crowd != null) {
+        if (!skip.intro) {
+          skip.intro = { start: 8, end: crowd };
+          skip.source = "crowd";
+        }
+        if (skip.intro || skip.outro) return { ...merged, skip };
       }
-      if (skip.intro || skip.outro) return { ...merged, skip };
+    } catch {
+      /* votes are best-effort too */
     }
-  } catch {
-    /* votes are best-effort too */
   }
   return { ...merged, skip };
 }
@@ -367,12 +382,15 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
  * per-anime consensus), then the live tier's cache — `allowLiveFetch` also
  * permits one cached network query to AniSkip (used when probing gaps), and
  * finally the crowd-learned scrub median — the audit counts anything the
- * player would actually show.
+ * player would actually show. `confirmedNone` = the fleet verified there is
+ * NO opening on this episode (the button is suppressed by design — not a
+ * coverage gap).
  */
 export interface SkipCoverage {
   intro?: SkipInterval;
   outro?: SkipInterval;
   source: "scout" | "exact" | "consensus" | "live" | "crowd";
+  confirmedNone?: boolean;
 }
 
 export async function skipCoverage(
@@ -383,7 +401,8 @@ export async function skipCoverage(
   // scout tier first — what the player would actually use (see the priority
   // in withSkipDataLive)
   const scout = await scoutIntro(malId, ep);
-  if (scout) return { source: "scout", intro: scout.interval };
+  if (scout?.confirmedNone) return { source: "scout", confirmedNone: true };
+  if (scout?.interval) return { source: "scout", intro: scout.interval };
   const byEp = data[String(malId)];
   const exact = byEp?.[String(ep)];
   if (exact?.op || exact?.ed) {

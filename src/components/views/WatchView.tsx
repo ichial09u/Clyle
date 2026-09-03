@@ -60,6 +60,11 @@ export default function WatchView({
   // The server /api/stream also validates every dub play, so a stale value
   // can never put Japanese audio under a DUB label — this only drives the UI.
   const [hasDub, setHasDub] = useState<boolean | null>(null);
+  // per-EPISODE dub boundaries (highest episode with a proven real dub per
+  // server chain; 0 = none, null = unprobed). Gates the SUB/DUB toggle per
+  // episode — the anime-level verdict can't express "the dub hasn't reached
+  // this arc yet" (One Piece/Elbaph).
+  const [dubThrough, setDubThrough] = useState<{ s1: number | null; s2: number | null }>({ s1: null, s2: null });
   // real episode titles ("Ryomen Sukuna") from the episodes endpoint — the
   // player header prefers them over the plain "Episode N" + language label
   const [epTitles, setEpTitles] = useState<Record<number, string>>({});
@@ -69,14 +74,23 @@ export default function WatchView({
   // generic in-player toast (dub fallback notices); cast errors use castMsg
   const [playerMsg, setPlayerMsg] = useState<string | null>(null);
 
+  // per-episode DUB availability for the CURRENT episode: the highest proven
+  // boundary across both chains (either chain can serve the dub via fallback)
+  const epDubThru =
+    dubThrough.s1 != null || dubThrough.s2 != null
+      ? Math.max(dubThrough.s1 ?? 0, dubThrough.s2 ?? 0)
+      : null;
+  const epHasDub: boolean | null = epDubThru != null ? episode <= epDubThru : hasDub;
+
   useEffect(() => {
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
         if (!ok || !d) return;
         if (typeof d.hasDub === "boolean") setHasDub(d.hasDub);
         if (Array.isArray(d.dubServers)) setDubServers(d.dubServers);
+        if (d.dubThrough && (d.dubThrough.s1 != null || d.dubThrough.s2 != null)) setDubThrough(d.dubThrough);
         if (Array.isArray(d.episodes)) {
           const map: Record<number, string> = {};
           for (const e of d.episodes) if (e.title) map[e.number] = e.title;
@@ -869,12 +883,12 @@ export default function WatchView({
     castStop();
   };
 
-  // Skip buttons — three-tier data: Zoko payload → AniSkip dataset (merged
-  // server-side in /api/stream) → crowd-learned scrub medians → last-resort
-  // heuristic window (~90s OP) for TV-length episodes only, so we never cut
-  // movies or shorts blindly.
-  const introSkip: { start: number; end: number } | undefined =
-    stream?.skip?.intro ?? (duration >= 300 && duration <= 1800 ? { start: 8, end: 90 } : undefined);
+  // Skip buttons — REAL data only. The interval comes from the merged
+  // server-side tiers (fleet-scouted measurements on our own encodes → Zoko
+  // payload → AniSkip → crowd-learned scrub medians — see /api/stream). The
+  // old blind 8-90s guess is GONE: when nothing measured this episode, the
+  // button would land mid-cold-open and skip dialogue — no data, no button.
+  const introSkip: { start: number; end: number } | undefined = stream?.skip?.intro;
   const outroSkip = stream?.skip?.outro;
   const showSkipIntro = introSkip && currentTime >= introSkip.start && currentTime <= introSkip.end && !locked;
   const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
@@ -1223,8 +1237,14 @@ export default function WatchView({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              if (lang === "sub" && hasDub === false) {
-                showPlayerMsg("No English DUB available for this title yet");
+              if (lang === "sub" && epHasDub === false) {
+                showPlayerMsg(
+                  epDubThru === 0
+                    ? "No English DUB available for this title yet"
+                    : epDubThru != null
+                      ? "The English DUB hasn't reached this episode yet"
+                      : "No English DUB available for this title yet",
+                );
                 return;
               }
               const next: Lang = lang === "sub" ? "dub" : "sub";
@@ -1238,7 +1258,7 @@ export default function WatchView({
               setLang(next);
             }}
             className="font-slab text-[16px] font-bold truncate"
-            title={hasDub === false ? "No DUB available — tap does nothing" : "Toggle SUB/DUB"}
+            title={epHasDub === false ? "No DUB for this episode — tap does nothing" : "Toggle SUB/DUB"}
           >
             {playerTitle}
           </button>
