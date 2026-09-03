@@ -26,6 +26,7 @@
 import { db } from "@/lib/db";
 import { verifyRealDub } from "@/lib/zoko-stream";
 import { verifyRealMegaplayDub } from "@/lib/megaplay";
+import { verifyRealAnikotoDub } from "@/lib/anikoto";
 import { supaplayDub } from "@/lib/supaplay";
 import type { ServerId } from "@/lib/zoko";
 
@@ -55,7 +56,8 @@ export async function probeDubChainEp(malId: number, ep: number, chain: DubChain
     if (v === null) sawTransient = true;
   }
   // SupaPlay is Server #1's first backfill (mapped anime only — null just
-  // means unmapped/fetch-failed; megaplay below is the final backfill anyway)
+  // means unmapped/fetch-failed; the embed backfills below are the final
+  // sources anyway)
   if (chain === "s1") {
     try {
       const a = await db.anime.findUnique({ where: { malId }, select: { supaplayPath: true } });
@@ -69,7 +71,13 @@ export async function probeDubChainEp(malId: number, ep: number, chain: DubChain
   }
   const mega = await verifyRealMegaplayDub(malId, ep).catch(() => null);
   if (mega === true) return true;
-  if (mega === null || sawTransient) return null; // can't prove absence on a hiccup
+  if (mega === null) sawTransient = true;
+  // final backfill: the megaplay-embed network (AniKoto embed ids) — carries
+  // dubs flikhub's malId-keyed API misses (JJK S2 case)
+  const koto = await verifyRealAnikotoDub(malId, ep).catch(() => null);
+  if (koto === true) return true;
+  if (koto === null) sawTransient = true;
+  if (sawTransient) return null; // can't prove absence on a hiccup
   return false;
 }
 
@@ -176,13 +184,18 @@ export async function recomputeDubBoundaries(
       malId: true, totalEpisodes: true,
       dubThruS1: true, dubHiS1: true, dubThruS2: true, dubHiS2: true,
       hasDub: true, hasDubKiwi: true, hasDubMega: true,
+      supaplayPath: true, anikotoSeriesId: true,
     },
   });
   if (!a || !a.totalEpisodes) return 0;
 
   // free settlement from the existing anime-level verdicts (probed at ep 1):
-  // no dub anywhere -> both chains close at 0 without a single network probe
-  const freeNone = a.hasDub === false && a.hasDubKiwi === false && a.hasDubMega === false;
+  // no dub anywhere -> both chains close at 0 without a single network probe.
+  // BUT a backfill mapping (SupaPlay path / AniKoto series) means the dub
+  // could exist BEYOND Zoko/Kiwi/flikhub — keep the search open for it
+  // (the JJK S2 case: all three anime verdicts false, SupaPlay se=2 has it)
+  const mapped = !!a.supaplayPath?.trim() || a.anikotoSeriesId != null;
+  const freeNone = !mapped && a.hasDub === false && a.hasDubKiwi === false && a.hasDubMega === false;
   // a verified ep-1 dub lifts the starting lower bound to 1
   const seedThru = a.hasDub === true || a.hasDubKiwi === true || a.hasDubMega === true ? 1 : null;
   const patches: Record<string, number> = {};

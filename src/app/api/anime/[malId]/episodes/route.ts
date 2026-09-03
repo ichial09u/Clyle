@@ -6,7 +6,6 @@ import { prefetchSkipTimes } from "@/lib/skip-times";
 import { probeDubAvailable } from "@/lib/zoko-stream";
 import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
-
 export const dynamic = "force-dynamic";
 
 /**
@@ -122,9 +121,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   const dubServers: Array<"zoko" | "kiwi"> = [];
   if (hasDub !== false) dubServers.push("zoko");
   if (hasDubKiwi !== false) dubServers.push("kiwi");
-  // no Zoko/Kiwi dub but the backfill source has one — still offer both DUB
-  // buttons; /api/stream transparently lands them on the backfill source
-  if (!dubServers.length && hasDubMega === true) dubServers.push("zoko", "kiwi");
+  // no Zoko/Kiwi dub but a backfill source can serve one — still offer both
+  // DUB buttons; /api/stream transparently lands them on the backfill source
+  // (flikhub megaplay, or the megaplay-embed network when the anime is mapped)
+  const backfillPossible = hasDubMega === true || anime.anikotoSeriesId != null;
+  if (!dubServers.length && backfillPossible) dubServers.push("zoko", "kiwi");
 
   // ---- per-EPISODE dub boundaries (the Elbaph fix) ------------------------
   // An anime-level "has dub" can't express "the dub hasn't reached the
@@ -135,7 +136,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // here in the background.
   const totalNum = total;
   const checkedAt = anime.dubThruCheckedAt?.getTime() ?? 0;
-  const anyDubPossible = anime.hasDub !== false || anime.hasDubKiwi !== false || anime.hasDubMega !== false;
+  // a backfill mapping (SupaPlay path / AniKoto series) means dub is possible
+  // even when all three anime-level verdicts are false (JJK S2 case) — keep
+  // the boundary search alive for those
+  const anyDubPossible =
+    anime.hasDub !== false ||
+    anime.hasDubKiwi !== false ||
+    anime.hasDubMega !== false ||
+    anime.anikotoSeriesId != null ||
+    !!anime.supaplayPath?.trim();
   // a chain's search is CLOSED only when its boundary converged (thru = hi-1,
   // thru = total, or thru = 0 proven-none); anything else keeps probing
   const chainClosed = (thru: number | null, hi: number | null) => {

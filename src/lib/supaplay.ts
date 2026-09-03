@@ -135,9 +135,17 @@ export async function supaplayDub(
   try {
     const subjectId = await subjectIdFor(detailPath);
     if (!subjectId) return null;
+    // multi-season subjects: one SupaPlay subject carries S1-S3 ("Jujutsu
+    // Kaisen [English] S1-S3") — Anime.supaplaySeason picks the right one
+    // (null = 1). MAL season entries map 1:1 to se numbers.
+    let season = 1;
+    try {
+      const anime = await db.anime.findUnique({ where: { malId }, select: { supaplaySeason: true } });
+      season = anime?.supaplaySeason && anime.supaplaySeason > 0 ? anime.supaplaySeason : 1;
+    } catch { /* default to 1 */ }
     const url = new URL(FETCH_VIDEO);
     url.searchParams.set("subjectId", String(subjectId));
-    url.searchParams.set("se", "1");
+    url.searchParams.set("se", String(season));
     url.searchParams.set("ep", String(ep));
     url.searchParams.set("detailPath", detailPath);
     url.searchParams.set("proxy", "1");

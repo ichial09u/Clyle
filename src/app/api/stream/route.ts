@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveStream } from "@/lib/zoko-stream";
 import { megaplayDub, verifyRealMegaplayDub } from "@/lib/megaplay";
+import { anikotoDub, verifyRealAnikotoDub } from "@/lib/anikoto";
 import { supaplayDub } from "@/lib/supaplay";
 import { withSkipDataLive } from "@/lib/skip-times";
 import { db } from "@/lib/db";
@@ -23,6 +24,9 @@ export const maxDuration = 60;
  *      an Anime.supaplayPath mapping)
  *   4. Megaplay (yenime's api.flikhub.net backend) — Server #2's DUB source,
  *      and the final backfill for Server #1 when SupaPlay is unmapped.
+ *   5. Megaplay-embed (megaplay.buzz getSources via AniKoto embed ids) —
+ *      carries dubs flikhub misses (JJK S2 case); needs an
+ *      Anime.anikotoSeriesId mapping from the dub-hunt campaign.
  * All backfill sources are DUB ONLY — SUB always flows through Zoko/Kiwi.
  * The response's `serverUsed` keeps reporting Zoko/Kiwi (or the requested
  * server for backfill hits); `provider` names the actual source.
@@ -40,7 +44,7 @@ export async function GET(req: Request) {
   }
 
   let serverUsed: ServerId = server;
-  let provider: "zoko" | "kiwi" | "supaplay" | "yenime" = server;
+  let provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" = server;
   let stream = await resolveStream(malId, ep, lang, server, { fresh });
   if (!stream && lang === "dub") {
     // requested server has no real dub here — try the other one
@@ -73,6 +77,20 @@ export async function GET(req: Request) {
       if (mega) {
         stream = { src: mega.src, subtitles: mega.subtitles, resolvedFrom: mega.resolvedFrom };
         provider = "yenime";
+      }
+    }
+  }
+  if (!stream && lang === "dub") {
+    // final DUB backfill — the megaplay-embed network (AniKoto embed ids,
+    // dub only). Carries dubs flikhub's malId-keyed API misses: Jujutsu
+    // Kaisen 2nd Season answers an ad-stub on flikhub but streams the real
+    // dub here. The 24h-cached verdict gates the same way.
+    const kotoVerdict = await verifyRealAnikotoDub(malId, ep);
+    if (kotoVerdict !== false) {
+      const koto = await anikotoDub(malId, ep, { fresh });
+      if (koto) {
+        stream = { src: koto.src, subtitles: koto.subtitles, resolvedFrom: koto.resolvedFrom };
+        provider = "megaplay-embed";
       }
     }
   }
