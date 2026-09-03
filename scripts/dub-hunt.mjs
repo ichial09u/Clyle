@@ -29,7 +29,7 @@
  *
  *   node scripts/dub-hunt.mjs [--limit 99999] [--concurrency 5] [--minutes 45]
  */
-import { appendFile } from "node:fs/promises";
+import { appendFile, readFile } from "node:fs/promises";
 import { PrismaClient } from "@prisma/client";
 
 const db = new PrismaClient();
@@ -51,6 +51,25 @@ async function report(row) {
   try {
     await appendFile(new URL("./dub-hunt-report.jsonl", import.meta.url), JSON.stringify({ at: new Date().toISOString(), ...row }) + "\n");
   } catch { /* logging never blocks */ }
+}
+
+/** resume support: malIds already given a definitive verdict this campaign */
+async function loadProcessed() {
+  try {
+    const raw = await readFile(new URL("./dub-hunt-report.jsonl", import.meta.url), "utf8");
+    const done = new Set();
+    for (const line of raw.split("\n")) {
+      try {
+        const r = JSON.parse(line);
+        // "flikhub-transient" = mapped but never got a definitive dub
+        // verdict — retry those on the next pass instead of skipping
+        if (r.malId && r.status && r.status !== "flikhub-transient") done.add(r.malId);
+      } catch { /* skip partial lines */ }
+    }
+    return done;
+  } catch {
+    return new Set();
+  }
 }
 
 /* ---- inline source probes (mirror src/lib, standalone) ------------------ */
@@ -320,7 +339,8 @@ async function reOpen(malId) {
 /* ---- main ---------------------------------------------------------------- */
 
 async function main() {
-  const batch = await db.anime.findMany({
+  const processed = await loadProcessed();
+  const all = await db.anime.findMany({
     where: {
       inCatalog: true,
       hasDub: false,
@@ -334,7 +354,8 @@ async function main() {
     orderBy: [{ popularity: "asc" }, { malId: "asc" }],
     take: LIMIT,
   });
-  console.log(`dub-hunt: ${batch.length} candidate anime (no dub on zoko/kiwi, none proven on flikhub), concurrency ${CONC}, ${MINUTES} min budget`);
+  const batch = all.filter((a) => !processed.has(a.malId));
+  console.log(`dub-hunt: ${batch.length} candidates (${all.length - batch.length} already processed this campaign), concurrency ${CONC}, ${MINUTES} min budget`);
   let idx = 0;
   let active = 0;
   await new Promise((resolveAll) => {
