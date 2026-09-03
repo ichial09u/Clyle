@@ -7,9 +7,16 @@ export const dynamic = "force-dynamic";
  * Precise per-episode watch progress (seconds watched / total seconds).
  *
  * POST   /api/progress { userId, malId, title?, image?, episode, lang, server,
- *                        position, duration, completed? }  -> upsert
+ *                        position, duration, completed?, resume? }  -> upsert
  * GET    /api/progress?userId=&malId=  -> per-episode bars for one anime
  * DELETE /api/progress?userId=&malId=  -> forget an anime (remove from Continue)
+ *
+ * Removal is TOMBSTONED: progress saves race the DELETE from many directions
+ * (10s heartbeats, page-hide beacons, unmount flushes, cast heartbeats,
+ * another tab) and any save landing after the delete re-inserted the row —
+ * "I removed it from Continue Watching but it came back". The tombstone
+ * (RemovedProgress) blocks every stale save until the viewer deliberately
+ * plays the anime again (POST with resume: true clears it).
  */
 interface ProgressBody {
   userId?: string;
@@ -22,6 +29,7 @@ interface ProgressBody {
   position?: number;
   duration?: number;
   completed?: boolean;
+  resume?: boolean; // deliberate playback — clears a removal tombstone
 }
 
 export async function GET(req: Request) {
@@ -74,7 +82,21 @@ export async function POST(req: Request) {
   const position = Number(b.position);
   const duration = Number(b.duration) || 0;
 
-  if (!userId || !Number.isFinite(malId) || !Number.isFinite(episode) || !Number.isFinite(position)) {
+  if (!userId || !Number.isFinite(malId)) {
+    return NextResponse.json({ error: "bad params" }, { status: 400 });
+  }
+
+  // deliberate playback lifts the removal tombstone. Works as a PURE clear
+  // (WatchView mounting for an anime the user had removed — no progress
+  // payload yet) and also alongside a normal save.
+  if (b.resume) {
+    await db.removedProgress.deleteMany({ where: { userId, malId } }).catch(() => undefined);
+    if (!Number.isFinite(episode) || !Number.isFinite(position)) {
+      return NextResponse.json({ ok: true, cleared: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+  }
+
+  if (!Number.isFinite(episode) || !Number.isFinite(position)) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
   if (position < 5) {
@@ -86,6 +108,16 @@ export async function POST(req: Request) {
   const server = b.server === "kiwi" ? "kiwi" : "zoko";
   const title = typeof b.title === "string" ? b.title.slice(0, 200) : null;
   const image = typeof b.image === "string" && b.image.length <= 2000 ? b.image : null;
+
+  // (non-resume saves) a tombstoned anime stays removed: drop stale
+  // heartbeats/beacons instead of resurrecting the row
+  if (!b.resume) {
+    const tombstoned = await db.removedProgress.findUnique({
+      where: { userId_malId: { userId, malId } },
+      select: { userId: true },
+    });
+    if (tombstoned) return NextResponse.json({ ok: true, skipped: "removed" }, { headers: { "Cache-Control": "no-store" } });
+  }
 
   // the User row must exist first (WatchProgress.userId is a foreign key to it)
   await db.user.upsert({ where: { id: userId }, update: {}, create: { id: userId } });
@@ -126,5 +158,10 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
   await db.watchProgress.deleteMany({ where: { userId, malId } });
+  // tombstone the removal: every late save (beacon, heartbeat, other tab)
+  // is now rejected until the viewer plays the anime again
+  await db.removedProgress
+    .upsert({ where: { userId_malId: { userId, malId } }, update: { removedAt: new Date() }, create: { userId, malId } })
+    .catch(() => undefined);
   return NextResponse.json({ ok: true });
 }

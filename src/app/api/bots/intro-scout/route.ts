@@ -35,6 +35,11 @@ const NEGATIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // nodetect re-try window
 const ESTABLISH_NEG_TTL_MS = 8 * 60 * 60 * 1000; // failed pairs rotate fast
 const REVERIFY_MS = 30 * 24 * 60 * 60 * 1000; // re-verify measured rows monthly
 const FINDING_KEEP = 500; // the report feed is capped (ephemeral telemetry)
+// Full-catalog confirmation: without a cap, one establish item per ref-less
+// anime (~900+) eats the whole backlog and the reference-owned anime's
+// episodes NEVER get verified. Establish rotates at this cap; the rest of the
+// sweep verifies measured shows' episodes (1 establish : 3 verify interleave).
+const ESTABLISH_CAP = 300;
 
 type BacklogItem =
   | { kind: "establish"; malId: number; title: string; epA: number; epB: number }
@@ -56,7 +61,7 @@ type BacklogItem =
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   if (sp.get("token") !== TOKEN) return NextResponse.json({ error: "bad token" }, { status: 401 });
-  const limit = Math.min(1200, Math.max(1, parseInt(sp.get("limit") ?? "800", 10) || 800));
+  const limit = Math.min(3000, Math.max(1, parseInt(sp.get("limit") ?? "800", 10) || 800));
 
   try {
     const [animes, refs, covered, recent] = await Promise.all([
@@ -132,6 +137,7 @@ export async function GET(req: Request) {
       if (!eps.length) continue;
       const ref = refByAnime.get(a.malId);
       if (!ref) {
+        if (establish.length >= ESTABLISH_CAP) continue; // rotates next sweep
         // pair establishment — pick the first two eps not in their negative
         // cache, so failed pairs rotate forward (1+2 -> 3+4 -> ...) instead
         // of stalling the anime for the whole TTL
@@ -154,7 +160,17 @@ export async function GET(req: Request) {
       }
     }
 
-    const backlog = [...dubprobes, ...establish, ...verify];
+    // both queues are popularity-ordered (animes came in popularity order) —
+    // round-robin 1 establish : 3 verify keeps founding new references while
+    // the bulk of every sweep CONFIRMS skip times on episodes people watch.
+    // Dub boundary probes stay up front (already popularity-bounded above).
+    const mixed: BacklogItem[] = [];
+    let ei = 0, vi = 0;
+    while (ei < establish.length || vi < verify.length) {
+      for (let k = 0; k < 1 && ei < establish.length; k++) mixed.push(establish[ei++]);
+      for (let k = 0; k < 3 && vi < verify.length; k++) mixed.push(verify[vi++]);
+    }
+    const backlog = [...dubprobes, ...mixed];
 
     return NextResponse.json(
       {

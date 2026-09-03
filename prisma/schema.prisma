@@ -186,6 +186,21 @@ model DeletedComment {
   deletedAt DateTime @default(now())
 }
 
+// Tombstones for "removed from Continue Watching". The player saves progress
+// from many paths (10s heartbeats, page-hide beacons, unmount flushes, cast
+// heartbeats, another tab) — any save landing just AFTER the DELETE would
+// re-insert the row and the anime would reappear in Continue Watching ("I
+// deleted it but it came back"). A removal tombstone blocks all stale saves
+// for that (user, anime) until the viewer actually plays it again.
+model RemovedProgress {
+  userId    String
+  malId     Int
+  removedAt DateTime @default(now())
+
+  @@id([userId, malId])
+  @@index([removedAt])
+}
+
 // Tiny KV store for Top 10 bookkeeping (last published/sealed day).
 model Top10Meta {
   key       String   @id

@@ -186,6 +186,10 @@ export interface SaveProgressArgs {
  */
 export function saveProgressDetailed(args: SaveProgressArgs, opts?: { keepalive?: boolean }) {
   if (!Number.isFinite(args.position) || args.position < 5) return;
+  // removed from Continue Watching — stale saves (heartbeats, beacons, the
+  // unmount flush of a just-left player) must not resurrect it. The only
+  // way back in is a deliberate watch (clearProgressTombstone on mount).
+  if (isProgressRemoved(args.malId)) return;
   const completed = args.completed ?? (args.duration > 0 && args.position >= args.duration * 0.92);
   const entry: DetailedProgress = {
     pos: Math.floor(args.position),
@@ -253,6 +257,9 @@ export function saveProgressDetailed(args: SaveProgressArgs, opts?: { keepalive?
 
 /** Forget everything watched for one anime (Continue Watching "X" button). */
 export function removeProgress(malId: number) {
+  // tombstone FIRST — an in-flight save must not re-add this anime between
+  // here and the server DELETE ("deleted it but it came back" bug)
+  markProgressRemoved(malId);
   const map = readEpMap();
   delete map[String(malId)];
   writeJson(EP_PROGRESS_KEY, map);
@@ -269,9 +276,58 @@ export function removeProgress(malId: number) {
   } catch {
     /* ignore */
   }
-  fetch(`/api/progress?userId=${encodeURIComponent(getUserId())}&malId=${malId}`, { method: "DELETE" }).catch(
-    () => undefined,
-  );
+  // keepalive so the removal survives the tab closing mid-request; the
+  // server tombstones the removal too (blocks late beacon/heartbeat saves)
+  try {
+    fetch(`/api/progress?userId=${encodeURIComponent(getUserId())}&malId=${malId}`, {
+      method: "DELETE",
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
+}
+
+/* ---------------- removal tombstones (local half) ----------------
+ * The server rejects saves for removed anime (RemovedProgress table), but
+ * the local map must obey too: a save that raced the delete would otherwise
+ * re-add bars/Continue entries the moment the server list is merged. */
+
+const REMOVED_KEY = "animetest123.progress-removed";
+
+function readRemovedMap(): Record<string, number> {
+  return readJson<Record<string, number>>(REMOVED_KEY, {});
+}
+
+function markProgressRemoved(malId: number) {
+  const map = readRemovedMap();
+  map[String(malId)] = Date.now();
+  writeJson(REMOVED_KEY, map);
+}
+
+function isProgressRemoved(malId: number): boolean {
+  return Boolean(readRemovedMap()[String(malId)]);
+}
+
+/**
+ * Deliberate playback (WatchView mounted for this anime) — lift the removal
+ * tombstone locally + on the server so progress tracking resumes.
+ */
+export function clearProgressTombstone(malId: number) {
+  if (!isProgressRemoved(malId)) return;
+  const map = readRemovedMap();
+  delete map[String(malId)];
+  writeJson(REMOVED_KEY, map);
+  try {
+    fetch("/api/progress", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: getUserId(), malId, resume: true }),
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -333,6 +389,9 @@ export function mergeContinueItems(serverItems: ContinueItem[]): ContinueItem[] 
   }
 
   for (const [malId, eps] of Object.entries(localAll)) {
+    // removed from Continue Watching — a save that raced the delete must not
+    // re-add the entry here either
+    if (readRemovedMap()[malId]) continue;
     for (const [ep, e] of Object.entries(eps)) {
       if (e.completed || (e.pos || 0) < 5) continue;
       const malIdNum = Number(malId);

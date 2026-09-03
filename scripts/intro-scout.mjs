@@ -359,7 +359,10 @@ async function fetchDubReport() {
 }
 
 async function cycle(round) {
-  const data = await fetchBacklog(900);
+  // big sweeps: the fleet must confirm skip times across the WHOLE catalog
+  // (2141 anime / 34k+ episodes) — the API interleaves establish:verify 1:3,
+  // so most of each sweep verifies measured shows' episodes
+  const data = await fetchBacklog(2500);
   if (!data.ok) throw new Error("backlog not ok");
   const items = MAX_ITEMS ? data.backlog.slice(0, MAX_ITEMS) : data.backlog;
   log(`round ${round}: backlog ${items.length} items (dubprobes ${data.totals.dubprobes} / establish ${data.totals.establish} / verify ${data.totals.verify}; refs ${data.totals.refs}, measured ${data.totals.measured}/${data.totals.animes} animes)`);

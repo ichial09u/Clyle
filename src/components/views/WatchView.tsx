@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref, clearProgressTombstone } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
@@ -359,6 +359,14 @@ export default function WatchView({
   useEffect(() => {
     setProgress(anime.malId, episode, lang);
   }, [anime.malId, episode, lang]);
+
+  /* -------- deliberate playback lifts a removal tombstone --------
+     The viewer opened this anime to watch it — if they had removed it from
+     Continue Watching earlier, tracking resumes from now (the tombstone
+     existed to keep stale saves from resurrecting a deleted entry). */
+  useEffect(() => {
+    clearProgressTombstone(anime.malId);
+  }, [anime.malId]);
 
   /* -------- resolve the direct stream -------- */
   useEffect(() => {
@@ -890,7 +898,9 @@ export default function WatchView({
   // button would land mid-cold-open and skip dialogue — no data, no button.
   const introSkip: { start: number; end: number } | undefined = stream?.skip?.intro;
   const outroSkip = stream?.skip?.outro;
-  const showSkipIntro = introSkip && currentTime >= introSkip.start && currentTime <= introSkip.end && !locked;
+  // pop up the MOMENT the opening starts — a 1 s lead absorbs timeupdate
+  // granularity so the button is already on screen as the OP appears
+  const showSkipIntro = introSkip && currentTime >= introSkip.start - 1 && currentTime <= introSkip.end && !locked;
   const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
   // Zoko tags EVERY subtitle track lang:"en" and often lists English NOT first
   // (FMA:B ep1: Arabic, Chinese, Chinese, Danish, Dutch, English, ...) — pick
@@ -1177,7 +1187,9 @@ export default function WatchView({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              seekTo(introSkip!.end);
+              // land ~3 s BEFORE the opening ends — the viewer catches the
+              // OP's final seconds (title reveal) instead of hard-cutting out
+              seekTo(Math.max(introSkip!.start, introSkip!.end - 3));
               showUi();
             }}
             className={`absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
