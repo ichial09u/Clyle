@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { jikan, posterUrl, bannerUrl, durationToMinutes, shortRating, type JikanAnime } from "@/lib/jikan";
-import { anilistToJikan, freshMediaByMal, seasonNow, airedEpisodeCount, type AniListMedia } from "@/lib/anilist";
+import { anilistToJikan, freshMediaByMal, seasonNow, airedEpisodeCount, streamingEpisodeTitlesByMal, type AniListMedia } from "@/lib/anilist";
 
 /**
  * Catalog sync — keeps the Zoko catalog up to date:
@@ -235,26 +235,56 @@ export async function episodeTitleBackfillPages(malId: number): Promise<number> 
 }
 
 /**
- * Fill in missing episode titles from MAL's paginated episode list (Jikan).
- * Episode rows created from AniList's aired count carry no title, so the
- * player would otherwise show "Episode 1 DUB" instead of
- * "Episode 1: Ryomen Sukuna". Only the pages holding untitled episodes are
- * fetched (100 episodes per page) — a normal 12-24 episode show costs one
- * request, and the whole thing is a no-op once titles are present.
+ * Fill in missing episode titles so the player header can show the real
+ * name ("Episode 1: Ryomen Sukuna") instead of "Episode 1 DUB". Two sources:
+ *
+ *  1. AniList streamingEpisodes — healthy, cached 24h; covers most popular
+ *     shows completely and gives long-runners their recent window.
+ *  2. MAL's paginated episode list (Jikan) — comprehensive, but the public
+ *     origin is flaky; only the pages holding untitled episodes are fetched
+ *     (100 episodes per page).
+ *
+ * A no-op once titles are present.
  */
 export async function backfillEpisodeTitles(malId: number): Promise<number> {
   if (noEpisodeList.has(malId)) return 0;
-  const missing = await db.episode.findMany({
+  let missing = await db.episode.findMany({
     where: { animeId: malId, lang: "sub", title: null },
     select: { number: true },
     orderBy: { number: "asc" },
   });
   if (missing.length === 0) return 0;
 
+  let filled = 0;
+
+  // ---- source 1: AniList streamingEpisodes --------------------------------
+  const streaming = await streamingEpisodeTitlesByMal(malId).catch(() => []);
+  if (streaming.length > 0) {
+    const wantStream = new Set(missing.map((e) => e.number));
+    for (const e of streaming) {
+      if (!wantStream.has(e.number)) continue;
+      const title = cleanEpisodeTitle(e.title);
+      if (!title) continue;
+      const r = await db.episode.updateMany({
+        where: { animeId: malId, number: e.number, lang: "sub", title: null },
+        data: { title },
+      });
+      filled += r.count;
+    }
+    if (filled > 0) {
+      missing = await db.episode.findMany({
+        where: { animeId: malId, lang: "sub", title: null },
+        select: { number: true },
+        orderBy: { number: "asc" },
+      });
+      if (missing.length === 0) return filled; // AniList covered everything
+    }
+  }
+
+  // ---- source 2: MAL's paginated episode list (Jikan) ---------------------
   const wantTitle = new Set(missing.map((e) => e.number));
   const pages = [...new Set(missing.map((e) => Math.floor((e.number - 1) / 100) + 1))].sort((a, b) => a - b);
 
-  let filled = 0;
   let listedPages = 0;
   for (const page of pages) {
     const res = await jikan<{ data: JikanEpisodeEntry[] }>(`/anime/${malId}/episodes?page=${page}`).catch(
@@ -274,9 +304,9 @@ export async function backfillEpisodeTitles(malId: number): Promise<number> {
     }
   }
 
-  // page 1 exists but holds nothing (or every probed page 404s) — MAL simply
-  // has no episode list for this anime; stop probing on future visits
-  if (listedPages === 0) noEpisodeList.add(malId);
+  // every probed page 404'd AND AniList had nothing — MAL simply has no
+  // episode list for this anime; stop probing on future visits
+  if (listedPages === 0 && streaming.length === 0) noEpisodeList.add(malId);
   return filled;
 }
 

@@ -203,6 +203,7 @@ const TTL_MS: Array<[RegExp, number]> = [
   [/^SearchAnime:/, 10 * 60 * 1000],
   [/^GenreAnime:/, 30 * 60 * 1000],
   [/^SeasonNow:/, 30 * 60 * 1000],
+  [/^StreamingEpisodes:/, 24 * 60 * 60 * 1000], // episode titles barely change
 ];
 const DEFAULT_TTL = 30 * 60 * 1000;
 
@@ -378,6 +379,34 @@ export async function mediaByMal(
 export async function freshMediaByMal(malId: number): Promise<AniListMedia | null> {
   const data = await anilist<MediaResponse>(MEDIA_FRESH_QUERY, { idMal: malId }, { fresh: true, retries: 1 });
   return data?.Media ?? null;
+}
+
+/**
+ * Streaming episode titles for an anime ("Episode 1 - Ryomen Sukuna"), used
+ * by the episode-title backfill. Coverage follows AniList's streaming data:
+ * complete for normal-length shows, a recent window for long-runners.
+ */
+export async function streamingEpisodeTitlesByMal(
+  malId: number,
+): Promise<Array<{ number: number; title: string }>> {
+  const QUERY = `
+    query StreamingEpisodes($idMal: Int) {
+      Media(idMal: $idMal, type: ANIME) {
+        streamingEpisodes { title }
+      }
+    }`;
+  const data = await anilist<{
+    Media?: { streamingEpisodes?: Array<{ title: string } | null> | null } | null;
+  }>(QUERY, { idMal: malId }, { retries: 1 });
+  const out: Array<{ number: number; title: string }> = [];
+  for (const raw of data?.Media?.streamingEpisodes ?? []) {
+    const m = raw?.title?.trim().match(/^Episode\s+(\d+)\s*[-\u2013\u2014:]\s*(.+)$/i);
+    if (!m) continue;
+    const number = parseInt(m[1], 10);
+    const title = m[2].trim();
+    if (Number.isFinite(number) && title) out.push({ number, title });
+  }
+  return out;
 }
 
 /** MAL-wide style search by free-text query. */
