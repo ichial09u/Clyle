@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveStream } from "@/lib/zoko-stream";
+import { allowHostWithReferer, refererForHost, isAllowedHost, PROXY_SUFFIXES, ZOKO_REFERER } from "@/lib/stream-proxy-registry";
 
 export const dynamic = "force-dynamic";
 
@@ -26,16 +27,29 @@ const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 const CDN_SUFFIXES = [".aniwatchtv.uk", ".zokoanime.video"];
-const dynamicHosts = new Set<string>();
+
+/**
+ * Upstream headers for one host: each provider's CDN only accepts the
+ * Referer its own player sends (Zoko -> zokoanime.video, Megaplay ->
+ * megaplay.buzz, SupaPlay -> none). The registry remembers which is which;
+ * hosts resolved before this point fall back to Zoko's headers.
+ */
+function upstreamHeadersFor(hostname: string): Record<string, string> {
+  const referer = refererForHost(hostname);
+  if (referer === "") return { "User-Agent": UA, Accept: "*/*" }; // signed URLs, no referer wanted
+  if (referer) return { "User-Agent": UA, Referer: referer, Accept: "*/*" };
+  return { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/`, Accept: "*/*" };
+}
 
 export function allowHost(hostname: string) {
-  dynamicHosts.add(hostname.toLowerCase());
+  allowHostWithReferer(hostname, undefined);
 }
 
 function hostAllowed(hostname: string): boolean {
   const h = hostname.toLowerCase();
   if (CDN_SUFFIXES.some((s) => h.endsWith(s))) return true;
-  if (dynamicHosts.has(h)) return true;
+  if (PROXY_SUFFIXES.some((s) => h.endsWith(s))) return true;
+  if (isAllowedHost(h)) return true;
   return false;
 }
 
@@ -81,7 +95,7 @@ const probeCache = new Map<string, { expires: number; heights: number[] }>();
 async function probeVariant(url: URL): Promise<boolean> {
   try {
     const res = await fetch(url.toString(), {
-      headers: { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/`, Accept: "*/*" },
+      headers: upstreamHeadersFor(url.hostname),
       cache: "no-store",
       redirect: "follow",
       signal: AbortSignal.timeout(5_000),
@@ -203,12 +217,7 @@ export async function GET(req: Request) {
   }
 
   const upstream = await fetch(target.toString(), {
-    headers: {
-      "User-Agent": UA,
-      Origin: ZOKO_ORIGIN,
-      Referer: `${ZOKO_ORIGIN}/`,
-      Accept: "*/*",
-    },
+    headers: upstreamHeadersFor(target.hostname),
     cache: "no-store",
     redirect: "follow",
     signal: AbortSignal.timeout(25_000),

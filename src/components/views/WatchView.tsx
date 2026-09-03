@@ -18,7 +18,7 @@ import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
 
 type Panel = null | "quality" | "speed" | "subs";
-type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } };
+type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: "zoko" | "kiwi" | "supaplay" | "yenime" };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -371,8 +371,20 @@ export default function WatchView({
         const data = (await res.json()) as Resolved;
         if (!cancelled) {
           setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip });
+          // the DUB backfill sources (SupaPlay / yenime) kick in when neither
+          // Zoko nor Kiwi carries a real dub — say so, it explains any minor
+          // differences (sub style, quality ladder)
+          if (lang === "dub" && (data.provider === "yenime" || data.provider === "supaplay")) {
+            showPlayerMsg(
+              data.provider === "yenime"
+                ? "English DUB via Yenime — Zoko/Kiwi had none"
+                : "English DUB via SupaPlay — Zoko/Kiwi had none",
+              5_000,
+            );
+          }
           // absolute public URL the Chromecast receiver can fetch through our proxy
-          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=m3u8&u=${encodeURIComponent(data.src)}`;
+          const isHls = /\.m3u8($|\?)/i.test(data.src);
+          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}`;
         }
       } catch {
         if (!cancelled) setStreamError(true);
@@ -586,7 +598,13 @@ export default function WatchView({
       video.play().catch(() => undefined);
     };
 
-    if (Hls.isSupported()) {
+    if (stream.src && !/\.m3u8($|\?)/i.test(stream.src)) {
+      // progressive source (SupaPlay DUB backfill ships signed MP4s) —
+      // hls.js can't take these; the native video element plays them directly
+      setLevels([]);
+      video.src = proxyUrl(stream.src, "seg");
+      video.addEventListener("loadedmetadata", startPlayback, { once: true });
+    } else if (Hls.isSupported()) {
       const hls = new Hls({
         // small start buffer, snappy startup
         maxBufferLength: 30,
@@ -1379,6 +1397,7 @@ export default function WatchView({
                 ))}
               </div>
               <p className="mt-1.5 text-[10.5px] text-gray-500">Switching server keeps your exact spot — no restart.</p>
+              <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay (Server #1) or Yenime (Server #2).</p>
             </div>
           </div>
         ) : null}

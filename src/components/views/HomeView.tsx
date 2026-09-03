@@ -11,6 +11,7 @@ import {
   loadContinueItems, removeProgress, timeAgo, useProgressVersion,
   fetchTop10Month, type Top10MonthEntry,
 } from "@/lib/client-store";
+import { getUserId } from "@/lib/profile-store";
 
 export default function HomeView({
   onSelect,
@@ -27,6 +28,8 @@ export default function HomeView({
   const [heroIdx, setHeroIdx] = useState(0);
   const [error, setError] = useState(false);
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
+  const [suggestions, setSuggestions] = useState<AnimeLite[]>([]);
+  const [suggestAnchor, setSuggestAnchor] = useState<string | null>(null);
   const [top10, setTop10] = useState<Top10MonthEntry[]>([]);
   const progressVersion = useProgressVersion();
   const lastTop10Fetch = useRef(0);
@@ -34,6 +37,24 @@ export default function HomeView({
   const refreshContinue = useCallback(() => {
     loadContinueItems().then(setContinueItems).catch(() => undefined);
   }, []);
+
+  // "Suggested For You" — lives inside the Continue Watching area: what the
+  // user is watching drives genre-based picks they haven't started yet.
+  // Refetches alongside continue items (progress changes → new suggestions).
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/suggestions?userId=${encodeURIComponent(getUserId())}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { items?: AnimeLite[]; becauseOf?: string | null }) => {
+        if (cancelled) return;
+        setSuggestions(d.items ?? []);
+        setSuggestAnchor(d.becauseOf ?? null);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [progressVersion, continueItems.length]);
 
   useEffect(() => {
     refreshContinue();
@@ -126,6 +147,15 @@ export default function HomeView({
             removeProgress(malId);
             setContinueItems((items) => items.filter((i) => i.malId !== malId));
           }}
+        />
+      ) : null}
+
+      {/* Suggested For You — right under Continue Watching, driven by it */}
+      {continueItems.length && suggestions.length ? (
+        <Row
+          title={suggestAnchor ? `Because you watched ${suggestAnchor}` : "Suggested For You"}
+          items={suggestions}
+          onSelect={onSelect}
         />
       ) : null}
 

@@ -4,6 +4,7 @@ import { freshMediaByMal, airedEpisodeCount } from "@/lib/anilist";
 import { importEpisodes, importEpisodesFromList, episodeTitleBackfillPages, backfillEpisodeTitles } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { probeDubAvailable } from "@/lib/zoko-stream";
+import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
 
 export const dynamic = "force-dynamic";
 
@@ -80,24 +81,49 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // just 404 at play time until the dub catches up.
   let hasDub = anime.hasDub;
   let hasDubKiwi = anime.hasDubKiwi;
-  if (hasDub == null || hasDubKiwi == null) {
-    const [zoko, kiwi] = await Promise.all([
-      hasDub == null ? probeDubAvailable(malId, 1) : Promise.resolve(null),
-      hasDubKiwi == null ? probeDubAvailable(malId, 1, "kiwi") : Promise.resolve(null),
-    ]);
-    if (zoko != null) {
-      hasDub = zoko;
-      await db.anime.update({ where: { malId }, data: { hasDub: zoko } }).catch(() => undefined);
-    }
-    if (kiwi != null) {
-      hasDubKiwi = kiwi;
-      await db.anime.update({ where: { malId }, data: { hasDubKiwi: kiwi } }).catch(() => undefined);
-    }
+  let hasDubMega = anime.hasDubMega;
+  const probeJobs: Array<Promise<void>> = [];
+  if (hasDub == null) {
+    probeJobs.push(
+      probeDubAvailable(malId, 1).then((v) => {
+        if (v != null) {
+          hasDub = v;
+          void db.anime.update({ where: { malId }, data: { hasDub: v } }).catch(() => undefined);
+        }
+      }),
+    );
   }
+  if (hasDubKiwi == null) {
+    probeJobs.push(
+      probeDubAvailable(malId, 1, "kiwi").then((v) => {
+        if (v != null) {
+          hasDubKiwi = v;
+          void db.anime.update({ where: { malId }, data: { hasDubKiwi: v } }).catch(() => undefined);
+        }
+      }),
+    );
+  }
+  // missing-dub backfill: when neither Zoko nor Kiwi carries a real dub,
+  // probe the Megaplay/yenime source once — that's what fills the gap.
+  if (hasDub === false && hasDubKiwi === false && hasDubMega == null) {
+    probeJobs.push(
+      probeMegaplayDub(malId, 1).then((v) => {
+        if (v != null) {
+          hasDubMega = v;
+          void storeMegaplayVerdict(malId, v);
+        }
+      }),
+    );
+  }
+  await Promise.all(probeJobs);
+
   // null = not probed -> optimistic (show DUB; the stream API validates)
   const dubServers: Array<"zoko" | "kiwi"> = [];
   if (hasDub !== false) dubServers.push("zoko");
   if (hasDubKiwi !== false) dubServers.push("kiwi");
+  // no Zoko/Kiwi dub but the backfill source has one — still offer both DUB
+  // buttons; /api/stream transparently lands them on the backfill source
+  if (!dubServers.length && hasDubMega === true) dubServers.push("zoko", "kiwi");
 
   return NextResponse.json({
     malId,

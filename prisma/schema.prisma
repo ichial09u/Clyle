@@ -37,6 +37,8 @@ model Anime {
   inCatalog     Boolean @default(true) // "Zoko has it"
   hasDub        Boolean? // Zoko dub verdict: does a REAL (non-fake) English dub stream exist? (null = not probed yet)
   hasDubKiwi    Boolean? // Kiwi dub verdict — same probe against the Kiwi server (null = not probed)
+  hasDubMega    Boolean? // Megaplay (yenime/flikhub) dub verdict — same probe, used to backfill missing DUB (null = not probed)
+  supaplayPath  String?  // SupaPlay MW detailPath (e.g. "jujutsu-kaisen-english-KD0jSM9ot5") — enables the SupaPlay DUB source for Server #1 (dub only)
   tmdbId        Int?    // The Movie Database id (TV or Movie), for TMDB popularity ranking
   source        String  @default("seed") // seed | season-import | manual
   lastSyncedAt  DateTime?
