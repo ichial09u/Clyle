@@ -63,6 +63,10 @@ export async function GET(req: Request) {
         const thru = Math.max(a.dubThruS1 ?? 0, a.dubThruS2 ?? 0);
         if (a.dubThruS1 == null && a.dubThruS2 == null) {
           unprobed.push({ ...base, hasDub: a.hasDub, hasDubKiwi: a.hasDubKiwi, hasDubMega: a.hasDubMega, backfillMapped });
+        } else if (thru === 0) {
+          // boundary search PROVED no dub on any reachable source (mapped
+          // included) — sub-only in practice, keep the headline list honest
+          noDubAtAll.push(base);
         } else if (thru < a.totalEpisodes) {
           dubBehind.push({ ...base, dubThrough: thru, episodesMissingDub: Math.max(0, a.totalEpisodes - thru) });
         } // thru >= total AND mapped: fully dubbed via backfill — no bucket
