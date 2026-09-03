@@ -31,7 +31,7 @@ export const maxDuration = 60;
 const TOKEN = process.env.SCOUT_TOKEN ?? "clyle-scout-v1";
 
 const NEGATIVE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // nodetect re-try window
-const ESTABLISH_NEG_TTL_MS = 2 * 24 * 60 * 60 * 1000; // failed pairs re-try sooner
+const ESTABLISH_NEG_TTL_MS = 8 * 60 * 60 * 1000; // failed pairs rotate fast
 const REVERIFY_MS = 30 * 24 * 60 * 60 * 1000; // re-verify measured rows monthly
 const FINDING_KEEP = 500; // the report feed is capped (ephemeral telemetry)
 
@@ -98,10 +98,12 @@ export async function GET(req: Request) {
       if (!eps.length) continue;
       const ref = refByAnime.get(a.malId);
       if (!ref) {
-        const a1 = eps[0];
-        const b1 = eps[1] ?? eps[0];
-        if (Date.now() < (negUntil.get(`${a.malId}/${a1}`) ?? 0) && Date.now() < (negUntil.get(`${a.malId}/${b1}`) ?? 0)) continue;
-        establish.push({ kind: "establish", malId: a.malId, title: a.title, epA: a1, epB: b1 });
+        // pair establishment — pick the first two eps not in their negative
+        // cache, so failed pairs rotate forward (1+2 -> 3+4 -> ...) instead
+        // of stalling the anime for the whole TTL
+        const fresh = eps.filter((ep) => Date.now() >= (negUntil.get(`${a.malId}/${ep}`) ?? 0));
+        if (fresh.length < 2) continue;
+        establish.push({ kind: "establish", malId: a.malId, title: a.title, epA: fresh[0], epB: fresh[1] });
         continue;
       }
       for (const ep of eps) {

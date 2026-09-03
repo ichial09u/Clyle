@@ -94,6 +94,8 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
     );
     let ffErr = "";
     child.stderr.on("data", (d) => { ffErr = (ffErr + d).slice(-400); });
+    // ffmpeg dying mid-feed must never take the whole bot down with EPIPE
+    child.stdin.on("error", () => { /* pump sees destroyed and stops */ });
     const ffDead = new Promise((resolve) => {
       child.on("close", (code) => resolve(code));
       child.on("error", () => resolve(-1));
@@ -123,8 +125,12 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
               const { done, value } = await reader.read();
               if (done) break;
               if (!child.stdin.destroyed && !child.stdin.writableEnded) {
-                if (!child.stdin.write(value)) {
-                  await new Promise((r) => child.stdin.once("drain", r));
+                try {
+                  if (!child.stdin.write(value)) {
+                    await new Promise((r) => child.stdin.once("drain", r));
+                  }
+                } catch {
+                  break; // ffmpeg went away mid-segment
                 }
               }
             }
@@ -224,16 +230,15 @@ class PcmScanner {
   }
 
   /**
-   * First "loud wall": a run of >= MIN_OP_SEC where windows stay loud
-   * (>= 0.5 p95) with at most ~1 s quiet dips, starting within 0-330 s.
-   * Returns SECONDS { start, end } or null.
+   * All plausible "loud wall" candidates (top 3 by loudness quality):
+   * openings are wall-to-wall music, dialogue is choppy — but action
+   * scenes can look like walls too, so matching tries each candidate.
+   * Returns SECONDS { start, end } list, best first, or [].
    */
-  wall() {
-    if (this.raw.length < 90) return null;
-    const p = this.p95;
+  walls() {
+    if (this.raw.length < 90) return [];
     const env = this.env;
     const loud = env.map((v) => v >= 0.5);
-    // merge loud runs separated by <= 2 windows (1 s)
     const merged = [];
     let i = 0;
     while (i < loud.length) {
@@ -243,18 +248,28 @@ class PcmScanner {
       merged.push([i, j]);
       i = j + 1;
     }
+    const cands = [];
     for (const [a, b] of merged) {
       const s = a * WIN_SEC, e = b * WIN_SEC;
       if (s > 330) break;
       const dur = e - s;
       if (dur < MIN_OP_SEC || dur > MAX_OP_SEC + 60) continue;
-      // wall quality: mostly loud inside
-      let loudN = 0;
-      for (let k = a; k < b; k++) if (env[k] >= 0.35) loudN++;
-      if (loudN / (b - a) < 0.72) continue;
-      return { start: Math.round(s * 10) / 10, end: Math.round(e * 10) / 10 };
+      let loudN = 0, sum = 0;
+      for (let k = a; k < b; k++) { if (env[k] >= 0.35) loudN++; sum += env[k]; }
+      const frac = loudN / (b - a);
+      if (frac < 0.72) continue;
+      cands.push({ start: Math.round(s * 10) / 10, end: Math.round(e * 10) / 10, score: frac * (sum / (b - a)) });
     }
-    return null;
+    return cands.sort((x, y) => y.score - x.score).slice(0, 3).map(({ start, end }) => ({ start, end }));
+  }
+
+  /**
+   * First "loud wall": a run of >= MIN_OP_SEC where windows stay loud
+   * (>= 0.5 p95) with at most ~1 s quiet dips, starting within 0-330 s.
+   * Returns SECONDS { start, end } or null.
+   */
+  wall() {
+    return this.walls()[0] ?? null;
   }
 }
 

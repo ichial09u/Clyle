@@ -125,10 +125,10 @@ async function resolveStreamSrc(malId, ep) {
 /* ---------------- detection jobs ---------------- */
 
 /** watch one episode; returns { env, wall, analyzedSec } or null */
-async function watchEpisode(bot, malId, ep, title, maxSec) {
+async function watchEpisode(bot, malId, ep, title, maxSec, minSec = 0) {
   const src = await resolveStreamSrc(malId, ep);
   if (!src) return null;
-  const r = await analyzePlaylist(src, { log: () => {}, maxSec });
+  const r = await analyzePlaylist(src, { log: () => {}, maxSec, minSec });
   if (r.status !== "ok") throw new Error(r.detail || "analyze failed");
   stats.scannedSec += r.analyzedSec;
   return r;
@@ -145,24 +145,51 @@ function refFromEnv(env, interval) {
   };
 }
 
+/**
+ * Loudest contiguous ~70 s span in the envelope — a much better OP proxy
+ * than a fixed window when the wall proposer comes up empty (the OP is
+ * almost always the loudest sustained music in the first minutes).
+ */
+function loudestSpan(env, spanSec = 70) {
+  const span = Math.floor(spanSec / 0.5);
+  if (env.length <= span) return env.length ? { start: 0, end: env.length * 0.5 } : null;
+  let bestI = 0, bestSum = -1, sum = 0;
+  for (let i = 0; i < env.length; i++) {
+    sum += env[i];
+    if (i >= span) sum -= env[i - span];
+    if (i >= span - 1 && sum > bestSum) { bestSum = sum; bestI = i - span + 1; }
+  }
+  return { start: bestI * 0.5, end: (bestI + span) * 0.5 };
+}
+
 async function jobEstablish(item, bot) {
   const { malId, title, epA, epB } = item;
-  const A = await watchEpisode(bot, malId, epA, title, 330);
-  const B = await watchEpisode(bot, malId, epB, title, 330);
+  // establish feeds a full 300 s of both episodes: openings may sit late
+  // (recaps push them past 2:00) and the pair must contain the whole song
+  const A = await watchEpisode(bot, malId, epA, title, 330, 300);
+  const B = A && epB !== epA ? await watchEpisode(bot, malId, epB, title, 330, 300) : A;
+  if (!A || !B) {
+    // zoko has no page for one of the episodes — definitive miss
+    stats.nodetect++;
+    log(`${bot} establish SKIP ${title} [${malId}] ep${epA}+ep${epB} (stream unavailable)`);
+    enqueueFinding({ bot, malId, ep: epA, status: "nodetect", detail: "stream unavailable" });
+    if (epB !== epA) enqueueFinding({ bot, malId, ep: epB, status: "nodetect", detail: "stream unavailable" });
+    return;
+  }
 
-  const anchorA = A.wall ?? { start: 10, end: Math.min(200, A.analyzedSec - 40) };
-  let mB = matchEnvelope(B.env, A.env, anchorA);
-  let mA = null;
-  if (mB) mA = matchEnvelope(A.env, B.env, mB);
+  // multi-candidate matching: try each loud-wall anchor (top 3), plus the
+  // loudest-span fallback, in both directions — the first hit wins
+  let mA = null, mB = null;
+  const anchorsA = [...(A.wall ? [A.wall] : []), ...A.walls?.() ?? [], loudestSpan(A.env)].filter(Boolean);
+  const anchorsB = [...(B.wall ? [B.wall] : []), ...B.walls?.() ?? [], loudestSpan(B.env)].filter(Boolean);
+  for (const a of anchorsA) {
+    const t = matchEnvelope(B.env, A.env, a);
+    if (t) { mB = t; mA = matchEnvelope(A.env, B.env, t); if (mA) break; mB = null; }
+  }
   if (!mA || !mB) {
-    // second chance: propose from B's wall instead
-    const anchorB = B.wall;
-    if (anchorB) {
-      const mAtry = matchEnvelope(A.env, B.env, anchorB);
-      if (mAtry) {
-        const mBtry = matchEnvelope(B.env, A.env, mAtry);
-        if (mBtry) { mA = mAtry; mB = mBtry; }
-      }
+    for (const b of anchorsB) {
+      const t = matchEnvelope(A.env, B.env, b);
+      if (t) { mA = t; mB = matchEnvelope(B.env, A.env, t); if (mB) break; mA = null; }
     }
   }
 
