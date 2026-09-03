@@ -43,6 +43,10 @@ const ONCE = flag("once");
 const LOOP = flag("loop");
 const MAX_ITEMS = parseInt(opt("max-items", "0"), 10) || 0;
 const LOG_FILE = new URL("./scout-fleet.log", import.meta.url).pathname;
+// every finding is also mirrored to the local site (its SQLite is committed
+// + deployed) — prod serverless instances each hold an ephemeral db copy,
+// so the local db is the fleet's durable store
+const MIRROR = opt("mirror", process.env.SCOUT_MIRROR || "http://localhost:3000");
 
 const MIN_QUALITY = 0.72; // envelope match gate
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -81,26 +85,26 @@ async function flush() {
   queuedFindings = [];
   if (!batch.length) return;
   const refs = batch.filter((f) => f._ref).map((f) => f._ref);
-  try {
-    const res = await fetch(`${PROD}/api/bots/intro-scout?token=${encodeURIComponent(TOKEN)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        bot: batch[0]?.bot ?? "scout",
-        findings: batch.map(({ _ref, ...f }) => f),
-        refs,
-      }),
-      signal: AbortSignal.timeout(60_000),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok || !body.ok) {
-      log(`report POST failed: ${res.status} ${JSON.stringify(body).slice(0, 150)} — ${batch.length} finding(s) dropped`);
-    } else {
-      stats.refs += refs.length;
-    }
-  } catch (err) {
-    log(`report POST error: ${String(err).slice(0, 120)} — ${batch.length} finding(s) dropped`);
-  }
+  const payload = JSON.stringify({
+    bot: batch[0]?.bot ?? "scout",
+    findings: batch.map(({ _ref, ...f }) => f),
+    refs,
+  });
+  // report to prod (what users get NOW) + mirror to the local site (what
+  // survives in the committed db and ships with the next deploy)
+  const targets = [PROD, MIRROR].filter(Boolean);
+  await Promise.allSettled(
+    targets.map(async (base) => {
+      const res = await fetch(`${base}/api/bots/intro-scout?token=${encodeURIComponent(TOKEN)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: payload,
+        signal: AbortSignal.timeout(60_000),
+      });
+      if (!res.ok) log(`report POST to ${base === PROD ? "prod" : "mirror"} -> ${res.status}`);
+    }),
+  );
+  stats.refs += refs.length;
 }
 
 /* ---------------- prod helpers ---------------- */
@@ -231,6 +235,12 @@ async function jobVerify(item, bot) {
 
 /* ---------------- worker pool ---------------- */
 
+const doneThisSession = new Set(); // malId/ep already reported — skip on later sweeps
+const markDone = (item) => {
+  const eps = item.kind === "establish" ? [item.epA, item.epB] : [item.ep];
+  for (const ep of eps) doneThisSession.add(`${item.malId}/${ep}`);
+};
+
 async function runQueue(items, lanes) {
   let idx = 0;
   let active = 0;
@@ -244,6 +254,9 @@ async function runQueue(items, lanes) {
     const pump = () => {
       while (active < lanes && idx < total) {
         const item = items[idx++];
+        const itemEps = item.kind === "establish" ? [item.epA, item.epB] : [item.ep];
+        if (itemEps.every((ep) => doneThisSession.has(`${item.malId}/${ep}`))) continue; // already measured this session
+        markDone(item);
         active++;
         const bot = `scout-${String((idx % lanes) + 1).padStart(2, "0")}`;
         const job = item.kind === "establish" ? jobEstablish(item, bot) : jobVerify(item, bot);
