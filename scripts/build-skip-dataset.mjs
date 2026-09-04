@@ -5,14 +5,18 @@
  * Output goes to src/lib/skip-times.data.json (vendored into the app).
  */
 import { readFile, writeFile } from "node:fs/promises";
+import { PrismaClient } from "@prisma/client";
 
 const csvPath = process.argv[2] || "scripts/aniskip_dump.csv";
 const outPath = "src/lib/skip-times.data.json";
 
-// Pull every malId we carry in the catalog seed.
-const seed = await readFile("src/lib/catalog-seed.ts", "utf8");
-const malIds = [...seed.matchAll(/malId:\s*(\d+)/g)].map((m) => Number(m[1]));
-const malSet = new Set(malIds);
+// Pull every malId we carry in the catalog — from the LIVE db (the old
+// catalog-seed.ts only held the first 42 titles, which silently capped
+// dataset coverage while the catalog grew past 2k animes).
+const db = new PrismaClient();
+const rows = await db.anime.findMany({ where: { inCatalog: true }, select: { malId: true } });
+const malSet = new Set(rows.map((r) => r.malId));
+await db.$disconnect();
 console.log(`catalog animes: ${malSet.size}`);
 
 const text = await readFile(csvPath, "utf8");
