@@ -81,16 +81,40 @@ async function rawGet(path: string, maxTries = 3): Promise<unknown> {
   let lastStatus = 0;
   for (let tries = 0; tries < maxTries; tries++) {
     const { status, body } = await httpGet(`${BASE}${path}`, 25_000);
-    if (status === 200) return JSON.parse(body);
+    if (status === 200) {
+      lastJikanOkAt = Date.now();
+      return JSON.parse(body);
+    }
     lastStatus = status;
-    if (status === 404) throw new Error(`Jikan ${path} -> 404`);
+    if (status === 404) {
+      lastJikanOkAt = Date.now(); // a clean 404 means Jikan is alive
+      throw new Error(`Jikan ${path} -> 404`);
+    }
     // 429 / 5xx: Jikan sheds load with 504s — back off (3s, 6s, …)
     if (tries < maxTries - 1) {
       await sleep(3_000 * (tries + 1));
       lastRequestAt = Date.now();
     }
   }
+  lastJikanFailAt = Date.now();
   throw new Error(`Jikan ${path} -> ${lastStatus}`);
+}
+
+/* ---- health memory (inline-await gate) ---------------------------------
+ * The episodes route awaits small title backfills INLINE so the first
+ * visitor sees real titles immediately — but when Jikan sheds load (504s,
+ * the DAN DA DAN S1 case) each backfill burns ~84s of timeouts+backoffs
+ * INSIDE the request and the episode grid hangs on skeletons. The route
+ * checks jikanHealthy() and defers to background when Jikan recently
+ * failed. In-memory only — worst case one more slow request per process.
+ * ----------------------------------------------------------------------- */
+let lastJikanFailAt = 0;
+let lastJikanOkAt = 0;
+
+/** True unless Jikan failed after its last success within the last 10 min. */
+export function jikanHealthy(): boolean {
+  if (lastJikanFailAt <= lastJikanOkAt) return true;
+  return Date.now() - lastJikanFailAt > 10 * 60_000;
 }
 
 const TTL_MS: Array<[RegExp, number]> = [

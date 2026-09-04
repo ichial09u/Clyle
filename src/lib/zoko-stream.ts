@@ -17,6 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zokoStreamPageUrl, type Lang, type ServerId } from "@/lib/zoko";
 import { db } from "@/lib/db";
+import { getDubAudioVerdict } from "@/lib/dub-audio";
 
 /** Zoko answered with a definitive "this page doesn't exist" (HTTP 404/410). */
 export class ZokoNoPageError extends Error {
@@ -237,8 +238,11 @@ async function segmentDigest(url: string): Promise<string | null> {
 /**
  * Does a REAL English dub exist for this episode?
  *   true  = dub stream present AND its content differs from the sub
- *   false = DEFINITIVE no-dub evidence: no dub page at all (HTTP 404), or the
- *           dub is the sub's file re-uploaded (fake, identical segments)
+ *   false = DEFINITIVE no-dub evidence: no dub page at all (HTTP 404), the
+ *           dub is the sub's file re-uploaded (fake, identical segments), or
+ *           the fleet measured the dub's DECODED AUDIO as identical to the
+ *           sub's (the DAN DA DAN case — different video encode, same
+ *           Japanese audio muxed in; the raw byte-compare cannot see it)
  *   null  = couldn't tell right now (network trouble / Zoko hiccup) — the
  *           verdict is NOT cached, and the caller must NOT block playback on
  *           it. (Caching a transient failure used to mark real-dub shows as
@@ -255,6 +259,21 @@ export async function verifyRealDub(malId: number, ep: number, server: ServerId)
   }
 
   try {
+    // fleet-measured audio verdict first — a DB hit, instant and offline.
+    // "fake" short-circuits before any network work (the whole point: the
+    // DUB page EXISTS and its segments differ, only the language is wrong).
+    // "real" skips the byte-compare below — the audio measurement is the
+    // stronger evidence.
+    const audio = await getDubAudioVerdict(malId, ep, server);
+    if (audio === "fake") {
+      await cacheDubVerdict(key, false);
+      return false;
+    }
+    if (audio === "real") {
+      await cacheDubVerdict(key, true);
+      return true;
+    }
+
     // fetch the DUB first: when it is definitively missing we can answer
     // false WITHOUT the sub comparison (faster, and fewer chances for a
     // sub hiccup to mask a definitive dub absence)
@@ -345,6 +364,19 @@ export async function resolveStream(
 ): Promise<ZokoStream | null> {
   const data = await resolveStreamRaw(malId, ep, lang, server, opts);
   if (!data || lang !== "dub") return data;
+
+  // Per-episode AUDIO verdict first — it overrides the anime-level columns.
+  // A "fake" here means the fleet measured this DUB entry's decoded audio as
+  // identical to the SUB's (Japanese audio under a DUB label — DAN DA DAN
+  // S1): returning null sends the caller down its backfill chain to a real
+  // English source. A "real" is equally decisive in the other direction —
+  // the anime-level columns describe the ep-1 probe only, so DAN DA DAN's
+  // fake ep1 flips hasDub/hasDubKiwi to false and would wrongly block eps
+  // 2-12, whose dubs the fleet measured as real English. Per-episode proof
+  // beats per-anime staleness in BOTH directions.
+  const audio = await getDubAudioVerdict(malId, ep, server);
+  if (audio === "fake") return null;
+  if (audio === "real") return data;
 
   const verdict = await dubVerdictFor(malId, server);
   if (verdict === true) return data;

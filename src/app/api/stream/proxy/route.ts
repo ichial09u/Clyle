@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { resolveStream } from "@/lib/zoko-stream";
-import { allowHostWithReferer, refererForHost, isAllowedHost, PROXY_SUFFIXES, ZOKO_REFERER } from "@/lib/stream-proxy-registry";
+import {
+  allowHostWithReferer,
+  refererForHost,
+  isAllowedHost,
+  PROXY_SUFFIXES,
+  ZOKO_REFERER,
+} from "@/lib/stream-proxy-registry";
 
 export const dynamic = "force-dynamic";
 
@@ -34,8 +40,12 @@ const CDN_SUFFIXES = [".aniwatchtv.uk", ".zokoanime.video"];
  * megaplay.buzz, SupaPlay -> none). The registry remembers which is which;
  * hosts resolved before this point fall back to Zoko's headers.
  */
-function upstreamHeadersFor(hostname: string): Record<string, string> {
-  const referer = refererForHost(hostname);
+function upstreamHeadersFor(hostname: string, refererOverride?: string): Record<string, string> {
+  // a self-described child URL carries the referer its own playlist used —
+  // authoritative across lambda/instance boundaries (the in-memory registry
+  // is per-instance; megaplay's CDN host families rotate past every static
+  // list, so the playlist itself is the only durable source of truth)
+  const referer = refererOverride !== undefined ? refererOverride : refererForHost(hostname);
   if (referer === "") return { "User-Agent": UA, Accept: "*/*" }; // signed URLs, no referer wanted
   if (referer) return { "User-Agent": UA, Referer: referer, Accept: "*/*" };
   return { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/`, Accept: "*/*" };
@@ -65,8 +75,11 @@ async function primeAllowlist(malId: number, ep: number, lang: string, server: s
   for (const h of hosts) allowHost(h);
 }
 
-function proxied(abs: URL, type: "m3u8" | "seg" | "vtt"): string {
-  return `/api/stream/proxy?type=${type}&u=${encodeURIComponent(abs.toString())}`;
+function proxied(abs: URL, type: "m3u8" | "seg" | "vtt", referer?: string): string {
+  // `rf` rides along on every child URL so any later lambda serving it uses
+  // the exact upstream headers the issuing playlist was fetched with
+  const rf = referer != null ? `&rf=${encodeURIComponent(referer)}` : "";
+  return `/api/stream/proxy?type=${type}&u=${encodeURIComponent(abs.toString())}${rf}`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -92,10 +105,10 @@ const VARIANT_META: Record<number, { bandwidth: number; resolution: string }> = 
 // so a fresh upload naturally re-probes).
 const probeCache = new Map<string, { expires: number; heights: number[] }>();
 
-async function probeVariant(url: URL): Promise<boolean> {
+async function probeVariant(url: URL, referer?: string): Promise<boolean> {
   try {
     const res = await fetch(url.toString(), {
-      headers: upstreamHeadersFor(url.hostname),
+      headers: upstreamHeadersFor(url.hostname, referer),
       cache: "no-store",
       redirect: "follow",
       signal: AbortSignal.timeout(5_000),
@@ -113,7 +126,7 @@ async function probeVariant(url: URL): Promise<boolean> {
  * dirs and return a synthesized multi-variant master (still upstream-absolute;
  * the normal rewrite pass proxies it afterwards). Otherwise return null.
  */
-async function enrichMaster(text: string, target: URL): Promise<string | null> {
+async function enrichMaster(text: string, target: URL, inheritedReferer?: string): Promise<string | null> {
   if (!text.includes("#EXT-X-STREAM-INF")) return null;
   const lines = text.split(/\r?\n/);
   const variantUris = lines.filter((l) => l.trim() && !l.startsWith("#"));
@@ -138,7 +151,7 @@ async function enrichMaster(text: string, target: URL): Promise<string | null> {
     const results = await Promise.all(
       siblings.map(async (h) => {
         const u = new URL(`${abs.origin}${dir}/${h}/index.m3u8`);
-        return (await probeVariant(u)) ? h : null;
+        return (await probeVariant(u, inheritedReferer)) ? h : null;
       }),
     );
     heights = [current, ...(results.filter((h) => h != null) as number[])];
@@ -167,7 +180,7 @@ async function enrichMaster(text: string, target: URL): Promise<string | null> {
 
 const TTL_30MIN = 30 * 60 * 1000;
 
-function rewritePlaylist(text: string, baseUrl: URL): string {
+function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string): string {
   const out: string[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -181,7 +194,7 @@ function rewritePlaylist(text: string, baseUrl: URL): string {
         try {
           const abs = new URL(uri, baseUrl);
           const isPlaylist = /\.m3u8($|\?)/i.test(abs.pathname);
-          return `URI="${proxied(abs, isPlaylist ? "m3u8" : "seg")}"`;
+          return `URI="${proxied(abs, isPlaylist ? "m3u8" : "seg", inheritedReferer)}"`;
         } catch {
           return _m;
         }
@@ -193,7 +206,7 @@ function rewritePlaylist(text: string, baseUrl: URL): string {
       const abs = new URL(line, baseUrl);
       const isPlaylist = /\.m3u8($|\?)/i.test(abs.pathname);
       const isVtt = /\.vtt($|\?)/i.test(abs.pathname);
-      out.push(proxied(abs, isVtt ? "vtt" : isPlaylist ? "m3u8" : "seg"));
+      out.push(proxied(abs, isVtt ? "vtt" : isPlaylist ? "m3u8" : "seg", inheritedReferer));
     } catch {
       out.push(line);
     }
@@ -206,18 +219,25 @@ export async function GET(req: Request) {
   const raw = sp.get("u");
   if (!raw) return new NextResponse("missing u", { status: 400 });
 
+  // self-described child URL: `rf` is the exact Referer its issuing playlist
+  // was fetched with (rotating megaplay families outrun any static list, and
+  // Vercel lambdas share no memory — the URL itself is the source of truth)
+  const hasRf = sp.has("rf");
+  const rfParam = sp.get("rf") ?? "";
+
   let target: URL;
   try {
     target = new URL(raw);
   } catch {
     return new NextResponse("bad u", { status: 400 });
   }
-  if (target.protocol !== "https:" || !hostAllowed(target.hostname)) {
+  // a rewritten child was already vetted when its playlist was served
+  if (target.protocol !== "https:" || (!hasRf && !hostAllowed(target.hostname))) {
     return new NextResponse("host not allowed", { status: 403 });
   }
 
   const upstream = await fetch(target.toString(), {
-    headers: upstreamHeadersFor(target.hostname),
+    headers: upstreamHeadersFor(target.hostname, hasRf ? rfParam : undefined),
     cache: "no-store",
     redirect: "follow",
     signal: AbortSignal.timeout(25_000),
@@ -232,16 +252,18 @@ export async function GET(req: Request) {
 
   if (isM3u8) {
     const text = await upstream.text();
-    allowHost(target.hostname);
+    // this playlist's own referer is what all of its children expect
+    const inheritedReferer = hasRf ? rfParam : refererForHost(target.hostname);
+    allowHostWithReferer(target.hostname, inheritedReferer);
     // remember hosts of any absolute URLs we are about to hand out
     for (const line of text.split(/\r?\n/)) {
       const l = line.trim();
       if (!l || l.startsWith("#")) continue;
-      try { allowHost(new URL(l, target).hostname); } catch { /* ignore */ }
+      try { allowHostWithReferer(new URL(l, target).hostname, inheritedReferer); } catch { /* ignore */ }
     }
     // single-variant master? add the CDN's hidden quality siblings (360/480/720/1080)
-    const enriched = await enrichMaster(text, target).catch(() => null);
-    return new NextResponse(rewritePlaylist(enriched ?? text, target), {
+    const enriched = await enrichMaster(text, target, inheritedReferer).catch(() => null);
+    return new NextResponse(rewritePlaylist(enriched ?? text, target, inheritedReferer), {
       headers: {
         "Content-Type": "application/vnd.apple.mpegurl",
         "Cache-Control": "no-store",

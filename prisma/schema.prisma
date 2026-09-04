@@ -269,6 +269,27 @@ model DubProbe {
   @@index([updatedAt])
 }
 
+// Per-EPISODE, per-SERVER audio-language verdict for DUB streams, measured by
+// the offline fleet (ffmpeg audio decode, local machine): Zoko/Kiwi sometimes
+// mux the ORIGINAL Japanese audio into the DUB entry's different video encode
+// — the byte-compare passes (different file) but the audio is identical
+// Japanese (DAN DA DAN S1 case). Only a decoded-AUDIO comparison catches it.
+// "real" = dub audio differs from sub (and ASR spot-checks heard English);
+// "fake" = same audio as sub under a DUB label. Playback consults this table
+// to skip the fake entry and land on a real English backfill source.
+model DubAudio {
+  malId     Int
+  ep        Int
+  server    String // "zoko" | "kiwi"
+  verdict   String // "real" | "fake"
+  method    String @default("audio-md5") // audio-md5 | asr-en
+  detail    String? // transcript snippet / segment url used
+  checkedAt DateTime @default(now())
+
+  @@id([malId, ep, server])
+  @@index([server, verdict])
+}
+
 // Per-anime reference fingerprint for the fleet: the opening's normalized
 // loudness envelope (0.5 s steps, JSON array) plus its interval. Bots verify
 // every other episode against this instead of re-downloading a pair.

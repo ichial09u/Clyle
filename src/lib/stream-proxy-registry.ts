@@ -28,6 +28,7 @@ const MEGAP_SUFFIX_REFERERS: Array<[string, string]> = [
   [".akirax.buzz", MEGAPLAY_REFERER],
   [".mikora.top", MEGAPLAY_REFERER],
   [".kryntal.top", MEGAPLAY_REFERER],
+  [".vaelith.top", MEGAPLAY_REFERER], // segment cloak host (DAN DA DAN dub)
 ];
 
 /**

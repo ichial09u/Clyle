@@ -5,6 +5,7 @@ import { importEpisodes, importEpisodesFromList, episodeTitleBackfillPages, back
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { probeDubAvailable } from "@/lib/zoko-stream";
 import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
+import { jikanHealthy } from "@/lib/jikan";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
 export const dynamic = "force-dynamic";
 
@@ -56,12 +57,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // real episode titles ("Episode 1: Ryomen Sukuna") — rows created from
   // AniList's aired count have none. Small gaps fill inline (one Jikan page
   // for a normal show, so even the very first visit sees titles); large
-  // gaps (long-runners) run after the response flushes so this route stays
-  // snappy. Fully-titled anime skip all of this for the price of one query.
+  // gaps (long-runners) run after the response flushes. Fully-titled anime
+  // skip all of this for the price of one query.
+  //
+  // GUARD (the DAN DA DAN skeleton hang): a flaky Jikan turns that inline
+  // await into ~84s of timeouts+backoffs and the grid stares at skeletons.
+  // So the inline path (a) only runs while Jikan is healthy and (b) races a
+  // short budget — on loss the backfill keeps running in the background and
+  // the NEXT view of this page has the titles.
   const titlePages = await episodeTitleBackfillPages(malId);
   if (titlePages > 0) {
-    if (titlePages <= 2) {
-      await backfillEpisodeTitles(malId).catch(() => undefined);
+    if (titlePages <= 2 && jikanHealthy()) {
+      await Promise.race([
+        backfillEpisodeTitles(malId).catch(() => undefined),
+        new Promise<void>((r) => setTimeout(r, 3_500)),
+      ]);
     } else {
       after(() => backfillEpisodeTitles(malId).catch(() => undefined));
     }
@@ -79,6 +89,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // does a REAL DUB exist for this show? probe once per server, remember.
   // The verdict is per-anime (probed at ep 1) — individual later episodes
   // just 404 at play time until the dub catches up.
+  //
+  // These probes download segments from BOTH servers (~5-10s cold) — never
+  // make the grid wait for them (that was the other half of the skeleton
+  // hang). Until a verdict lands, null keeps the optimistic UI and the
+  // stream route validates at play time anyway.
   let hasDub = anime.hasDub;
   let hasDubKiwi = anime.hasDubKiwi;
   let hasDubMega = anime.hasDubMega;
@@ -115,7 +130,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       }),
     );
   }
-  await Promise.all(probeJobs);
+  if (probeJobs.length) after(() => Promise.all(probeJobs).catch(() => undefined));
 
   // null = not probed -> optimistic (show DUB; the stream API validates)
   const dubServers: Array<"zoko" | "kiwi"> = [];
