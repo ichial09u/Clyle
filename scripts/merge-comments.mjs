@@ -212,16 +212,23 @@ for (const p of data.watchProgress ?? []) {
 // intro-scout fleet carry-forward: measured openings + per-anime reference
 // fingerprints (Skip Intro accuracy data). Merge keeps the more-agreed row
 // (bots is the agreement counter) so neither side can silently downgrade.
+// The nodetect flag rides along — dropping it used to resurrect establish
+// failures as {0,0} "measurements" (the skip button then trusted a zero
+// interval). Garbage verdicts (establish pair failed / stream unavailable)
+// are never carried — the fleet re-classes them as retryable errors.
 for (const s of data.introScout ?? []) {
+  const detail = s.detail ?? null;
+  const poison = typeof detail === "string" && (detail.includes("establish pair failed") || detail.includes("stream unavailable"));
+  if (poison) continue;
   const existing = await db.introScout.findUnique({ where: { malId_ep: { malId: s.malId, ep: s.ep } } });
   if (!existing) {
     await db.introScout.create({
-      data: { malId: s.malId, ep: s.ep, start: s.start, end: s.end, quality: s.quality ?? 0, bots: s.bots ?? 1, server: s.server === "kiwi" ? "kiwi" : "zoko", detail: s.detail ?? null },
+      data: { malId: s.malId, ep: s.ep, start: s.start, end: s.end, quality: s.quality ?? 0, bots: s.bots ?? 1, server: s.server === "kiwi" ? "kiwi" : "zoko", detail, nodetect: !!s.nodetect },
     }).catch(() => undefined);
   } else if ((s.bots ?? 1) > existing.bots) {
     await db.introScout.update({
       where: { id: existing.id },
-      data: { start: s.start, end: s.end, quality: s.quality ?? existing.quality, bots: s.bots ?? existing.bots },
+      data: { start: s.start, end: s.end, quality: s.quality ?? existing.quality, bots: s.bots ?? existing.bots, nodetect: !!s.nodetect, detail: detail ?? existing.detail },
     }).catch(() => undefined);
   }
 }

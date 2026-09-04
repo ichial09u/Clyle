@@ -49,6 +49,7 @@ try {
   const total = (data.comments?.length ?? 0) + (data.watchStats?.length ?? 0);
   writeFileSync(join(ROOT, "db", "export-comments.tmp.json"), JSON.stringify(data));
   execSync("node scripts/merge-comments.mjs db/export-comments.tmp.json", { cwd: ROOT, stdio: "inherit" });
+  execSync("node scripts/purge-scout-poison.mjs", { cwd: ROOT, stdio: "inherit" });
   console.log(`carried forward ${data.comments?.length ?? 0} comments + ${data.watchStats?.length ?? 0} watchStat rows (${total} rows total)`);
 } catch (err) {
   console.log(`no live data carried forward (${String(err).slice(0, 120)}) — deploying as-is`);

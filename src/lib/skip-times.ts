@@ -213,9 +213,14 @@ export async function scoutIntro(
     const exact = rows.find((r) => r.ep === ep);
     if (exact) {
       if (exact.nodetect) return { interval: null, exact: true, confirmedNone: true };
-      return { interval: { start: exact.start, end: exact.end }, exact: true };
+      // degenerate row guard — merge upserts can land as {0,0} (old establish
+      // failures came back from prod without their nodetect flag); a zero or
+      // inverted interval is a broken row, not a measurement. Ignore it and
+      // fall through to the anime-wide median / other tiers.
+      if (exact.end > exact.start) return { interval: { start: exact.start, end: exact.end }, exact: true };
     }
-    const measured = rows.filter((r) => !r.nodetect);
+    // degenerate {0,0} rows are excluded here too — they must not skew the median
+    const measured = rows.filter((r) => !r.nodetect && r.end > r.start);
     if (measured.length >= 2) {
       const med = (xs: number[]) => {
         const s = [...xs].sort((a, b) => a - b);
