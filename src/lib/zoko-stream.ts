@@ -220,6 +220,15 @@ async function firstSegmentUrl(masterUrl: string): Promise<string | null> {
   return new URL(segs[1].trim(), vurl).href;
 }
 
+/**
+ * SHA1 of a segment's first 256 KB (prefix digest). The fake-dub compare only
+ * needs to tell "same file re-uploaded" from "different encode" — a 256 KB
+ * prefix settles that while skipping the rest of a multi-MB segment, which
+ * used to make the cold verdict (and the DUB button press) wait on two full
+ * segment downloads. Both sides always digest the same prefix length.
+ */
+const SEGMENT_DIGEST_PREFIX = 256 * 1024;
+
 async function segmentDigest(url: string): Promise<string | null> {
   try {
     const res = await fetch(url, {
@@ -227,8 +236,21 @@ async function segmentDigest(url: string): Promise<string | null> {
       cache: "no-store",
       signal: AbortSignal.timeout(15_000),
     });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
+    if (!res.ok || !res.body) return null;
+    const reader = res.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      total += value.byteLength;
+      if (total >= SEGMENT_DIGEST_PREFIX) {
+        await reader.cancel().catch(() => undefined); // stop pulling the rest
+        break;
+      }
+    }
+    const buf = Buffer.concat(chunks.map((c) => Buffer.from(c)));
     return createHash("sha1").update(buf).digest("hex");
   } catch {
     return null;
@@ -362,6 +384,21 @@ export async function resolveStream(
   server: ServerId,
   opts: { fresh?: boolean } = {},
 ): Promise<ZokoStream | null> {
+  // FAST-PATH: consult the fleet's per-episode audio verdict + the anime-level
+  // columns BEFORE any network work. A proven-fake dub (DAN DA DAN S1 ep1) or
+  // a proven-absent server dub used to cost a full upstream payload fetch
+  // before being thrown away — dead seconds right where the player shows its
+  // spinner. With the verdict in hand the chain falls through to the backfill
+  // sources immediately.
+  if (lang === "dub") {
+    const audio = await getDubAudioVerdict(malId, ep, server);
+    if (audio === "fake") return null;
+    if (audio !== "real") {
+      const pre = await dubVerdictFor(malId, server);
+      if (pre === false) return null;
+    }
+  }
+
   const data = await resolveStreamRaw(malId, ep, lang, server, opts);
   if (!data || lang !== "dub") return data;
 

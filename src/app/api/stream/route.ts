@@ -43,60 +43,67 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
 
-  let serverUsed: ServerId = server;
-  let provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" = server;
-  let stream = await resolveStream(malId, ep, lang, server, { fresh });
-  if (!stream && lang === "dub") {
-    // requested server has no real dub here — try the other one
-    const other: ServerId = server === "kiwi" ? "zoko" : "kiwi";
-    const alt = await resolveStream(malId, ep, lang, other, { fresh });
-    if (alt) {
-      stream = alt;
-      serverUsed = other;
-      provider = other;
-    }
+  if (lang === "sub") {
+    // SUB always flows through Zoko/Kiwi — single resolve, no backfill.
+    const stream = await resolveStream(malId, ep, "sub", server, { fresh });
+    if (!stream) return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
+    return respond(malId, ep, stream, server, server);
   }
-  if (!stream && lang === "dub") {
-    // Server #1's DUB backfill source first (SupaPlay, dub only) — skipped
-    // for Server #2 requests, which belong to yenime per the server mapping
-    if (server === "zoko") {
-      const supa = await supaplayDub(malId, ep, { fresh });
-      if (supa) {
-        stream = { src: supa.src, subtitles: supa.subtitles, resolvedFrom: supa.resolvedFrom };
-        provider = "supaplay";
-      }
-    }
-  }
-  if (!stream && lang === "dub") {
-    // Server #2's DUB backfill source — Megaplay/yenime (HLS, dub only).
-    // The 24h-cached verdict keeps megaplay's ad-stub fake dubs out; a
-    // transient "couldn't check" (null) never blocks playback.
+
+  // ---- DUB: two-phase parallel resolution --------------------------------
+  // The old chain resolved STRICTLY serially (requested server -> other
+  // server -> SupaPlay -> megaplay -> megaplay-embed), so a fake/missing dub
+  // on both Zoko and Kiwi (DAN DA DAN S1) made the player's spinner wait for
+  // FIVE sequential upstream round-trips before the first frame. Phase A now
+  // resolves both servers CONCURRENTLY (the DB verdicts short-circuit the
+  // fake ones instantly — no payload fetch at all); only when both come back
+  // empty does Phase B race the three backfill sources concurrently. The
+  // selection order below still honours the same priority as before, so the
+  // response is identical — just reached much sooner.
+  const other: ServerId = server === "kiwi" ? "zoko" : "kiwi";
+  const pRequested = resolveStream(malId, ep, "dub", server, { fresh }).catch(() => null);
+  const pOther = resolveStream(malId, ep, "dub", other, { fresh }).catch(() => null);
+
+  const requested = await pRequested;
+  if (requested) return respond(malId, ep, requested, server, server);
+  const alt = await pOther;
+  if (alt) return respond(malId, ep, alt, other, other);
+
+  // Phase B — the DUB backfill sources, all at once. SupaPlay only belongs
+  // to Server #1 requests (its DUB source); megaplay/yenime is Server #2's,
+  // and the megaplay-embed network is the final net. The 24h-cached verdicts
+  // keep the ad-stub fake dubs out; a transient "couldn't check" (null)
+  // never blocks playback.
+  const pSupa = server === "zoko" ? supaplayDub(malId, ep, { fresh }).catch(() => null) : null;
+  const pMega = (async () => {
     const megaVerdict = await verifyRealMegaplayDub(malId, ep);
-    if (megaVerdict !== false) {
-      const mega = await megaplayDub(malId, ep, { fresh });
-      if (mega) {
-        stream = { src: mega.src, subtitles: mega.subtitles, resolvedFrom: mega.resolvedFrom };
-        provider = "yenime";
-      }
-    }
-  }
-  if (!stream && lang === "dub") {
-    // final DUB backfill — the megaplay-embed network (AniKoto embed ids,
-    // dub only). Carries dubs flikhub's malId-keyed API misses: Jujutsu
-    // Kaisen 2nd Season answers an ad-stub on flikhub but streams the real
-    // dub here. The 24h-cached verdict gates the same way.
+    if (megaVerdict === false) return null;
+    return megaplayDub(malId, ep, { fresh });
+  })().catch(() => null);
+  const pKoto = (async () => {
     const kotoVerdict = await verifyRealAnikotoDub(malId, ep);
-    if (kotoVerdict !== false) {
-      const koto = await anikotoDub(malId, ep, { fresh });
-      if (koto) {
-        stream = { src: koto.src, subtitles: koto.subtitles, resolvedFrom: koto.resolvedFrom };
-        provider = "megaplay-embed";
-      }
-    }
-  }
-  if (!stream) {
-    return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
-  }
+    if (kotoVerdict === false) return null;
+    return anikotoDub(malId, ep, { fresh });
+  })().catch(() => null);
+
+  const supa = await pSupa;
+  if (supa) return respond(malId, ep, supa, server, "supaplay");
+  const mega = await pMega;
+  if (mega) return respond(malId, ep, mega, server, "yenime");
+  const koto = await pKoto;
+  if (koto) return respond(malId, ep, koto, server, "megaplay-embed");
+
+  return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
+}
+
+/** Enrich + send one resolved stream (skip data, provider, no-store). */
+async function respond(
+  malId: number,
+  ep: number,
+  stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
+  serverUsed: ServerId,
+  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed",
+) {
   // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip
   // dataset + a cached live AniSkip query for brand-new/uncovered episodes
   // (the live query wants the episode's length in minutes for its filters)

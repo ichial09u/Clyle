@@ -92,7 +92,28 @@ export default function EpisodesView({
     [episodesData],
   );
 
-  const openServerSheet = (n: number) => setPicked(n);
+  const openServerSheet = (n: number) => {
+    setPicked(n);
+    // Warm the stream resolution while the sheet is open: the viewer's most
+    // likely choice (their last-used language/server) starts resolving NOW,
+    // so the button click lands on warm caches and the player starts in
+    // hundreds of ms instead of waiting out the whole resolve chain. Only
+    // fires when that combo is actually offered on this episode (a hidden
+    // DUB button must not trigger a doomed full backfill chain).
+    try {
+      const p = getLangPref(anime.malId);
+      const bt = data?.dubThrough ?? { s1: null, s2: null };
+      const thru = p.server === "zoko" ? bt.s1 : bt.s2;
+      const dubOk =
+        p.lang === "sub" ||
+        (!(data?.dubMissing ?? []).includes(n) && (thru == null || n <= thru) && (data?.dubServers?.length ?? 0) > 0);
+      if (dubOk) {
+        void fetch(`/api/stream?malId=${anime.malId}&ep=${n}&lang=${p.lang}&server=${p.server}`).catch(() => undefined);
+      }
+    } catch {
+      /* prefetch is best-effort */
+    }
+  };
   const play = (lang: Lang, server: "zoko" | "kiwi") => {
     if (picked != null) onWatchEpisode(picked, server, lang);
     // remember for next time — the sheet will lead with this language/server

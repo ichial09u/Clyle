@@ -30,24 +30,53 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   const anime = await db.anime.findUnique({ where: { malId } });
   if (!anime) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // freshness check for airing shows — pulls the aired episode count from AniList
+  // freshness check for airing shows — pulls the aired episode count from AniList.
+  // BUDGET (the slow-buttons complaint): AniList inline used to block the grid
+  // for as long as the upstream felt like taking (3-8s on a bad day, right
+  // between "Watch" and the episode buttons). Now it races a 1.5s budget —
+  // on loss the check + import finish in the background and the NEXT view
+  // picks the new episodes up. The grid answers from local rows at all times.
   let newlyAdded = 0;
   const freshEpisodes: number[] = [];
-  if (anime.airing) {
-    const media = await freshMediaByMal(malId);
-    const aired = airedEpisodeCount(media);
-    if (aired != null) {
-      if (aired > anime.totalEpisodes) {
+  const backgroundFreshness = async () => {
+    try {
+      const media = await freshMediaByMal(malId);
+      const aired = airedEpisodeCount(media);
+      if (aired != null && aired > anime.totalEpisodes) {
         await db.anime.update({ where: { malId }, data: { totalEpisodes: aired } });
-        const added = await importEpisodes(malId, aired);
-        newlyAdded = added.length;
-        freshEpisodes.push(...added);
+        await importEpisodes(malId, aired);
+      } else if (aired == null) {
+        await importEpisodesFromList(malId); // no schedule — probe MAL's list
+      }
+    } catch {
+      /* background best-effort */
+    }
+  };
+  if (anime.airing) {
+    let media: Awaited<ReturnType<typeof freshMediaByMal>> | null = null;
+    try {
+      media = await Promise.race([
+        freshMediaByMal(malId),
+        new Promise<null>((r) => setTimeout(() => r(null), 1_500)),
+      ]);
+    } catch {
+      media = null;
+    }
+    if (media) {
+      const aired = airedEpisodeCount(media);
+      if (aired != null) {
+        if (aired > anime.totalEpisodes) {
+          await db.anime.update({ where: { malId }, data: { totalEpisodes: aired } });
+          const added = await importEpisodes(malId, aired);
+          newlyAdded = added.length;
+          freshEpisodes.push(...added);
+        }
+      } else {
+        after(() => backgroundFreshness());
       }
     } else {
-      // no schedule yet (or AniList unreachable) — probe MAL's episode list
-      const added = await importEpisodesFromList(malId);
-      newlyAdded = added.length;
-      freshEpisodes.push(...added);
+      // AniList slow or unreachable — the grid must not wait on it
+      after(() => backgroundFreshness());
     }
     // brand-new episodes import their skip intro/ending along with them
     // (background, rate-limited, after the response is flushed)
@@ -70,7 +99,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     if (titlePages <= 2 && jikanHealthy()) {
       await Promise.race([
         backfillEpisodeTitles(malId).catch(() => undefined),
-        new Promise<void>((r) => setTimeout(r, 3_500)),
+        new Promise<void>((r) => setTimeout(r, 2_000)),
       ]);
     } else {
       after(() => backfillEpisodeTitles(malId).catch(() => undefined));
