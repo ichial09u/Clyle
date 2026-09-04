@@ -246,8 +246,12 @@ export default function EpisodesView({
                   // get no DUB buttons at all. null boundary = unprobed —
                   // fall back to the anime-level dubServers verdict.
                   const bt = episodesData?.dubThrough ?? { s1: null, s2: null };
+                  // holes inside a dubbed range (DAN DA DAN S1 eps 4-6): exact
+                  // episodes with a definitive no-dub proof on BOTH chains
+                  const missing = episodesData?.dubMissing ?? [];
                   const animeLevel = episodesData?.dubServers ?? ["zoko", "kiwi"];
                   const dubFor = (server: "zoko" | "kiwi"): boolean => {
+                    if (missing.includes(picked!)) return false; // proven hole on both chains
                     const thru = server === "zoko" ? bt.s1 : bt.s2;
                     if (thru != null) return picked! <= thru; // 0 = no dub anywhere
                     return animeLevel.includes(server);
@@ -295,13 +299,14 @@ export default function EpisodesView({
                     bt.s1 != null && bt.s1 === 0 && bt.s2 != null && bt.s2 === 0;
                   const behindBoundary =
                     (bt.s1 != null && picked! > bt.s1 && bt.s1 > 0) ||
-                    (bt.s2 != null && picked! > bt.s2 && bt.s2 > 0);
+                    (bt.s2 != null && picked! > bt.s2 && bt.s2 > 0) ||
+                    (episodesData?.dubMissing ?? []).includes(picked!);
                   const nonePerLevel = (episodesData?.dubServers?.length ?? 0) === 0;
                   if (noneAtAll || (!bt.s1 && !bt.s2 && nonePerLevel)) {
                     return <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>;
                   }
                   if (behindBoundary) {
-                    return <p className="mt-2 text-center text-[10.5px] text-gray-500">The English DUB hasn&apos;t reached this episode yet — SUB only for now</p>;
+                    return <p className="mt-2 text-center text-[10.5px] text-gray-500">No English DUB for this episode yet — SUB only for now</p>;
                   }
                   return null;
                 })()}

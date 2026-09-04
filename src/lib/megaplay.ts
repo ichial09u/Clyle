@@ -29,6 +29,7 @@ import { db } from "@/lib/db";
 import { allowHostWithReferer, MEGAPLAY_REFERER } from "@/lib/stream-proxy-registry";
 
 const FLIKHUB = "https://api.flikhub.net";
+const MEGAPLAY_BUZZ = "https://megaplay.buzz";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const TTL_MS = 30 * 60 * 1000; // megaplay token URLs rotate — same short TTL as Zoko
@@ -82,7 +83,22 @@ function registerStreamHosts(stream: MegaplayStream): void {
   }
 }
 
-async function resolveMegaplayDubRaw(malId: number, ep: number): Promise<MegaplayStream | null> {
+/** Track list shared by both megaplay extraction paths (flikhub API and the
+ * buzz getSources endpoint answer the same shape). */
+function tracksToSubtitles(
+  tracks: Array<{ file?: string; label?: string; kind?: string; default?: boolean }> | undefined,
+): MegaplayStream["subtitles"] {
+  return (tracks ?? [])
+    .filter((t) => (t.kind ?? "captions") === "captions" && t.file)
+    .map((t) => ({
+      lang: "en",
+      label: t.label || "English",
+      default: t.default === true,
+      src: t.file as string,
+    }));
+}
+
+async function flikhubDubRaw(malId: number, ep: number): Promise<MegaplayStream | null> {
   const res = await fetch(`${FLIKHUB}/megaplay?mal=${malId}&ep=${ep}&type=dub`, {
     headers: { "User-Agent": UA, Accept: "application/json" },
     cache: "no-store",
@@ -96,18 +112,82 @@ async function resolveMegaplayDubRaw(malId: number, ep: number): Promise<Megapla
   if (!json.m3u8) return null; // definitive: no dub stream for this episode
   const stream: MegaplayStream = {
     src: json.m3u8,
-    subtitles: (json.tracks ?? [])
-      .filter((t) => (t.kind ?? "captions") === "captions" && t.file)
-      .map((t) => ({
-        lang: "en",
-        label: t.label || "English",
-        default: t.default === true,
-        src: t.file as string,
-      })),
+    subtitles: tracksToSubtitles(json.tracks),
     resolvedFrom: `${FLIKHUB}/megaplay?mal=${malId}&ep=${ep}&type=dub`,
   };
   registerStreamHosts(stream);
   return stream;
+}
+
+/**
+ * megaplay.buzz's own mal-keyed page path. flikhub's mal-keyed API sometimes
+ * answers an AD-STUB playlist for a show the buzz site itself streams with a
+ * REAL dub — DAN DA DAN S1: flikhub's mirror is 100% tiktokcdn ad segments,
+ * while the buzz page's per-episode `data-id` resolves a 1080p playlist with
+ * 358 real segments (cdn.kryntal.top). Same shape the site's own player uses:
+ *   1. GET /stream/mal/{malId}/{ep}/dub        -> data-id="NNNN"
+ *   2. GET /stream/getSources?id=NNNN&type=dub -> { sources:{file}, tracks }
+ */
+async function buzzPageDubRaw(malId: number, ep: number): Promise<MegaplayStream | null> {
+  const page = await fetch(`${MEGAPLAY_BUZZ}/stream/mal/${malId}/${ep}/dub`, {
+    headers: { "User-Agent": UA, Referer: MEGAPLAY_REFERER, Accept: "text/html" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!page.ok) return null;
+  const html = await page.text();
+  const m = html.match(/data-id="(\d+)"/);
+  if (!m) return null;
+  const srcRes = await fetch(`${MEGAPLAY_BUZZ}/stream/getSources?id=${m[1]}&type=dub`, {
+    headers: { "User-Agent": UA, Referer: MEGAPLAY_REFERER, Accept: "application/json" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!srcRes.ok) return null;
+  const json = (await srcRes.json()) as {
+    sources?: { file?: string };
+    tracks?: Array<{ file?: string; label?: string; kind?: string; default?: boolean }>;
+  };
+  const file = json?.sources?.file;
+  if (!file) return null;
+  const stream: MegaplayStream = {
+    src: file,
+    subtitles: tracksToSubtitles(json.tracks),
+    resolvedFrom: `megaplay.buzz data-id ${m[1]}`,
+  };
+  registerStreamHosts(stream);
+  return stream;
+}
+
+/**
+ * flikhub first (cheap, malId-keyed) — but its answer is only kept when it
+ * verifies as a real playlist (or can't be checked right now). A definitive
+ * ad-stub (0 real segments) falls through to the buzz-page path, whose real
+ * stream wins; when that also fails, the flikhub answer is returned as-is so
+ * the verification layer can judge it (stub -> verdict false, as before).
+ */
+async function resolveMegaplayDubRaw(malId: number, ep: number): Promise<MegaplayStream | null> {
+  let flikhubStream: MegaplayStream | null = null;
+  try {
+    flikhubStream = await flikhubDubRaw(malId, ep);
+  } catch {
+    flikhubStream = null; // flikhub down/unmapped — the buzz page may still carry the dub
+  }
+  if (flikhubStream) {
+    const count = await realSegmentCount(flikhubStream.src).catch(() => null);
+    if (count == null || count >= 3) return flikhubStream; // real (or unverifiable — keep old behaviour)
+    // count === 0 -> ad-stub mirror; try the buzz page before giving up
+  }
+  try {
+    const buzz = await buzzPageDubRaw(malId, ep);
+    if (buzz) {
+      const count = await realSegmentCount(buzz.src).catch(() => null);
+      if (count != null && count >= 3) return buzz;
+    }
+  } catch {
+    /* fall through */
+  }
+  return flikhubStream;
 }
 
 /**

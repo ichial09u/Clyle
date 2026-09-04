@@ -61,6 +61,14 @@ export interface EpisodesPayload {
    * arc — the anime is dubbed but those episodes aren't yet).
    */
   dubThrough: { s1: number | null; s2: number | null };
+  /**
+   * Episodes with a DEFINITIVE no-dub proof on BOTH server chains (per-
+   * episode DubProbe rows). The prefix boundary above can't express holes
+   * inside a dubbed range (DAN DA DAN S1: eps 4-6 were never dubbed while
+   * 1-3 and 7-12 stream real dubs) — these exact episodes get no DUB
+   * button even though they sit under the boundary.
+   */
+  dubMissing: number[];
   episodes: EpisodeInfo[];
   newlyAdded: number;
 }

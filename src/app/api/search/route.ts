@@ -30,6 +30,27 @@ export async function GET(req: Request) {
 
   let catalog = rows.map(lite);
 
+  // de-spaced fallback: users type "dandadan" for "DAN DA DAN", "onepiece"
+  // for "One Piece". SQLite contains can't ignore spaces, so run a JS-side
+  // normalized pass over the catalog when the literal match is thin.
+  const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const nq = norm(q);
+  if (nq && catalog.length < 24) {
+    const seen = new Set(catalog.map((c) => c.malId));
+    const all = await db.anime.findMany({
+      where: { inCatalog: true },
+      orderBy: { popularity: "asc" },
+    });
+    for (const a of all) {
+      if (catalog.length >= 24) break;
+      if (seen.has(a.malId)) continue;
+      if (norm(a.title).includes(nq) || norm(a.titleEnglish ?? "").includes(nq)) {
+        catalog.push(lite(a));
+        seen.add(a.malId);
+      }
+    }
+  }
+
   // backfill missing images/details for freshly seeded rows (via AniList)
   const sparse = catalog.filter((c) => !c.image);
   if (sparse.length) {

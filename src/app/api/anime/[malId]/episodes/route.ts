@@ -164,6 +164,23 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     after(() => recomputeDubBoundaries(malId, 6, { recheck: anime.airing }).catch(() => undefined));
   }
 
+  // per-episode HOLES inside a proven prefix (DAN DA DAN S1: eps 4-6 were
+  // never dubbed while 1-3 and 7-12 stream real dubs). A prefix boundary
+  // can't express that, but the fleet's per-episode DubProbe rows can:
+  // an episode is reported missing only when BOTH chains carry a definitive
+  // ok=false probe for it (either chain alone can still serve the dub via
+  // fallback). A later positive probe flips the row and it stops missing.
+  let dubMissing: number[] = [];
+  if (totalNum > 0) {
+    const falseProbes = await db.dubProbe.findMany({
+      where: { malId, ok: false, ep: { gte: 1, lte: totalNum } },
+      select: { ep: true, chain: true },
+    });
+    const s1Miss = new Set(falseProbes.filter((p) => p.chain === "s1").map((p) => p.ep));
+    const s2Miss = new Set(falseProbes.filter((p) => p.chain === "s2").map((p) => p.ep));
+    dubMissing = [...s1Miss].filter((ep) => s2Miss.has(ep)).sort((x, y) => x - y);
+  }
+
   return NextResponse.json({
     malId,
     title: anime.titleEnglish?.trim() || anime.title,
@@ -174,6 +191,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     hasDub: dubServers.length > 0,
     dubServers,
     dubThrough: { s1: anime.dubThruS1 ?? null, s2: anime.dubThruS2 ?? null },
+    dubMissing,
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
   });

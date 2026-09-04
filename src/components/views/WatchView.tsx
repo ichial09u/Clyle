@@ -65,6 +65,10 @@ export default function WatchView({
   // episode — the anime-level verdict can't express "the dub hasn't reached
   // this arc yet" (One Piece/Elbaph).
   const [dubThrough, setDubThrough] = useState<{ s1: number | null; s2: number | null }>({ s1: null, s2: null });
+  // episodes with a DEFINITIVE no-dub proof on BOTH chains (holes inside a
+  // dubbed range — DAN DA DAN S1 eps 4-6). The prefix boundary can't express
+  // these; this list can.
+  const [dubMissing, setDubMissing] = useState<number[]>([]);
   // real episode titles ("Ryomen Sukuna") from the episodes endpoint — the
   // player header prefers them over the plain "Episode N" + language label
   const [epTitles, setEpTitles] = useState<Record<number, string>>({});
@@ -80,17 +84,19 @@ export default function WatchView({
     dubThrough.s1 != null || dubThrough.s2 != null
       ? Math.max(dubThrough.s1 ?? 0, dubThrough.s2 ?? 0)
       : null;
-  const epHasDub: boolean | null = epDubThru != null ? episode <= epDubThru : hasDub;
+  const epHasDub: boolean | null =
+    epDubThru != null ? episode <= epDubThru && !dubMissing.includes(episode) : hasDub;
 
   useEffect(() => {
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
         if (!ok || !d) return;
         if (typeof d.hasDub === "boolean") setHasDub(d.hasDub);
         if (Array.isArray(d.dubServers)) setDubServers(d.dubServers);
         if (d.dubThrough && (d.dubThrough.s1 != null || d.dubThrough.s2 != null)) setDubThrough(d.dubThrough);
+        if (Array.isArray(d.dubMissing)) setDubMissing(d.dubMissing);
         if (Array.isArray(d.episodes)) {
           const map: Record<number, string> = {};
           for (const e of d.episodes) if (e.title) map[e.number] = e.title;
@@ -1254,7 +1260,9 @@ export default function WatchView({
                   epDubThru === 0
                     ? "No English DUB available for this title yet"
                     : epDubThru != null
-                      ? "The English DUB hasn't reached this episode yet"
+                      ? dubMissing.includes(episode)
+                        ? "No English DUB for this episode yet"
+                        : "The English DUB hasn't reached this episode yet"
                       : "No English DUB available for this title yet",
                 );
                 return;
