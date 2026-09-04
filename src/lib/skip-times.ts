@@ -93,6 +93,23 @@ export function lookupSkipTimes(malId: number, ep: number): { intro?: SkipInterv
   return out;
 }
 
+/**
+ * The vendored dataset's EXACT op row for this episode — no consensus
+ * fallback. Used to defend known openings against the scout tier's
+ * "couldn't measure" verdicts: a fleet nodetect row means the bots failed
+ * to cross-match THIS scan (audio quirks, odd encodes), not that the show
+ * has no opening. When the community has a vote-backed op for the exact
+ * episode (Kimetsu ep1: 41.3–131.3 at 10k votes), it must never be
+ * silenced by a failed measurement. Consensus has no such protection —
+ * finale episodes genuinely drop their OP, and the anime-wide median
+ * would wrongly button them.
+ */
+export function exactDatasetIntro(malId: number, ep: number): SkipInterval | null {
+  const entry = data[String(malId)]?.[String(ep)];
+  if (!entry?.op) return null;
+  return { start: entry.op[0], end: entry.op[1] };
+}
+
 function valid(iv: unknown): iv is SkipInterval {
   if (!iv || typeof iv !== "object") return false;
   const v = iv as SkipInterval;
@@ -357,11 +374,18 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   // measurement outranks everything (including Zoko's payload, which marks
   // the repeated cold-open as "intro start" on many shows); the anime-wide
   // median only fills gaps (Zoko/frame data wins there).
-  // A CONFIRMED-NONE verdict wins over everything too: bots watched this
-  // episode and found no opening, so no Skip Intro button — other tiers are
-  // never allowed to resurrect it for this episode.
+  // A CONFIRMED-NONE verdict (the fleet watched this episode against an
+  // established reference and found no opening) wins too — EXCEPT when this
+  // exact episode already has concrete intro data: Zoko's native payload or
+  // the dataset's exact op row. A nodetect is "our scan couldn't align",
+  // which must never silence a vote-backed community interval for the same
+  // episode (Kimetsu ep1: 10k votes vs one failed audio match). Consensus /
+  // live / crowd intros are NOT protected — finale episodes genuinely drop
+  // their OP and the anime-wide median must not button them.
   const scout = await scoutIntro(malId, ep);
-  const suppressIntro = !!scout?.confirmedNone;
+  const confirmedNone = !!scout?.confirmedNone;
+  const exactKnown = valid(stream.skip?.intro) || !!exactDatasetIntro(malId, ep);
+  const suppressIntro = confirmedNone && !exactKnown;
   if (suppressIntro) {
     delete skip.intro;
     if (!skip.outro) delete skip.source;
@@ -440,9 +464,14 @@ export async function skipCoverage(
   opts: { allowLiveFetch?: boolean; episodeLengthMin?: number | null } = {},
 ): Promise<SkipCoverage | null> {
   // scout tier first — what the player would actually use (see the priority
-  // in withSkipDataLive)
+  // in withSkipDataLive). A confirmed-none yields to an exact dataset op row
+  // for THIS episode (same precedence as the player merge).
   const scout = await scoutIntro(malId, ep);
-  if (scout?.confirmedNone) return { source: "scout", confirmedNone: true };
+  if (scout?.confirmedNone) {
+    const ex = exactDatasetIntro(malId, ep);
+    if (ex && plausibleIntro(ex, opts.episodeLengthMin)) return { source: "exact", intro: ex };
+    return { source: "scout", confirmedNone: true };
+  }
   if (scout?.interval) return { source: "scout", intro: scout.interval };
   const byEp = data[String(malId)];
   const exact = byEp?.[String(ep)];

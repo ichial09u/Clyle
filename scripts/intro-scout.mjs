@@ -178,11 +178,14 @@ async function jobEstablish(item, bot) {
   const A = await watchEpisode(bot, malId, epA, title, 330, 300);
   const B = A && epB !== epA ? await watchEpisode(bot, malId, epB, title, 330, 300) : A;
   if (!A || !B) {
-    // zoko has no page for one of the episodes — definitive miss
+    // zoko has no page for one of the episodes — retryable error, NOT a
+    // "no opening" verdict: nothing was watched, so nothing is confirmed.
+    // Reported as "error" so the server never writes a suppressing nodetect
+    // row for it (a 404 page says nothing about the episode's content).
     stats.nodetect++;
     log(`${bot} establish SKIP ${title} [${malId}] ep${epA}+ep${epB} (stream unavailable)`);
-    enqueueFinding({ bot, malId, ep: epA, status: "nodetect", detail: "stream unavailable" });
-    if (epB !== epA) enqueueFinding({ bot, malId, ep: epB, status: "nodetect", detail: "stream unavailable" });
+    enqueueFinding({ bot, malId, ep: epA, status: "error", detail: "stream unavailable" });
+    if (epB !== epA) enqueueFinding({ bot, malId, ep: epB, status: "error", detail: "stream unavailable" });
     return;
   }
 
@@ -218,8 +221,14 @@ async function jobEstablish(item, bot) {
 
   stats.nodetect += 2;
   log(`${bot} establish MISS ${title} [${malId}] ep${epA}+ep${epB} (mA=${JSON.stringify(mA)}, mB=${JSON.stringify(mB)})`);
-  enqueueFinding({ bot, malId, ep: epA, status: "nodetect", detail: "establish pair failed" });
-  enqueueFinding({ bot, malId, ep: epB, status: "nodetect", detail: "establish pair failed" });
+  // pair-matching failure is a MEASUREMENT failure, not evidence that the
+  // episodes have no opening (audio quirks, off-encodes, cross-fade OPs all
+  // defeat the cross-match). Reported as "error" — retryable, rotates the
+  // pair forward next sweep, and never writes a button-suppressing row.
+  // Only the verify stage (this episode vs an established reference from
+  // OTHER episodes) earns a true nodetect.
+  enqueueFinding({ bot, malId, ep: epA, status: "error", detail: "establish pair failed" });
+  enqueueFinding({ bot, malId, ep: epB, status: "error", detail: "establish pair failed" });
 }
 
 async function jobVerify(item, bot) {
