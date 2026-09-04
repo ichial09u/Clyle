@@ -277,14 +277,55 @@ export function removeProgress(malId: number) {
     /* ignore */
   }
   // keepalive so the removal survives the tab closing mid-request; the
-  // server tombstones the removal too (blocks late beacon/heartbeat saves)
-  try {
-    fetch(`/api/progress?userId=${encodeURIComponent(getUserId())}&malId=${malId}`, {
-      method: "DELETE",
-      keepalive: true,
-    }).catch(() => undefined);
-  } catch {
-    /* ignore */
+  // server tombstones the removal too (blocks late beacon/heartbeat saves).
+  // Retried twice — a lost DELETE (subway dead zone, app killed mid-flight)
+  // used to leave the server row alive and the card resurrected on the next
+  // Home visit; the retries close most of that window.
+  const userId = getUserId();
+  const del = (attempt: number): void => {
+    try {
+      fetch(`/api/progress?userId=${encodeURIComponent(userId)}&malId=${malId}`, {
+        method: "DELETE",
+        keepalive: true,
+      }).catch(() => {
+        if (attempt < 2) window.setTimeout(() => del(attempt + 1), 2_500 * (attempt + 1));
+      });
+    } catch {
+      if (attempt < 2) window.setTimeout(() => del(attempt + 1), 2_500 * (attempt + 1));
+    }
+  };
+  del(0);
+}
+
+/**
+ * Reconciliation for the "deleted it but it came back" bug: re-fire the
+ * server DELETE for every anime this device has tombstoned in the last 48h.
+ * A removal whose DELETE request was lost (offline moment, app killed) gets
+ * healed the next time the Home rail loads; the local tombstone keeps the
+ * card hidden in the meantime. Idempotent — the server DELETE just deletes
+ * (and re-stamps) again.
+ */
+export function sweepRemovedProgress(): void {
+  const map = readRemovedMap();
+  const cutoff = Date.now() - 48 * 3600_000;
+  const fresh = Object.entries(map).filter(([, at]) => at >= cutoff);
+  if (!fresh.length) return;
+  const userId = getUserId();
+  for (const [malId, at] of fresh) {
+    const id = Number(malId);
+    if (!Number.isFinite(id)) continue;
+    // pace slightly: these are keepalive DELETEs, tiny and idempotent
+    window.setTimeout(() => {
+      try {
+        fetch(`/api/progress?userId=${encodeURIComponent(userId)}&malId=${id}`, {
+          method: "DELETE",
+          keepalive: true,
+        }).catch(() => undefined);
+      } catch {
+        /* best-effort */
+      }
+      void at;
+    }, 150 + Math.random() * 400);
   }
 }
 
@@ -379,12 +420,18 @@ export function mergeContinueItems(serverItems: ContinueItem[]): ContinueItem[] 
   } catch {
     localAll = {};
   }
+  // the local removal tombstone is the user's expressed intent: a server row
+  // that slipped through the delete race (lost DELETE request, beacon that
+  // landed a heartbeat ahead of it on another lambda) must not resurrect the
+  // card in the UI. Deliberate playback lifts the tombstone (both halves).
+  const removed = readRemovedMap();
 
   type Row = { item: ContinueItem; at: number };
   const byAnime = new Map<number, Row>();
 
   for (const it of serverItems) {
     if (it.completed) continue;
+    if (removed[String(it.malId)]) continue; // deleted here — stays deleted
     byAnime.set(it.malId, { item: it, at: Date.parse(it.updatedAt) });
   }
 

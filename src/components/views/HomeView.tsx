@@ -8,7 +8,7 @@ import PosterCard from "@/components/anime/PosterCard";
 import ContinueRow from "@/components/anime/ContinueRow";
 import Top10Bell from "@/components/anime/Top10Bell";
 import {
-  loadContinueItems, removeProgress, timeAgo, useProgressVersion,
+  loadContinueItems, removeProgress, sweepRemovedProgress, timeAgo, useProgressVersion,
   fetchTop10Month, type Top10MonthEntry,
 } from "@/lib/client-store";
 import { getUserId } from "@/lib/profile-store";
@@ -35,6 +35,9 @@ export default function HomeView({
   const lastTop10Fetch = useRef(0);
 
   const refreshContinue = useCallback(() => {
+    // heal any removal whose DELETE request was lost — re-fired BEFORE the
+    // server list read; the local tombstone keeps the card hidden meanwhile
+    sweepRemovedProgress();
     loadContinueItems().then(setContinueItems).catch(() => undefined);
   }, []);
 

@@ -14,11 +14,17 @@ export async function GET(req: Request) {
   const userId = new URL(req.url).searchParams.get("userId");
   if (!userId) return NextResponse.json({ items: [] }, { status: 400 });
 
-  const rows = await db.watchProgress.findMany({
+  // rows the user removed must never list here even if a stale save slipped
+  // past the tombstone check (race window: beacon beating the DELETE onto
+  // another lambda). Belt-and-braces under the POST-side tombstone rejection.
+  const removed = await db.removedProgress.findMany({ where: { userId }, select: { malId: true } });
+  const removedIds = new Set(removed.map((r) => r.malId));
+
+  const rows = (await db.watchProgress.findMany({
     where: { userId, completed: false, position: { gt: 5 } },
     orderBy: { updatedAt: "desc" },
-    take: 40,
-  });
+    take: 80,
+  })).filter((r) => !removedIds.has(r.malId));
 
   // one (latest) entry per anime
   const seen = new Set<number>();

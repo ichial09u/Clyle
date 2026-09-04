@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowUpDown, MonitorPlay, Search, X } from "lucide-react";
 import type { AnimeLite, EpisodesPayload } from "@/lib/types";
@@ -45,30 +45,48 @@ export default function EpisodesView({
 }) {
   const [data, setData] = useState<EpisodesPayload | null>(null);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [desc, setDesc] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null); // episode awaiting server choice
   const progressVersion = useProgressVersion();
 
-  useEffect(() => {
+  // The grid used to sit on skeletons FOREVER when this one fetch failed
+  // (cold 504, dead network cell, phone backgrounded mid-flight) — the catch
+  // just kept the skeleton and nothing ever retried. Now: 3 attempts with
+  // backoff, then an honest "couldn't load" state with a retry button.
+  const loadEpisodes = useCallback(() => {
     let cancelled = false;
+    setLoadFailed(false);
     (async () => {
-      try {
-        const res = await fetch(`/api/anime/${anime.malId}/episodes`);
-        if (!res.ok) return;
-        const payload = (await res.json()) as EpisodesPayload;
-        if (!cancelled) {
-          setData(payload);
-          setLoadedFor(anime.malId);
+      const delays = [0, 1_200, 3_000];
+      for (let attempt = 0; attempt < delays.length; attempt++) {
+        if (delays[attempt]) await new Promise((r) => setTimeout(r, delays[attempt]));
+        if (cancelled) return;
+        try {
+          const ctrl = new AbortController();
+          const kill = setTimeout(() => ctrl.abort(), 12_000);
+          const res = await fetch(`/api/anime/${anime.malId}/episodes`, { signal: ctrl.signal });
+          clearTimeout(kill);
+          if (!res.ok) continue;
+          const payload = (await res.json()) as EpisodesPayload;
+          if (!cancelled) {
+            setData(payload);
+            setLoadedFor(anime.malId);
+            return;
+          }
+        } catch {
+          /* try again */
         }
-      } catch {
-        /* keep skeleton */
       }
+      if (!cancelled) setLoadFailed(true);
     })();
     return () => {
       cancelled = true;
     };
   }, [anime.malId]);
+
+  useEffect(() => loadEpisodes(), [loadEpisodes]);
 
   // red bars: local progress immediately, server rows merged in (fresh storage / other device)
   useEffect(() => {
@@ -156,7 +174,7 @@ export default function EpisodesView({
           </button>
         </div>
         {/* red loading line while the episode list is being fetched */}
-        {!episodesData ? <div className="load-line h-[2px] mx-3 mb-1.5 rounded-full bg-white/10" /> : null}
+        {!episodesData && !loadFailed ? <div className="load-line h-[2px] mx-3 mb-1.5 rounded-full bg-white/10" /> : null}
         {filter !== null ? (
           <div className="px-4 pb-2.5">
             <div className="flex items-center bg-[#1c1c1c] rounded-md px-3">
@@ -185,7 +203,17 @@ export default function EpisodesView({
       </header>
 
       {/* grid */}
-      {!episodesData ? (
+      {!episodesData && loadFailed ? (
+        <div className="px-4 pt-10 flex flex-col items-center gap-3 text-center">
+          <p className="text-gray-400 text-sm">Couldn&apos;t load the episode list.</p>
+          <button
+            onClick={loadEpisodes}
+            className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-5 py-2 transition active:scale-95"
+          >
+            Try again
+          </button>
+        </div>
+      ) : !episodesData ? (
         <div className="grid grid-cols-5 md:grid-cols-8 lg:grid-cols-10 gap-2 px-4 pt-4">
           {Array.from({ length: 20 }).map((_, i) => (
             <div key={i} className="h-[46px] rounded-md bg-[#161616] animate-pulse" />
