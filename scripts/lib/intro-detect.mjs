@@ -37,6 +37,45 @@ const SOFT_CAP_SEC = 330; // feed at least this much before trusting "no wall"
 const MIN_OP_SEC = 45; // shortest believable opening
 const MAX_OP_SEC = 150; // longest believable opening
 
+// CDN-politeness: 21 lanes pulling segments back-to-back (~20 req/s per lane
+// in the old code) tripped the provider's per-IP rate limiter and whole
+// animes (BLEACH: 366 consecutive episodes) came back "no audio (exit 0)"
+// because every segment fetch failed. A small inter-segment delay per lane
+// keeps the fleet under the limiter with a negligible time cost (43 segs x
+// 180ms = ~7.7s per episode).
+const SEG_DELAY_MS = 180;
+
+/**
+ * Fetch one segment with a single backoff retry — a 403/429/timeout on one
+ * segment should never end the whole episode's analysis when a 2.5 s breather
+ * clears the rate-limit window.
+ */
+async function fetchSegment(url, headers, log) {
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(30_000) });
+      if (res.ok && res.body) return res;
+      // non-2xx: log, breathe, retry once
+      if (attempt === 1) {
+        log(`segment -> ${res.status}, backing off 2.5s before retry`);
+        await new Promise((r) => setTimeout(r, 2_500));
+        continue;
+      }
+      log(`segment -> ${res.status} after retry, stopping feed`);
+      return null;
+    } catch (e) {
+      if (attempt === 1) {
+        log(`segment fetch failed (${String(e).slice(0, 80)}) — backing off 2.5s before retry`);
+        await new Promise((r) => setTimeout(r, 2_500));
+        continue;
+      }
+      log(`segment fetch failed after retry (${String(e).slice(0, 80)})`);
+      return null;
+    }
+  }
+  return null;
+}
+
 /* ------------------------------------------------------------------ *
  * HLS -> PCM -> envelope
  * ------------------------------------------------------------------ */
@@ -54,7 +93,7 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
   const headers = { ...DEFAULT_HEADERS, ...(opts.headers ?? {}) };
   const log = opts.log ?? (() => {});
   const t0 = Date.now();
-  const minSec = opts.minSec ?? 150; // always feed at least this much
+  const minSec = Math.max(opts.minSec ?? 150, 90); // always feed at least this much (floor guards any caller passing 0)
   const maxSec = Math.min(opts.maxSec ?? MAX_ANALYZE_SEC, MAX_ANALYZE_SEC);
 
   try {
@@ -62,27 +101,37 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
     const mres = await fetch(masterUrl, { headers, cache: "no-store", signal: AbortSignal.timeout(15_000) });
     if (!mres.ok) return { status: "error", env: [], analyzedSec: 0, wall: null, p95: 0, detail: `master -> ${mres.status}` };
     const master = await mres.text();
-    const variantLine = master.split("\n").find((l) => l.trim() && !l.startsWith("#"));
-    if (!variantLine) return { status: "error", env: [], analyzedSec: 0, wall: null, p95: 0, detail: "master has no variant" };
-    const variantUrl = new URL(variantLine.trim(), masterUrl).href;
+    const variantUrls = master.split("\n").filter((l) => l.trim() && !l.startsWith("#")).map((l) => new URL(l.trim(), masterUrl).href);
+    if (!variantUrls.length) return { status: "error", env: [], analyzedSec: 0, wall: null, p95: 0, detail: "master has no variant" };
 
     // ---- variant -> segment plan --------------------------------------
-    const vres = await fetch(variantUrl, { headers, cache: "no-store", signal: AbortSignal.timeout(15_000) });
-    if (!vres.ok) return { status: "error", env: [], analyzedSec: 0, wall: null, p95: 0, detail: `variant -> ${vres.status}` };
-    const vtext = await vres.text();
-    const segs = [];
-    let pend = null;
-    for (const line of vtext.split("\n")) {
-      const t = line.trim();
-      if (t.startsWith("#EXTINF:")) pend = parseFloat(t.slice(8));
-      else if (t && !t.startsWith("#")) {
-        if (pend == null || !Number.isFinite(pend)) pend = 4;
-        segs.push({ url: new URL(t, variantUrl).href, dur: pend });
-        pend = null;
-        if (segs.reduce((a, s) => a + s.dur, 0) >= maxSec) break;
+    // Degenerate-variant fallback: some providers ship a first rendition whose
+    // playlist is truncated (1-2 segments) or segment-broken — Yani Neko [63403]
+    // ep1 served a silent, one-segment 360p/720p/1080p set. Walk the variants
+    // and keep the one with the most usable segment plan.
+    let segs = [], usedVariant = 0, best = null;
+    for (let vi = 0; vi < variantUrls.length; vi++) {
+      const vres = await fetch(variantUrls[vi], { headers, cache: "no-store", signal: AbortSignal.timeout(15_000) });
+      if (!vres.ok) { if (best === null) best = { status: "error", env: [], analyzedSec: 0, wall: null, p95: 0, detail: `variant -> ${vres.status}` }; continue; }
+      const vtext = await vres.text();
+      const plan = [];
+      let pend = null;
+      for (const line of vtext.split("\n")) {
+        const t = line.trim();
+        if (t.startsWith("#EXTINF:")) pend = parseFloat(t.slice(8));
+        else if (t && !t.startsWith("#")) {
+          if (pend == null || !Number.isFinite(pend)) pend = 4;
+          plan.push({ url: new URL(t, variantUrls[vi]).href, dur: pend });
+          pend = null;
+          if (plan.reduce((a, s) => a + s.dur, 0) >= maxSec) break;
+        }
       }
+      if (plan.length > segs.length) { segs = plan; usedVariant = vi; best = null; }
+      if (segs.reduce((a, s) => a + s.dur, 0) >= Math.min(maxSec, minSec + 30)) break; // good enough variant
     }
+    if (best !== null && !segs.length) return best;
     if (!segs.length) return { status: "error", env: [], analyzedSec: 0, wall: null, p95: 0, detail: "variant has no segments" };
+    if (variantUrls.length > 1) log(`variant ${usedVariant + 1}/${variantUrls.length} -> ${segs.length} segs`);
 
     // ---- pipe through ffmpeg, collect envelope ------------------------
     const { spawn } = await import("node:child_process");
@@ -105,20 +154,15 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
     let fedSec = 0;
     let target = minSec; // grows if a wall candidate needs more tail
 
+    let fetchFails = 0;
     const pump = (async () => {
       let segIdx = 0;
       try {
         for (const seg of segs) {
           segIdx++;
           if (child.stdin.destroyed) break;
-          let res;
-          try {
-            res = await fetch(seg.url, { headers, cache: "no-store", signal: AbortSignal.timeout(30_000) });
-          } catch (e) {
-            log(`segment fetch failed (${String(e).slice(0, 80)}) — analyzing what we have`);
-            break;
-          }
-          if (!res.ok || !res.body) { log(`segment -> ${res.status}, stopping feed`); break; }
+          const res = await fetchSegment(seg.url, headers, log);
+          if (!res) { fetchFails++; break; }
           const reader = res.body.getReader();
           try {
             for (;;) {
@@ -144,6 +188,10 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
           if (fedSec >= target) break;
           if (fedSec >= SOFT_CAP_SEC && an.wall() === null) break;
           if (fedSec >= maxSec) break;
+          // CDN politeness: brief pause between segments (see SEG_DELAY_MS)
+          if (!child.stdin.destroyed && !child.stdin.writableEnded) {
+            await new Promise((r) => setTimeout(r, SEG_DELAY_MS));
+          }
         }
       } finally {
         // CRITICAL: ffmpeg only finishes once stdin closes — never leave it
@@ -173,7 +221,11 @@ export async function analyzePlaylist(masterUrl, opts = {}) {
     try { child.kill("SIGKILL"); } catch { /* fine */ }
 
     if (an.env.length < 60) {
-      return { status: "error", env: [], analyzedSec: fedSec, wall: null, p95: 0, detail: `no audio (exit ${exitCode}) ${ffErr.slice(0, 120)}` };
+      // honest detail: WHEN the feed was starved (fetchFails>0 / fedSec tiny)
+      // this is a transient CDN/rate-limit problem, not a silent "no audio"
+      // verdict — the fleet retries it on the next sweep either way.
+      const starve = fetchFails > 0 || fedSec < 30 ? ` STARVED fed=${fedSec.toFixed(0)}s fails=${fetchFails}` : "";
+      return { status: "error", env: [], analyzedSec: fedSec, wall: null, p95: 0, detail: `no audio${starve} (exit ${exitCode}) ${ffErr.slice(0, 120)}` };
     }
     const wall = an.wall();
     log(`+${((Date.now() - t0) / 1000).toFixed(1)}s analyzed ${an.mediaSec().toFixed(0)}s -> wall=${wall ? `${wall.start}-${wall.end}` : "none"}`);

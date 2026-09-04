@@ -19,3 +19,9 @@ if ! pgrep -f "backfill-ep-titles.mjs" > /dev/null 2>&1; then
   setsid nohup bash scripts/title-supervisor.sh </dev/null >> scripts/backfill-titles.log 2>&1 &
   echo "[watchdog] $(date -Is) started title backfill (pid $!)"
 fi
+
+if ! pgrep -f "dub-audio-sweep.mjs" > /dev/null 2>&1; then
+  pkill -f "dub-audio-supervisor.sh" 2>/dev/null
+  setsid nohup bash scripts/dub-audio-supervisor.sh </dev/null >> scripts/dub-audio-sweep.log 2>&1 &
+  echo "[watchdog] $(date -Is) started dub-audio sweep (pid $!)"
+fi

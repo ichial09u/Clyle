@@ -133,11 +133,21 @@ async function resolveStreamSrc(malId, ep) {
 
 /* ---------------- detection jobs ---------------- */
 
-/** watch one episode; returns { env, wall, analyzedSec } or null */
+const TRANSIENT = /no audio.*STARVED|segments? -> 4\d\d|segments? -> 5\d\d|timeout|ETIMEDOUT|ECONNRESET|fetch failed|master -> 4\d\d|master -> 5\d\d|variant -> 4\d\d|variant -> 5\d\d/i;
+
+/** watch one episode; returns { env, wall, analyzedSec } or null.
+ *  Transient-looking failures (CDN rate-limit bursts, timeouts) get ONE
+ *  whole-analysis retry after a 6 s breather — the 2026-09-04 sweep lost
+ *  450 episodes to a single rate-limit window because every failure was
+ *  treated as final for that round. */
 async function watchEpisode(bot, malId, ep, title, maxSec, minSec = 0) {
   const src = await resolveStreamSrc(malId, ep);
   if (!src) return null;
-  const r = await analyzePlaylist(src, { log: () => {}, maxSec, minSec });
+  let r = await analyzePlaylist(src, { log: () => {}, maxSec, minSec });
+  if (r.status !== "ok" && TRANSIENT.test(r.detail || "")) {
+    await sleep(6_000);
+    r = await analyzePlaylist(src, { log: () => {}, maxSec, minSec });
+  }
   if (r.status !== "ok") throw new Error(r.detail || "analyze failed");
   stats.scannedSec += r.analyzedSec;
   return r;
@@ -233,7 +243,13 @@ async function jobEstablish(item, bot) {
 
 async function jobVerify(item, bot) {
   const { malId, title, ep, ref } = item;
-  const C = await watchEpisode(bot, malId, ep, title, Math.min(ref.end + 170, 400));
+  // CRITICAL (2026-09-05 fleet bug): verify MUST feed the whole match window.
+  // Passing no minSec defaulted it to 0, so the feed broke after the FIRST
+  // segment (fedSec >= target with target=0) and every verify job in the
+  // fleet's history died with "no audio" — all 2,614 IntroScout rows came
+  // from establish pairs, and NO episode was ever verified against its ref.
+  const span = Math.min(ref.end + 170, 400);
+  const C = await watchEpisode(bot, malId, ep, title, span, span);
   const m = matchEnvelope(C.env, ref.env, { start: ref.start, end: ref.end });
   if (m && plausibleInterval(m.start, m.end) && m.quality >= MIN_QUALITY) {
     stats.ok++;
@@ -307,7 +323,11 @@ async function runQueue(items, lanes) {
           item.kind === "establish" ? jobEstablish(item, bot)
           : item.kind === "dubprobe" ? jobDubProbe(item, bot)
           : jobVerify(item, bot);
-        job.then(done).catch(async (err) => {
+        // lane desync: a random 0-4.5 s head-start per job keeps 21 lanes
+        // from opening their streams on the same beat (thundering herd ->
+        // provider rate limiter -> "no audio" bursts)
+        const jitter = new Promise((r) => setTimeout(r, Math.random() * 4_500));
+        Promise.all([jitter, job]).then(([r]) => done(r)).catch(async (err) => {
           stats.error++;
           const malId = item.malId, ep = item.kind === "establish" ? item.epA : item.ep;
           log(`${bot} ERROR ${item.title} [${malId}] ep${ep}: ${String(err).slice(0, 120)}`);

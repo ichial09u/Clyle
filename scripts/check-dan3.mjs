@@ -1,0 +1,10 @@
+import { PrismaClient } from "@prisma/client";
+const p = new PrismaClient();
+const eps = await p.episode.findMany({ where: { animeId: 57334, lang: "sub" }, orderBy: { number: "asc" }, take: 4, select: { number: true, title: true } });
+const epsTotal = await p.episode.count({ where: { animeId: 57334 } });
+console.log("Dandadan S1 (57334) eps:", epsTotal, JSON.stringify(eps));
+const s2 = await p.episode.findMany({ where: { animeId: 60543, lang: "sub" }, orderBy: { number: "asc" }, take: 3, select: { number: true, title: true } });
+console.log("Dandadan S2 (60543):", JSON.stringify(s2));
+const noTitleCount = await p.episode.count({ where: { animeId: 57334, title: null } });
+console.log("57334 eps missing title:", noTitleCount);
+await p.$disconnect();
