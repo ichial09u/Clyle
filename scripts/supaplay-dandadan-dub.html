@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1, viewport-fit=cover"
+    >
+
+    <title>Supaplay </title>
+
+
+    <script src="//ssl.p.jwpcdn.com/player/v/8.50.1/jwplayer.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/swarmcloud-jwplayer-hlsjs@0.1.1/dist/jwplayer.hlsjs.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@swarmcloud/hls@latest/hls.min.js"></script>
+<link rel="stylesheet" href="/public/assets/css/super.css" type="text/css" />
+<script>(function(s){s.dataset.zone='11552404',s.src='https://llvpn.com/tag.min.js'})([document.documentElement, document.body].filter(Boolean).pop().appendChild(document.createElement('script')))</script>
+</head>
+
+<body>
+    <div id="player"></div>
+
+   <div id="loadingScreen" class="loading-screen">
+
+    <div class="loading-background" id="loadingBackground"></div>
+
+    <div class="loading-card">
+
+        <img
+            id="loadingPoster"
+            class="loading-poster"
+            src="/public/assets/images/free.png"
+            alt=""
+        >
+
+        <div class="loading-info">
+
+            <h2 id="loadingAnimeTitle">
+                Loading...
+            </h2>
+
+            <div id="loadingEpisode">
+                Episode
+            </div>
+
+            <div id="loadingEpisodeTitle">
+                Preparing your episode...
+            </div>
+
+            <p id="loadingMessage">
+                Loading some magic... ✨
+            </p>
+
+        </div>
+
+        <div class="loading-spinner"></div>
+
+    </div>
+
+</div>
+
+    <audio
+        id="intro-sound"
+        src=""
+        preload="auto"
+    ></audio>
+
+    <div id="error-message"></div>
+
+<script src="/public/assets/js/nezuko.js"></script>
+ <script src="/public/assets/js/volume-booster.js"></script> 
+ <script src="/public/assets/js/fullscreen.js"></script> 
+
+<script>
+
+let adFired = false;
+
+function fireAd() {
+    if (adFired) return;
+
+    adFired = true;
+
+    const adScript = document.createElement("script");
+    adScript.src = "https://chewsever.com/71/09/0b/71090b8e3ec08fdf934530191fae0257.js";
+    adScript.async = true;
+    document.body.appendChild(adScript);
+
+    console.log("Ad fired");
+
+}
+
+function scheduleNextFire() {
+   const delay = (Math.floor(Math.random() * (3 * 60)) + 60) * 1000;
+
+    setTimeout(() => {
+        adFired = false;
+        fireAd();
+        scheduleNextFire();
+    }, delay);
+}
+
+fireAd();          // Fire immediately
+scheduleNextFire(); // Keep firing forever
+
+
+    </script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/blockadblock/3.2.1/blockadblock.min.js"></script>  
+</body>
+</html>
+ 

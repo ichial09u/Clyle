@@ -1,0 +1,4810 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta name="clckd" content="8937ee0625036ddaecea88b676a56e26">
+    <meta name="320171fbdb6d33d884c553d535d92eb05d017a68" content="320171fbdb6d33d884c553d535d92eb05d017a68">
+    <meta name="monetag" content="01ff2c53a4ac6330264bc6e1990a3353">
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>SupaPlay Video API - Anime Episode Embed Player</title>
+
+    <meta
+        name="description"
+        content="SupaPlay is an anime and movie video embed API that lets you embed episodes, movies, and MW detailPath players with simple iframe URLs. Supports sub, dub, seasons, episodes, and ArtPlayer embeds."
+    >
+
+    <meta
+        name="keywords"
+        content="SupaPlay, anime video API, anime embed API, anime iframe player, anime episode embed, anime streaming player, sub dub anime player, MW iframe player, ArtPlayer embed, detailPath player, Anikoto episode API, HiAnime episode IDs"
+    >
+
+    <meta
+        name="author"
+        content="SupaPlay"
+    >
+
+    <meta
+        name="robots"
+        content="index, follow"
+    >
+
+    <meta
+        name="theme-color"
+        content="#07090f"
+    >
+
+    <link
+        rel="canonical"
+        href="https://supaplay.fun/"
+    >
+
+    <meta
+        property="og:type"
+        content="website"
+    >
+
+    <meta
+        property="og:title"
+        content="SupaPlay Video API - Anime Episode Embed Player"
+    >
+
+    <meta
+        property="og:description"
+        content="Embed anime episodes, movies, and MW ArtPlayer pages using simple iframe URLs."
+    >
+
+    <meta
+        property="og:url"
+        content="https://supaplay.fun/"
+    >
+
+    <meta
+        property="og:site_name"
+        content="SupaPlay"
+    >
+
+    <meta
+        property="og:image"
+        content="https://supaplay.fun/og-image.png"
+    >
+
+    <meta
+        name="twitter:card"
+        content="summary_large_image"
+    >
+
+    <meta
+        name="twitter:title"
+        content="SupaPlay Video API - Anime Episode Embed Player"
+    >
+
+    <meta
+        name="twitter:description"
+        content="Use SupaPlay to embed anime episodes and MW ArtPlayer pages with simple iframe URLs."
+    >
+
+    <meta
+        name="twitter:image"
+        content="https://supaplay.fun/og-image.png"
+    >
+
+    <link
+        rel="icon"
+        href="/favicon.ico"
+    >
+
+    <link
+        rel="apple-touch-icon"
+        href="/apple-touch-icon.png"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://cdnjs.cloudflare.com"
+        crossorigin
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+        crossorigin
+    >
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+    >
+
+    <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap"
+    >
+
+    <link
+        rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css"
+    >
+
+    <!-- Schema -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "SupaPlay Video API",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web",
+        "url": "https://supaplay.fun/",
+        "description": "SupaPlay is a video embed API that lets developers embed anime episodes, movies, and MW ArtPlayer detailPath pages using simple iframe URLs.",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "featureList": [
+            "Anime iframe embed player",
+            "Sub and dub support",
+            "MW detailPath ArtPlayer iframe endpoint",
+            "Movie and episodic content support",
+            "Season and episode switching",
+            "Simple episode player URL format",
+            "Compatible with Anikoto and HiAnime-style episode/player ID libraries"
+        ]
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+            {
+                "@type": "Question",
+                "name": "What is SupaPlay?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "SupaPlay is a video embed API that lets developers embed anime episodes, movies, and MW ArtPlayer players using simple iframe URLs."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Does SupaPlay support sub and dub episodes?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes. SupaPlay supports sub and dub episode URLs using the language parameter in the classic stream embed URL."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Does SupaPlay support MW detailPath iframe embeds?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes. SupaPlay supports MW iframe URLs using detailPath routes for movies and season/episode routes for episodic content."
+                }
+            },
+            {
+                "@type": "Question",
+                "name": "Can I use episode IDs from Anikoto or HiAnime-style libraries?",
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": "Yes. If you already collect episode/player IDs from Anikoto or HiAnime-style sources, SupaPlay can use the same type of episode/player library format."
+                }
+            }
+        ]
+    }
+    </script>
+
+    <style>
+
+        :root {
+            --bg-primary: #07090f;
+            --bg-secondary: #101522;
+            --bg-tertiary: #151b2b;
+
+            --text-primary: #ffffff;
+            --text-secondary: #a7b0c5;
+
+            --accent-primary: #1e90ff;
+            --accent-secondary: #6bbcff;
+
+            --accent-success: #00c896;
+            --accent-warning: #ffd166;
+            --accent-danger: #ff5a6f;
+
+            --border-color: rgba(255, 255, 255, 0.1);
+
+            --shadow:
+                0 20px 70px rgba(0, 0, 0, 0.45);
+
+            --transition:
+                all 0.25s ease;
+
+            --border-radius: 14px;
+            --border-radius-lg: 22px;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Poppins', sans-serif;
+
+            background:
+                radial-gradient(
+                    circle at top left,
+                    rgba(30, 144, 255, 0.18),
+                    transparent 30%
+                ),
+                radial-gradient(
+                    circle at top right,
+                    rgba(0, 200, 150, 0.12),
+                    transparent 26%
+                ),
+                var(--bg-primary);
+
+            color: var(--text-primary);
+
+            line-height: 1.6;
+
+            overflow-x: hidden;
+
+            margin: 0;
+            padding: 0;
+        }
+
+        a {
+            color: var(--accent-secondary);
+            text-decoration: none;
+        }
+
+        a:hover {
+            color: #ffffff;
+        }
+
+        .skip-link {
+            position: absolute;
+            left: -999px;
+            top: 12px;
+
+            background: var(--accent-primary);
+            color: #ffffff;
+
+            padding: 10px 14px;
+
+            border-radius: 10px;
+
+            z-index: 9999;
+        }
+
+        .skip-link:focus {
+            left: 12px;
+        }
+
+        .api-container {
+            max-width: 1120px;
+
+            margin: 42px auto;
+
+            padding: 0 18px;
+        }
+
+        .api-card,
+        .api-section {
+
+            background:
+                linear-gradient(
+                    180deg,
+                    rgba(255, 255, 255, 0.045),
+                    rgba(255, 255, 255, 0.02)
+                ),
+                var(--bg-secondary);
+
+            border-radius: var(--border-radius-lg);
+
+            box-shadow: var(--shadow);
+
+            border: 1px solid var(--border-color);
+
+            padding: 34px;
+
+            margin-bottom: 26px;
+        }
+
+        .api-header {
+            text-align: center;
+
+            padding: 44px 20px 34px;
+        }
+
+        .api-badge {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            padding: 0.55rem 1rem;
+
+            background:
+                rgba(30, 144, 255, 0.1);
+
+            color: var(--accent-secondary);
+
+            border:
+                1px solid rgba(30, 144, 255, 0.22);
+
+            border-radius: 999px;
+
+            font-size: 0.9rem;
+
+            font-weight: 700;
+
+            margin-bottom: 18px;
+        }
+
+        .api-header h1 {
+
+            font-size:
+                clamp(2.2rem, 5vw, 4.6rem);
+
+            line-height: 1.02;
+
+            font-weight: 800;
+
+            margin-bottom: 18px;
+
+            letter-spacing: -1.6px;
+
+            background:
+                linear-gradient(
+                    45deg,
+                    var(--accent-primary),
+                    var(--accent-success)
+                );
+
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .api-header p {
+
+            max-width: 850px;
+
+            margin:
+                0 auto 24px;
+
+            color: var(--text-secondary);
+
+            font-size: 1.05rem;
+        }
+
+        .header-actions {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            justify-content: center;
+
+            gap: 12px;
+        }
+
+        .grid-2 {
+
+            display: grid;
+
+            gap: 24px;
+        }
+
+        @media (min-width: 900px) {
+
+            .grid-2 {
+                grid-template-columns:
+                    1fr 1fr;
+            }
+        }
+
+        h2 {
+
+            color: var(--accent-primary);
+
+            font-size: 1.5rem;
+
+            margin-bottom: 16px;
+
+            display: flex;
+
+            align-items: center;
+
+            gap: 10px;
+
+            font-weight: 800;
+        }
+
+        h3 {
+
+            font-size: 1.15rem;
+
+            margin:
+                22px 0 12px;
+
+            color: var(--text-primary);
+
+            font-weight: 800;
+        }
+
+        .muted {
+            color: var(--text-secondary);
+        }
+
+        .code-block {
+
+            background-color: #080b12;
+
+            color: #dce7ff;
+
+            padding: 18px;
+
+            border-radius: var(--border-radius);
+
+            font-family:
+                Consolas,
+                Monaco,
+                "Courier New",
+                monospace;
+
+            overflow-x: auto;
+
+            border-left:
+                4px solid var(--accent-primary);
+
+            font-size: 0.92rem;
+
+            line-height: 1.55;
+
+            box-shadow:
+                inset 0 0 10px rgba(0, 0, 0, 0.25);
+
+            white-space: pre-wrap;
+
+            word-break: break-word;
+        }
+
+        code {
+
+            background:
+                rgba(30, 144, 255, 0.1);
+
+            color: var(--accent-secondary);
+
+            padding: 2px 6px;
+
+            border-radius: 6px;
+
+            font-family:
+                Consolas,
+                Monaco,
+                "Courier New",
+                monospace;
+
+            font-size: 0.9em;
+        }
+
+        .alert-box {
+
+            padding:
+                15px 18px;
+
+            border-radius:
+                var(--border-radius);
+
+            margin-top: 20px;
+
+            display: flex;
+
+            align-items: flex-start;
+
+            gap: 14px;
+
+            border:
+                1px solid var(--border-color);
+
+            background-color:
+                rgba(255, 209, 102, 0.1);
+
+            border-left:
+                4px solid var(--accent-warning);
+
+            color: var(--text-primary);
+        }
+
+        .alert-box i {
+
+            margin-top: 4px;
+
+            color:
+                var(--accent-warning);
+        }
+
+        .info-box {
+
+            padding:
+                15px 18px;
+
+            border-radius:
+                var(--border-radius);
+
+            margin-top: 20px;
+
+            display: flex;
+
+            align-items: flex-start;
+
+            gap: 14px;
+
+            border:
+                1px solid rgba(30, 144, 255, 0.2);
+
+            background-color:
+                rgba(30, 144, 255, 0.08);
+
+            border-left:
+                4px solid var(--accent-primary);
+
+            color: var(--text-primary);
+        }
+
+        .info-box i {
+
+            margin-top: 4px;
+
+            color:
+                var(--accent-secondary);
+        }
+
+        .success-box {
+
+            padding:
+                15px 18px;
+
+            border-radius:
+                var(--border-radius);
+
+            margin-top: 20px;
+
+            display: flex;
+
+            align-items: flex-start;
+
+            gap: 14px;
+
+            border:
+                1px solid rgba(0, 200, 150, 0.2);
+
+            background-color:
+                rgba(0, 200, 150, 0.08);
+
+            border-left:
+                4px solid var(--accent-success);
+
+            color: var(--text-primary);
+        }
+
+        .success-box i {
+
+            margin-top: 4px;
+
+            color:
+                var(--accent-success);
+        }
+
+        .btn {
+
+            padding:
+                11px 18px;
+
+            border-radius:
+                11px;
+
+            font-weight:
+                800;
+
+            transition:
+                var(--transition);
+
+            border: none;
+
+            cursor: pointer;
+
+            display: inline-flex;
+
+            align-items: center;
+
+            justify-content: center;
+
+            gap: 8px;
+
+            text-decoration: none;
+        }
+
+        .btn-primary {
+
+            background:
+                var(--accent-primary);
+
+            color: white;
+        }
+
+        .btn-primary:hover {
+
+            background: #45a5ff;
+
+            color: white;
+
+            transform:
+                translateY(-2px);
+
+            box-shadow:
+                0 14px 35px
+                rgba(30, 144, 255, 0.24);
+        }
+
+        .btn-secondary {
+
+            background:
+                rgba(255, 255, 255, 0.08);
+
+            color:
+                var(--text-primary);
+
+            border:
+                1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+
+            background:
+                rgba(255, 255, 255, 0.13);
+
+            color: white;
+
+            transform:
+                translateY(-2px);
+        }
+
+        .btn-success {
+
+            background:
+                var(--accent-success);
+
+            color:
+                #04100c;
+        }
+
+        .btn-success:hover {
+
+            background:
+                #34dfb8;
+
+            color:
+                #04100c;
+
+            transform:
+                translateY(-2px);
+        }
+
+        /* =========================
+           ANIMAPOTV BANNER
+        ========================= */
+
+        .watch-anime-banner {
+
+            display: flex;
+
+            align-items: center;
+
+            justify-content: space-between;
+
+            gap: 20px;
+
+            padding:
+                26px 30px;
+
+            margin-bottom: 26px;
+
+            border-radius:
+                var(--border-radius-lg);
+
+            background:
+                linear-gradient(
+                    135deg,
+                    rgba(30, 144, 255, 0.14),
+                    rgba(0, 200, 150, 0.10)
+                ),
+                var(--bg-secondary);
+
+            border:
+                1px solid rgba(30, 144, 255, 0.22);
+
+            box-shadow:
+                var(--shadow);
+        }
+
+        .watch-anime-content {
+            flex: 1;
+        }
+
+        .watch-badge {
+
+            display: inline-flex;
+
+            align-items: center;
+
+            gap: 8px;
+
+            color:
+                var(--accent-success);
+
+            font-size:
+                0.9rem;
+
+            font-weight:
+                800;
+        }
+
+        .watch-anime-banner h3 {
+
+            margin:
+                8px 0 6px;
+
+            font-size:
+                1.35rem;
+        }
+
+        .watch-anime-banner p {
+
+            margin: 0;
+
+            color:
+                var(--text-secondary);
+        }
+
+        .watch-anime-button {
+
+            min-width:
+                170px;
+        }
+
+        .test-form {
+
+            background:
+                rgba(30, 144, 255, 0.05);
+
+            padding:
+                22px;
+
+            border-radius:
+                var(--border-radius);
+
+            border:
+                1px solid rgba(30, 144, 255, 0.2);
+
+            margin-top:
+                18px;
+        }
+
+        .form-control,
+        .form-select {
+
+            background-color:
+                #080b12;
+
+            border:
+                1px solid var(--border-color);
+
+            color:
+                var(--text-primary);
+
+            border-radius:
+                10px;
+
+            padding:
+                12px 14px;
+
+            margin-bottom:
+                14px;
+
+            transition:
+                var(--transition);
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+
+            background-color:
+                #080b12;
+
+            color:
+                var(--text-primary);
+
+            border-color:
+                var(--accent-primary);
+
+            box-shadow:
+                0 0 0 4px
+                rgba(30, 144, 255, 0.12);
+
+            outline: none;
+        }
+
+        .form-control::placeholder {
+            color: #65708a;
+        }
+
+        .form-label {
+
+            color:
+                var(--text-secondary);
+
+            font-weight:
+                700;
+
+            margin-bottom:
+                8px;
+        }
+
+        .param-table {
+
+            width: 100%;
+
+            border-collapse:
+                collapse;
+
+            margin:
+                18px 0;
+
+            border-radius:
+                12px;
+
+            overflow:
+                hidden;
+
+            border:
+                1px solid var(--border-color);
+        }
+
+        .param-table th,
+        .param-table td {
+
+            padding:
+                12px 14px;
+
+            text-align:
+                left;
+
+            border-bottom:
+                1px solid var(--border-color);
+
+            vertical-align:
+                top;
+        }
+
+        .param-table th {
+
+            background-color:
+                rgba(30, 144, 255, 0.1);
+
+            color:
+                var(--accent-secondary);
+
+            font-weight:
+                800;
+        }
+
+        .param-table td {
+
+            color:
+                var(--text-secondary);
+        }
+
+        .embed-container {
+
+            position: relative;
+
+            padding-bottom:
+                56.25%;
+
+            height: 0;
+
+            overflow: hidden;
+
+            max-width: 100%;
+
+            margin-top:
+                16px;
+
+            border-radius:
+                var(--border-radius);
+
+            box-shadow:
+                var(--shadow);
+
+            border:
+                1px solid var(--border-color);
+
+            background:
+                #000;
+        }
+
+        .embed-container iframe {
+
+            position: absolute;
+
+            inset: 0;
+
+            width: 100%;
+
+            height: 100%;
+
+            border: 0;
+        }
+
+        .copy-row {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 10px;
+
+            margin-top:
+                12px;
+        }
+
+        .feature-list {
+
+            padding-left: 0;
+
+            list-style: none;
+
+            margin: 0;
+        }
+
+        .feature-list li {
+
+            color:
+                var(--text-secondary);
+
+            margin-bottom:
+                11px;
+
+            display: flex;
+
+            gap: 10px;
+
+            align-items:
+                flex-start;
+        }
+
+        .feature-list i {
+
+            color:
+                var(--accent-success);
+
+            margin-top:
+                4px;
+        }
+
+        .tabs {
+
+            display: flex;
+
+            flex-wrap: wrap;
+
+            gap: 10px;
+
+            margin-bottom:
+                20px;
+        }
+
+        .tab-btn {
+
+            border:
+                1px solid var(--border-color);
+
+            background:
+                rgba(255, 255, 255, 0.06);
+
+            color:
+                var(--text-primary);
+
+            padding:
+                10px 14px;
+
+            border-radius:
+                999px;
+
+            cursor:
+                pointer;
+
+            font-weight:
+                800;
+
+            transition:
+                var(--transition);
+        }
+
+        .tab-btn.active {
+
+            background:
+                var(--accent-primary);
+
+            border-color:
+                var(--accent-primary);
+
+            color:
+                #fff;
+        }
+
+        .tab-panel {
+            display: none;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        .events-log {
+
+            display: none;
+
+            max-height:
+                250px;
+
+            overflow:
+                auto;
+        }
+
+        .footer {
+
+            text-align:
+                center;
+
+            color:
+                var(--text-secondary);
+
+            padding:
+                18px 0 50px;
+        }
+
+        @media (max-width: 768px) {
+
+            .api-card,
+            .api-section {
+                padding:
+                    22px;
+            }
+
+            .param-table-container {
+                overflow-x:
+                    auto;
+            }
+
+            .header-actions,
+            .copy-row {
+                flex-direction:
+                    column;
+            }
+
+            .btn {
+                width:
+                    100%;
+            }
+
+            .watch-anime-banner {
+
+                flex-direction:
+                    column;
+
+                align-items:
+                    stretch;
+
+                text-align:
+                    center;
+            }
+
+            .watch-anime-button {
+                width:
+                    100%;
+            }
+        }
+
+    </style>
+
+</head>
+
+
+<body>
+
+<a
+    class="skip-link"
+    href="#main-content"
+>
+    Skip to content
+</a>
+
+
+<main
+    id="main-content"
+    class="api-container"
+>
+
+
+    <!-- =========================
+         HEADER
+    ========================== -->
+
+    <section
+        class="api-card api-header"
+        aria-labelledby="main-title"
+    >
+
+        <span class="api-badge">
+
+            <i
+                class="fas fa-play"
+                aria-hidden="true"
+            ></i>
+
+            SupaPlay Video API
+
+        </span>
+
+
+        <h1 id="main-title">
+            Anime, Movie, and MW ArtPlayer Embed API
+        </h1>
+
+
+        <p>
+
+            SupaPlay lets you embed anime episodes,
+            movies, and MW detailPath players using
+            simple iframe URLs.
+
+            Use the classic
+            <code>/stream/s-2</code>
+            endpoint for episode player IDs or the
+            <code>/mw</code>
+            endpoint for ArtPlayer detailPath
+            embeds with seasons, episodes,
+            language switching, and iframe sync.
+
+        </p>
+
+
+        <p>
+
+            If you already collect or scrape
+            episode/player IDs from Anikoto or
+            HiAnime-style sources, they use the same
+            type of episode library format, so
+            SupaPlay can work with those IDs.
+
+        </p>
+
+
+        <div class="header-actions">
+
+            <a
+                class="btn btn-primary"
+                href="#embed-test"
+            >
+
+                <i
+                    class="fas fa-vial"
+                    aria-hidden="true"
+                ></i>
+
+                Test Anikoto/HiAnime 
+
+            </a>
+<a
+    class="btn btn-primary"
+    href="#new-embed-test"
+>
+    <i
+        class="fas fa-code"
+        aria-hidden="true"
+    ></i>
+
+    Test Anilist
+</a>
+
+            <a
+                class="btn btn-primary"
+                href="#mw-embed-test"
+            >
+
+                <i
+                    class="fas fa-tv"
+                    aria-hidden="true"
+                ></i>
+
+                Test Moviebox 
+
+            </a>
+
+
+            <a
+                class="btn btn-secondary"
+                href="https://github.com/Codingapo/anikoto-epi"
+                target="_blank"
+                rel="noopener"
+            >
+
+                <i
+                    class="fab fa-github"
+                    aria-hidden="true"
+                ></i>
+
+                GitHub Episode API
+
+            </a>
+
+
+            <a
+                class="btn btn-success"
+                href="https://render.com/deploy?repo=https://github.com/Codingapo/anikoto-epi"
+                target="_blank"
+                rel="noopener"
+            >
+
+                <i
+                    class="fas fa-cloud-upload-alt"
+                    aria-hidden="true"
+                ></i>
+
+                Deploy API on Render
+
+            </a>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         ANIMAPOTV RECOMMENDATION
+    ========================== -->
+
+    <section
+        class="watch-anime-banner"
+        aria-label="Watch anime recommendation"
+    >
+
+        <div class="watch-anime-content">
+
+            <span class="watch-badge">
+
+                <i
+                    class="fas fa-play-circle"
+                    aria-hidden="true"
+                ></i>
+
+                Want to watch anime?
+
+            </span>
+
+
+            <h3>
+                Watch Anime on AnimapoTV
+            </h3>
+
+
+            <p>
+
+                Looking for an easy way to watch anime?
+                Visit AnimapoTV for a simple anime-watching
+                experience.
+
+            </p>
+
+        </div>
+
+
+        <a
+            class="btn btn-success watch-anime-button"
+            href="https://animapotv.fun/"
+            target="_blank"
+            rel="noopener noreferrer"
+        >
+
+            <i
+                class="fas fa-play"
+                aria-hidden="true"
+            ></i>
+
+            Watch Anime
+
+        </a>
+
+    </section>
+
+
+    <!-- =========================
+         FEATURES
+    ========================== -->
+
+    <section
+        class="api-section"
+        aria-labelledby="features-title"
+    >
+
+        <h2 id="features-title">
+
+            <i
+                class="fas fa-bolt"
+                aria-hidden="true"
+            ></i>
+
+            SupaPlay Features
+
+        </h2>
+
+
+        <ul class="feature-list">
+
+            <li>
+
+                <i
+                    class="fas fa-check"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    Simple anime episode iframe embed URL.
+                </span>
+
+            </li>
+
+
+            <li>
+
+                <i
+                    class="fas fa-check"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    Supports both subtitled and dubbed
+                    episode versions.
+                </span>
+
+            </li>
+
+
+            <li>
+
+                <i
+                    class="fas fa-check"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    New MW ArtPlayer endpoint for movies,
+                    shows, anime, seasons, and episodes.
+                </span>
+
+            </li>
+
+
+            <li>
+
+                <i
+                    class="fas fa-check"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    MW iframe supports next episode,
+                    previous episode, autoplay,
+                    auto-next, language switching,
+                    and parent iframe control.
+                </span>
+
+            </li>
+
+
+            <li>
+
+                <i
+                    class="fas fa-check"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    Works with episode/player IDs from
+                    Anikoto or HiAnime-style episode libraries.
+                </span>
+
+            </li>
+
+
+            <li>
+
+                <i
+                    class="fas fa-check"
+                    aria-hidden="true"
+                ></i>
+
+                <span>
+                    Ready for anime websites,
+                    episode pages, watch pages,
+                    and custom player wrappers.
+                </span>
+
+            </li>
+
+        </ul>
+
+    </section>
+
+
+    <!-- =========================
+         ENDPOINTS
+    ========================== -->
+
+    <div class="grid-2">
+
+
+        <!-- CLASSIC ENDPOINT -->
+
+        <section
+            class="api-section"
+            aria-labelledby="usage-title"
+        >
+
+            <h2 id="usage-title">
+
+                <i
+                    class="fas fa-server"
+                    aria-hidden="true"
+                ></i>
+
+                Classic Episode Endpoint
+
+            </h2>
+
+
+            <p class="muted">
+
+                Use this iframe endpoint to embed
+                an anime episode by player ID:
+
+            </p>
+
+
+            <div class="code-block">
+https://supaplay.fun/stream/s-2/{episode_embed_id}/{language}
+            </div>
+
+
+            <h3>
+                Example iframe embed
+            </h3>
+
+
+            <div class="code-block">&lt;iframe
+src="https://supaplay.fun/stream/s-2/2142/sub"
+width="100%"
+height="500"
+frameborder="0"
+scrolling="no"
+allow="autoplay; fullscreen; picture-in-picture"
+allowfullscreen&gt;&lt;/iframe&gt;</div>
+
+
+            <div class="alert-box">
+
+                <i
+                    class="fas fa-circle-info"
+                    aria-hidden="true"
+                ></i>
+
+
+                <div>
+
+                    Use
+                    <code>sub</code>
+                    for subtitled anime episodes
+                    and
+                    <code>dub</code>
+                    for dubbed anime episodes.
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+        <!-- MW ENDPOINT -->
+
+        <section
+            class="api-section"
+            aria-labelledby="mw-usage-title"
+        >
+
+            <h2 id="mw-usage-title">
+
+                <i
+                    class="fas fa-film"
+                    aria-hidden="true"
+                ></i>
+
+                MW ArtPlayer Endpoint
+
+            </h2>
+
+
+            <p class="muted">
+
+                Use the MW endpoint for the advanced
+                ArtPlayer iframe that supports movies,
+                seasons, episodes, language/detailPath
+                switching, and parent page communication.
+
+            </p>
+
+
+            <h3>
+                Movie URL
+            </h3>
+
+
+            <div class="code-block">
+https://supaplay.fun/mw/{detailPath}
+            </div>
+
+
+            <h3>
+                Episode URL
+            </h3>
+
+
+            <div class="code-block">
+https://supaplay.fun/mw/{detailPath}/{season}/{episode}
+            </div>
+
+
+            <h3>
+                Example iframe embed
+            </h3>
+
+
+            <div class="code-block">&lt;iframe
+src="https://supaplay.fun/mw/jujutsu-kaisen-english-KD0jSM9ot5/1/1"
+width="100%"
+height="500"
+frameborder="0"
+scrolling="no"
+allow="autoplay; fullscreen; picture-in-picture"
+allowfullscreen&gt;
+&lt;/iframe&gt;</div>
+
+
+            <div class="success-box">
+
+                <i
+                    class="fas fa-check-circle"
+                    aria-hidden="true"
+                ></i>
+
+
+                <div>
+
+                    The MW endpoint uses
+                    <code>detailPath</code>.
+
+                    The player loads the real
+                    <code>subjectId</code>
+                    from the H5 detail API internally.
+
+                </div>
+
+            </div>
+
+        </section>
+
+    </div>
+
+
+    <!-- =========================
+         EPISODE API
+    ========================== -->
+<!-- NEW EMBED ENDPOINT -->
+
+<!-- ANI ENDPOINT -->
+
+<section
+    class="api-section"
+    aria-labelledby="ani-usage-title"
+>
+
+    <h2 id="ani-usage-title">
+
+        <i
+            class="fas fa-database"
+            aria-hidden="true"
+        ></i>
+
+        AniList Episode Endpoint
+
+    </h2>
+
+    <p class="muted">
+
+        Use the Ani endpoint to embed an anime
+        episode using its AniList ID, episode number,
+        and language type.
+
+    </p>
+
+    <h3>
+        Endpoint
+    </h3>
+
+    <div class="code-block">
+https://supaplay.fun/stream/ani/{anilist_id}/{episode_number}/{language}
+    </div>
+
+    <h3>
+        Example
+    </h3>
+
+    <div class="code-block">
+https://supaplay.fun/stream/ani/21/2/sub
+    </div>
+
+    <h3>
+        Example iframe
+    </h3>
+
+    <div class="code-block">&lt;iframe
+src="https://supaplay.fun/stream/ani/21/2/sub"
+width="100%"
+height="500"
+frameborder="0"
+scrolling="no"
+allow="autoplay; fullscreen; picture-in-picture"
+allowfullscreen&gt;&lt;/iframe&gt;</div>
+
+    <div class="success-box">
+
+        <i
+            class="fas fa-check-circle"
+            aria-hidden="true"
+        ></i>
+
+        <div>
+
+            <strong>AniList ID:</strong> 21
+            <br>
+
+            <strong>Episode:</strong> 2
+            <br>
+
+            <strong>Language:</strong> sub
+
+        </div>
+
+    </div>
+
+</section>
+    <section
+        class="api-section"
+        aria-labelledby="episode-api-title"
+    >
+
+        <h2 id="episode-api-title">
+
+            <i
+                class="fas fa-code-branch"
+                aria-hidden="true"
+            ></i>
+
+            Need Episode IDs?
+
+        </h2>
+
+
+        <p class="muted">
+
+            Use the separate Anikoto episode API repo
+            to get <code>episode_embed_id</code>
+            values from an anime slug.
+
+            These IDs can then be used inside
+            the classic SupaPlay iframe URL.
+
+        </p>
+
+
+        <div class="code-block">git clone https://github.com/Codingapo/anikoto-epi.git
+cd anikoto-epi
+npm install
+npm start</div>
+
+
+        <div class="info-box">
+
+            <i
+                class="fas fa-database"
+                aria-hidden="true"
+            ></i>
+
+
+            <div>
+
+                If your project already gets
+                episode/player IDs from Anikoto or
+                HiAnime-style data, the same library
+                format can be used with SupaPlay
+                embed URLs.
+
+            </div>
+
+        </div>
+
+
+        <div class="copy-row">
+
+            <a
+                class="btn btn-secondary"
+                href="https://github.com/Codingapo/anikoto-epi"
+                target="_blank"
+                rel="noopener"
+            >
+
+                <i
+                    class="fab fa-github"
+                    aria-hidden="true"
+                ></i>
+
+                Open GitHub
+
+            </a>
+
+
+            <a
+                class="btn btn-secondary"
+                href="https://github.com/Codingapo/anikoto-epi/archive/refs/heads/main.zip"
+                target="_blank"
+                rel="noopener"
+            >
+
+                <i
+                    class="fas fa-download"
+                    aria-hidden="true"
+                ></i>
+
+                Download ZIP
+
+            </a>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         PARAMETERS
+    ========================== -->
+
+    <section
+        class="api-section"
+        aria-labelledby="params-title"
+    >
+
+        <h2 id="params-title">
+
+            <i
+                class="fas fa-list-ul"
+                aria-hidden="true"
+            ></i>
+
+            Valid Embed Parameters
+
+        </h2>
+
+
+        <div class="tabs">
+
+            <button
+                class="tab-btn active"
+                type="button"
+                data-tab="classic-params"
+            >
+                Classic Stream
+            </button>
+
+
+            <button
+                class="tab-btn"
+                type="button"
+                data-tab="mw-params"
+            >
+                MW Endpoint
+            </button>
+
+        </div>
+
+
+        <div
+            id="classic-params"
+            class="tab-panel active"
+        >
+
+            <div class="param-table-container">
+
+                <table class="param-table">
+
+                    <thead>
+
+                        <tr>
+
+                            <th>
+                                Parameter
+                            </th>
+
+                            <th>
+                                Description
+                            </th>
+
+                            <th>
+                                Required
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody>
+
+                        <tr>
+
+                            <td>
+                                <code>{episode_embed_id}</code>
+                            </td>
+
+                            <td>
+                                The anime episode/player ID
+                                used by the SupaPlay stream endpoint.
+                            </td>
+
+                            <td>
+                                Yes
+                            </td>
+
+                        </tr>
+
+
+                        <tr>
+
+                            <td>
+                                <code>{language}</code>
+                            </td>
+
+                            <td>
+                                Episode language version.
+                                Use <code>sub</code>
+                                or <code>dub</code>.
+                            </td>
+
+                            <td>
+                                Yes
+                            </td>
+
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+
+        <div
+            id="mw-params"
+            class="tab-panel"
+        >
+
+            <div class="param-table-container">
+
+                <table class="param-table">
+
+                    <thead>
+
+                        <tr>
+
+                            <th>
+                                Parameter
+                            </th>
+
+                            <th>
+                                Description
+                            </th>
+
+                            <th>
+                                Required
+                            </th>
+
+                        </tr>
+
+                    </thead>
+
+
+                    <tbody>
+
+                        <tr>
+
+                            <td>
+                                <code>{detailPath}</code>
+                            </td>
+
+                            <td>
+                                The H5/MW detail path,
+                                for example
+                                <code>jujutsu-kaisen-english-KD0jSM9ot5</code>.
+                            </td>
+
+                            <td>
+                                Yes
+                            </td>
+
+                        </tr>
+
+
+                        <tr>
+
+                            <td>
+                                <code>{season}</code>
+                            </td>
+
+                            <td>
+                                The season number.
+                                Use <code>0</code>
+                                for movies or omit
+                                season/episode for movie URLs.
+                            </td>
+
+                            <td>
+                                No for movies,
+                                yes for episodes
+                            </td>
+
+                        </tr>
+
+
+                        <tr>
+
+                            <td>
+                                <code>{episode}</code>
+                            </td>
+
+                            <td>
+                                The episode number.
+                                Use <code>0</code>
+                                for movies or omit
+                                season/episode for movie URLs.
+                            </td>
+
+                            <td>
+                                No for movies,
+                                yes for episodes
+                            </td>
+
+                        </tr>
+
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         COMPATIBILITY
+    ========================== -->
+
+    <section
+        class="api-section"
+        aria-labelledby="library-title"
+    >
+
+        <h2 id="library-title">
+
+            <i
+                class="fas fa-layer-group"
+                aria-hidden="true"
+            ></i>
+
+            Anikoto, HiAnime, and MW Compatibility
+
+        </h2>
+
+
+        <p class="muted">
+
+            SupaPlay supports two styles of embedding.
+
+            The classic stream endpoint works with
+            simple episode/player IDs.
+
+            The MW endpoint works with
+            <code>detailPath</code>
+            values and lets the iframe load the real
+            subject ID, season data, episodes,
+            streams, captions, and language variants
+            internally.
+
+        </p>
+
+
+ <div class="code-block">https://supaplay.fun/stream/s-2/{episode_embed_id}/sub
+https://supaplay.fun/stream/s-2/{episode_embed_id}/dub
+
+https://supaplay.fun/stream/ani/{anilist_id}/{episode_number}/sub
+https://supaplay.fun/stream/ani/{anilist_id}/{episode_number}/dub
+
+https://supaplay.fun/stream/ani/{malist_id}/{episode_number}/sub
+https://supaplay.fun/stream/ani/{malist_id}/{episode_number}/dub
+
+https://supaplay.fun/mw/{detailPath}
+https://supaplay.fun/mw/{detailPath}/{season}/{episode}</div>
+    </section>
+
+
+    <!-- =========================
+         CLASSIC EMBED GENERATOR
+    ========================== -->
+
+    <section
+        class="api-section"
+        id="embed-test"
+        aria-labelledby="test-title"
+    >
+
+        <h2 id="test-title">
+
+            <i
+                class="fas fa-vial"
+                aria-hidden="true"
+            ></i>
+
+            Test Classic Anime Embed
+
+        </h2>
+
+
+        <p class="muted">
+
+            Enter an episode player ID and select
+            the language, then press
+            <strong>Generate Classic Embed</strong>.
+
+            Nothing will be loaded until you
+            generate the embed.
+
+        </p>
+
+
+        <div class="test-form">
+
+            <form id="embed-form">
+
+                <div class="mb-3">
+
+                    <label
+                        for="episode-id"
+                        class="form-label"
+                    >
+                        Episode Embed ID
+                    </label>
+
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="episode-id"
+                        name="episode-id"
+                        placeholder="Enter episode embed ID"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="mb-3">
+
+                    <label
+                        for="language"
+                        class="form-label"
+                    >
+                        Language
+                    </label>
+
+
+                    <select
+                        class="form-select"
+                        id="language"
+                        name="language"
+                        required
+                    >
+
+                        <option
+                            value="sub"
+                            selected
+                        >
+                            Sub
+                        </option>
+
+                        <option value="dub">
+                            Dub
+                        </option>
+
+                    </select>
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+
+                    <i
+                        class="fas fa-play"
+                        aria-hidden="true"
+                    ></i>
+
+                    Generate Classic Embed
+
+                </button>
+
+            </form>
+
+        </div>
+
+
+        <!-- Hidden until generated -->
+
+        <div
+            id="embed-result"
+            class="mt-4"
+            style="display:none;"
+        >
+
+            <h3>
+
+                <i
+                    class="fas fa-code"
+                    aria-hidden="true"
+                ></i>
+
+                Generated Classic Embed Code
+
+            </h3>
+
+
+            <div
+                class="code-block"
+                id="embed-code"
+            ></div>
+
+
+            <div class="copy-row">
+
+                <button
+                    class="btn btn-secondary"
+                    id="copy-btn"
+                    type="button"
+                >
+
+                    <i
+                        class="fas fa-copy"
+                        aria-hidden="true"
+                    ></i>
+
+                    Copy Code
+
+                </button>
+
+
+                <a
+                    class="btn btn-secondary"
+                    id="open-embed-link"
+                    href="#"
+                    target="_blank"
+                    rel="noopener"
+                >
+
+                    <i
+                        class="fas fa-up-right-from-square"
+                        aria-hidden="true"
+                    ></i>
+
+                    Open Link
+
+                </a>
+
+            </div>
+
+
+            <h3 class="mt-4">
+
+                <i
+                    class="fas fa-tv"
+                    aria-hidden="true"
+                ></i>
+
+                Live Preview
+
+            </h3>
+
+
+            <div class="embed-container">
+
+                <iframe
+                    id="preview-frame"
+                    title="SupaPlay anime episode embed preview"
+                    src="about:blank"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowfullscreen
+                ></iframe>
+
+            </div>
+
+        </div>
+
+    </section>
+
+
+    <!-- =========================
+         MW EMBED GENERATOR
+    ========================== -->
+
+    <section
+        class="api-section"
+        id="mw-embed-test"
+        aria-labelledby="mw-test-title"
+    >
+
+        <h2 id="mw-test-title">
+
+            <i
+                class="fas fa-tv"
+                aria-hidden="true"
+            ></i>
+
+            Test MW ArtPlayer Embed
+
+        </h2>
+
+
+        <p class="muted">
+
+            Generate an MW iframe code using a
+            <code>detailPath</code>.
+
+            For movies, use season and episode
+            <code>0</code>.
+
+            For shows or anime, enter the
+            season and episode.
+
+        </p>
+
+
+        <div class="test-form">
+
+            <form id="mw-embed-form">
+
+                <div class="mb-3">
+
+                    <label
+                        for="mw-detail-path"
+                        class="form-label"
+                    >
+                        MW detailPath
+                    </label>
+
+
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="mw-detail-path"
+                        name="mw-detail-path"
+                        placeholder="Enter detailPath"
+                        autocomplete="off"
+                        required
+                    >
+
+                </div>
+
+
+                <div class="grid-2">
+
+                    <div class="mb-3">
+
+                        <label
+                            for="mw-season"
+                            class="form-label"
+                        >
+                            Season
+                        </label>
+
+
+                        <input
+                            type="number"
+                            class="form-control"
+                            id="mw-season"
+                            name="mw-season"
+                            placeholder="1"
+                            min="0"
+                            step="1"
+                            required
+                        >
+
+                    </div>
+
+
+                    <div class="mb-3">
+
+                        <label
+                            for="mw-episode"
+                            class="form-label"
+                        >
+                            Episode
+                        </label>
+
+
+                        <input
+                            type="number"
+                            class="form-control"
+                            id="mw-episode"
+                            name="mw-episode"
+                            placeholder="1"
+                            min="0"
+                            step="1"
+                            required
+                        >
+
+                    </div>
+
+                </div>
+
+
+                <button
+                    type="submit"
+                    class="btn btn-primary"
+                >
+
+                    <i
+                        class="fas fa-play"
+                        aria-hidden="true"
+                    ></i>
+
+                    Generate MW Embed
+
+                </button>
+
+            </form>
+
+        </div>
+
+
+        <!-- Hidden until generated -->
+
+        <div
+            id="mw-embed-result"
+            class="mt-4"
+            style="display:none;"
+        >
+
+            <h3>
+
+                <i
+                    class="fas fa-code"
+                    aria-hidden="true"
+                ></i>
+
+                Generated MW Embed Code
+
+            </h3>
+
+
+            <div
+                class="code-block"
+                id="mw-embed-code"
+            ></div>
+
+
+            <div class="copy-row">
+
+                <button
+                    class="btn btn-secondary"
+                    id="mw-copy-btn"
+                    type="button"
+                >
+
+                    <i
+                        class="fas fa-copy"
+                        aria-hidden="true"
+                    ></i>
+
+                    Copy MW Code
+
+                </button>
+
+
+                <a
+                    class="btn btn-secondary"
+                    id="mw-open-embed-link"
+                    href="#"
+                    target="_blank"
+                    rel="noopener"
+                >
+
+                    <i
+                        class="fas fa-up-right-from-square"
+                        aria-hidden="true"
+                    ></i>
+
+                    Open MW Link
+
+                </a>
+
+
+                <button
+                    class="btn btn-secondary"
+                    id="mw-next-btn"
+                    type="button"
+                >
+
+                    <i
+                        class="fas fa-forward"
+                        aria-hidden="true"
+                    ></i>
+
+                    Send Next Episode
+
+                </button>
+
+
+                <button
+                    class="btn btn-secondary"
+                    id="mw-prev-btn"
+                    type="button"
+                >
+
+                    <i
+                        class="fas fa-backward"
+                        aria-hidden="true"
+                    ></i>
+
+                    Send Previous Episode
+
+                </button>
+
+
+                <button
+                    class="btn btn-secondary"
+                    id="mw-play-btn"
+                    type="button"
+                >
+
+                    <i
+                        class="fas fa-play"
+                        aria-hidden="true"
+                    ></i>
+
+                    Send Play
+
+                </button>
+
+
+                <button
+                    class="btn btn-secondary"
+                    id="mw-pause-btn"
+                    type="button"
+                >
+
+                    <i
+                        class="fas fa-pause"
+                        aria-hidden="true"
+                    ></i>
+
+                    Send Pause
+
+                </button>
+
+            </div>
+
+
+            <h3 class="mt-4">
+
+                <i
+                    class="fas fa-tv"
+                    aria-hidden="true"
+                ></i>
+
+                MW Live Preview
+
+            </h3>
+
+
+            <div class="embed-container">
+
+                <iframe
+                    id="mw-preview-frame"
+                    title="SupaPlay MW ArtPlayer embed preview"
+                    src="about:blank"
+                    allow="autoplay; fullscreen; picture-in-picture"
+                    allowfullscreen
+                ></iframe>
+
+            </div>
+
+
+            <h3 class="mt-4">
+
+                <i
+                    class="fas fa-message"
+                    aria-hidden="true"
+                ></i>
+
+                MW Iframe Events
+
+            </h3>
+
+
+            <div
+                class="code-block events-log"
+                id="mw-events-log"
+            >
+                Waiting for iframe events...
+            </div>
+
+        </div>
+
+    </section>
+
+<!-- =========================
+     NEW EMBED GENERATOR
+========================= -->
+<!-- =========================
+     ANI EMBED GENERATOR
+========================== -->
+
+<section
+    class="api-section"
+    id="ani-embed-test"
+    aria-labelledby="ani-test-title"
+>
+
+    <h2 id="ani-test-title">
+
+        <i
+            class="fas fa-database"
+            aria-hidden="true"
+        ></i>
+
+        Test Ani Anime Embed
+
+    </h2>
+
+    <p class="muted">
+
+        Enter an AniList ID, episode number,
+        and language to generate the new
+        Ani endpoint embed.
+
+    </p>
+
+    <div class="test-form">
+
+        <form id="ani-embed-form">
+
+            <!-- AniList ID -->
+
+            <div class="mb-3">
+
+                <label
+                    for="ani-anilist-id"
+                    class="form-label"
+                >
+                    AniList ID
+                </label>
+
+                <input
+                    type="number"
+                    class="form-control"
+                    id="ani-anilist-id"
+                    name="ani-anilist-id"
+                    placeholder="21"
+                    min="1"
+                    step="1"
+                    autocomplete="off"
+                    required
+                >
+
+            </div>
+
+
+            <!-- Episode -->
+
+            <div class="mb-3">
+
+                <label
+                    for="ani-episode"
+                    class="form-label"
+                >
+                    Episode Number
+                </label>
+
+                <input
+                    type="number"
+                    class="form-control"
+                    id="ani-episode"
+                    name="ani-episode"
+                    placeholder="2"
+                    min="1"
+                    step="1"
+                    autocomplete="off"
+                    required
+                >
+
+            </div>
+
+
+            <!-- Language -->
+
+            <div class="mb-3">
+
+                <label
+                    for="ani-language"
+                    class="form-label"
+                >
+                    Language
+                </label>
+
+                <select
+                    class="form-select"
+                    id="ani-language"
+                    name="ani-language"
+                    required
+                >
+
+                    <option
+                        value="sub"
+                        selected
+                    >
+                        Sub
+                    </option>
+
+                    <option value="dub">
+                        Dub
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+
+                <i
+                    class="fas fa-play"
+                    aria-hidden="true"
+                ></i>
+
+                Generate Ani Embed
+
+            </button>
+
+        </form>
+
+    </div>
+
+
+    <!-- Result -->
+
+    <div
+        id="ani-embed-result"
+        class="mt-4"
+        style="display:none;"
+    >
+
+        <h3>
+
+            <i
+                class="fas fa-code"
+                aria-hidden="true"
+            ></i>
+
+            Generated Ani Embed Code
+
+        </h3>
+
+
+        <div
+            class="code-block"
+            id="ani-embed-code"
+        ></div>
+
+
+        <div class="copy-row">
+
+            <button
+                class="btn btn-secondary"
+                id="ani-copy-btn"
+                type="button"
+            >
+
+                <i
+                    class="fas fa-copy"
+                    aria-hidden="true"
+                ></i>
+
+                Copy Code
+
+            </button>
+
+
+            <a
+                class="btn btn-secondary"
+                id="ani-open-embed-link"
+                href="#"
+                target="_blank"
+                rel="noopener"
+            >
+
+                <i
+                    class="fas fa-up-right-from-square"
+                    aria-hidden="true"
+                ></i>
+
+                Open Link
+
+            </a>
+
+        </div>
+
+
+        <h3 class="mt-4">
+
+            <i
+                class="fas fa-tv"
+                aria-hidden="true"
+            ></i>
+
+            Live Preview
+
+        </h3>
+
+
+        <div class="embed-container">
+
+            <iframe
+                id="ani-preview-frame"
+                title="SupaPlay AniList anime episode embed preview"
+                src="about:blank"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowfullscreen
+            ></iframe>
+
+        </div>
+
+    </div>
+
+</section>
+
+<section
+    class="api-section"
+    id="mal-embed-test"
+    aria-labelledby="mal-test-title"
+>
+
+    <h2 id="mal-test-title">
+
+        <i
+            class="fas fa-database"
+            aria-hidden="true"
+        ></i>
+
+        Test MAL Anime Embed
+
+    </h2>
+
+    <p class="muted">
+
+        Enter a MyAnimeList ID, episode number,
+        and language to generate the new
+        MAL endpoint embed.
+
+    </p>
+
+    <div class="test-form">
+
+        <form id="mal-embed-form">
+
+            <!-- MAL ID -->
+
+            <div class="mb-3">
+
+                <label
+                    for="mal-id"
+                    class="form-label"
+                >
+                    MyAnimeList ID
+                </label>
+
+                <input
+                    type="number"
+                    class="form-control"
+                    id="mal-id"
+                    name="mal-id"
+                    placeholder="21"
+                    min="1"
+                    step="1"
+                    autocomplete="off"
+                    required
+                >
+
+            </div>
+
+
+            <!-- Episode -->
+
+            <div class="mb-3">
+
+                <label
+                    for="mal-episode"
+                    class="form-label"
+                >
+                    Episode Number
+                </label>
+
+                <input
+                    type="number"
+                    class="form-control"
+                    id="mal-episode"
+                    name="mal-episode"
+                    placeholder="2"
+                    min="1"
+                    step="1"
+                    autocomplete="off"
+                    required
+                >
+
+            </div>
+
+
+            <!-- Language -->
+
+            <div class="mb-3">
+
+                <label
+                    for="mal-language"
+                    class="form-label"
+                >
+                    Language
+                </label>
+
+                <select
+                    class="form-select"
+                    id="mal-language"
+                    name="mal-language"
+                    required
+                >
+
+                    <option
+                        value="sub"
+                        selected
+                    >
+                        Sub
+                    </option>
+
+                    <option value="dub">
+                        Dub
+                    </option>
+
+                </select>
+
+            </div>
+
+
+            <button
+                type="submit"
+                class="btn btn-primary"
+            >
+
+                <i
+                    class="fas fa-play"
+                    aria-hidden="true"
+                ></i>
+
+                Generate MAL Embed
+
+            </button>
+
+        </form>
+
+    </div>
+
+
+    <!-- Result -->
+
+    <div
+        id="mal-embed-result"
+        class="mt-4"
+        style="display:none;"
+    >
+
+        <h3>
+
+            <i
+                class="fas fa-code"
+                aria-hidden="true"
+            ></i>
+
+            Generated MAL Embed Code
+
+        </h3>
+
+
+        <div
+            class="code-block"
+            id="mal-embed-code"
+        ></div>
+
+
+        <div class="copy-row">
+
+            <button
+                class="btn btn-secondary"
+                id="mal-copy-btn"
+                type="button"
+            >
+
+                <i
+                    class="fas fa-copy"
+                    aria-hidden="true"
+                ></i>
+
+                Copy Code
+
+            </button>
+
+
+            <a
+                class="btn btn-secondary"
+                id="mal-open-embed-link"
+                href="#"
+                target="_blank"
+                rel="noopener"
+            >
+
+                <i
+                    class="fas fa-up-right-from-square"
+                    aria-hidden="true"
+                ></i>
+
+                Open Link
+
+            </a>
+
+        </div>
+
+
+        <h3 class="mt-4">
+
+            <i
+                class="fas fa-tv"
+                aria-hidden="true"
+            ></i>
+
+            Live Preview
+
+        </h3>
+
+
+        <div class="embed-container">
+
+            <iframe
+                id="mal-preview-frame"
+                title="SupaPlay MyAnimeList anime episode embed preview"
+                src="about:blank"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowfullscreen
+            ></iframe>
+
+        </div>
+
+    </div>
+
+</section>
+
+    <!-- =========================
+         PARENT CONTROL
+    ========================== -->
+
+    <section
+        class="api-section"
+        aria-labelledby="mw-control-title"
+    >
+
+        <h2 id="mw-control-title">
+
+            <i
+                class="fas fa-code"
+                aria-hidden="true"
+            ></i>
+
+            MW Parent ↔ Iframe Control Example
+
+        </h2>
+
+
+        <p class="muted">
+
+            The MW iframe can send events to the
+            parent page and receive commands from
+            the parent page.
+
+        </p>
+
+
+        <div class="code-block">&lt;iframe
+id="supaplayFrame"
+src="https://supaplay.fun/mw/jujutsu-kaisen-english-KD0jSM9ot5/1/1"
+width="100%"
+height="500"
+frameborder="0"
+scrolling="no"
+allow="autoplay; fullscreen; picture-in-picture"
+allowfullscreen&gt;
+&lt;/iframe&gt;
+
+&lt;script&gt;
+
+const iframe =
+    document.getElementById("supaplayFrame");
+
+window.addEventListener(
+    "message",
+    function(event) {
+
+        const data =
+            event.data || {};
+
+        if (data.type === "episodeChange") {
+
+            console.log(
+                "Episode changed:",
+                data.season,
+                data.episode,
+                data.detailPath
+            );
+
+        }
+
+        if (data.type === "languageChange") {
+
+            console.log(
+                "Language changed:",
+                data.language,
+                data.detailPath
+            );
+
+        }
+
+        if (data.type === "playbackEnded") {
+
+            console.log(
+                "Playback ended:",
+                data
+            );
+
+        }
+
+    }
+);
+
+iframe.contentWindow.postMessage(
+    {
+        type: "loadEpisode",
+        season: 2,
+        episode: 5
+    },
+    "*"
+);
+
+iframe.contentWindow.postMessage(
+    {
+        type: "nextEpisode"
+    },
+    "*"
+);
+
+iframe.contentWindow.postMessage(
+    {
+        type: "changeLanguage",
+        subjectId: "134079758618484744",
+        detailPath:
+            "jujutsu-kaisen-english-gCBS4ln5U9",
+        language: "Original Audio"
+    },
+    "*"
+);
+
+iframe.contentWindow.postMessage(
+    {
+        type: "play"
+    },
+    "*"
+);
+
+&lt;/script&gt;</div>
+
+    </section>
+
+
+    <!-- =========================
+         FAQ
+    ========================== -->
+
+    <section
+        class="api-section"
+        aria-labelledby="faq-title"
+    >
+
+        <h2 id="faq-title">
+
+            <i
+                class="fas fa-question-circle"
+                aria-hidden="true"
+            ></i>
+
+            FAQ
+
+        </h2>
+
+
+        <h3>
+            What is SupaPlay?
+        </h3>
+
+        <p class="muted">
+
+            SupaPlay is an anime video embed API
+            that lets developers place anime episodes,
+            movies, and MW ArtPlayer players on a
+            website using simple iframe URLs.
+
+        </p>
+
+
+        <h3>
+            Does SupaPlay support sub and dub?
+        </h3>
+
+        <p class="muted">
+
+            Yes.
+
+            Use <code>sub</code>
+            for subtitled episodes and
+            <code>dub</code>
+            for dubbed episodes on the
+            classic stream endpoint.
+
+        </p>
+
+
+        <h3>
+            What is the MW endpoint?
+        </h3>
+
+        <p class="muted">
+
+            The MW endpoint uses a
+            <code>detailPath</code>
+            instead of a direct episode player ID.
+
+            It loads title data, subject ID,
+            streams, captions, seasons, episodes,
+            and language variants inside the iframe.
+
+        </p>
+
+
+        <h3>
+            Can I use Anikoto or HiAnime episode IDs?
+        </h3>
+
+        <p class="muted">
+
+            Yes.
+
+            If you scraped or collected IDs from
+            Anikoto or HiAnime-style episode libraries,
+            SupaPlay can use the same type of
+            episode/player ID format.
+
+        </p>
+<h3>
+    What is the Ani endpoint?
+</h3>
+
+<p class="muted">
+
+    The Ani endpoint allows you to embed an anime
+    episode using its AniList ID, episode number,
+    and language type.
+
+    The format is:
+
+    <code>
+        /stream/ani/{anilist_id}/{episode_number}/{language}
+    </code>
+
+</p>
+
+
+
+    </section>
+
+
+    <!-- =========================
+         FOOTER
+    ========================== -->
+
+    <footer class="footer">
+
+        <p>
+            SupaPlay anime video embed API wrapper.
+        </p>
+
+        <p>
+
+            <a
+                href="https://animapotv.fun/"
+                target="_blank"
+                rel="noopener noreferrer"
+            >
+                Watch anime on AnimapoTV
+            </a>
+
+        </p>
+
+    </footer>
+
+
+</main>
+
+<script>
+
+    const SUPAPLAY_BASE = "https://supaplay.fun";
+
+
+    /*
+    ==========================================
+    BUILD IFRAME HTML
+    ==========================================
+    */
+
+    function buildIframeCode(embedUrl) {
+
+        return (
+            '<iframe src="' +
+            embedUrl +
+            '" width="100%" height="500" ' +
+            'frameborder="0" scrolling="no" ' +
+            'allow="autoplay; fullscreen; picture-in-picture" ' +
+            'allowfullscreen></iframe>'
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    COPY TEXT
+    ==========================================
+    */
+
+    async function copyText(text) {
+
+        try {
+
+            await navigator.clipboard.writeText(text);
+
+        } catch {
+
+            const textarea =
+                document.createElement("textarea");
+
+            textarea.value = text;
+
+            textarea.setAttribute(
+                "readonly",
+                "readonly"
+            );
+
+            textarea.style.position = "absolute";
+            textarea.style.left = "-9999px";
+
+            document.body.appendChild(textarea);
+
+            textarea.select();
+
+            document.execCommand("copy");
+
+            textarea.remove();
+
+        }
+
+    }
+
+
+    /*
+    ==========================================
+    CLEAN DETAIL PATH
+    ==========================================
+    */
+
+    function cleanDetailPath(value) {
+
+        return String(value || "")
+            .trim()
+            .replace(/^\/+/, "")
+            .replace(/\/+$/, "");
+
+    }
+
+
+    /*
+    ==========================================
+    CLASSIC EMBED URL
+    ==========================================
+    */
+
+    function buildEmbedUrl(
+        episodeId,
+        language
+    ) {
+
+        return (
+            SUPAPLAY_BASE +
+            "/stream/s-2/" +
+            encodeURIComponent(episodeId) +
+            "/" +
+            encodeURIComponent(language)
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    NEW ANI EMBED URL
+    ==========================================
+
+    Format:
+
+    /stream/ani/{anilist_id}/{episode}/{language}
+
+    Example:
+
+    /stream/ani/21/2/sub
+    */
+
+    function buildAniEmbedUrl(
+        anilistId,
+        episodeNumber,
+        language
+    ) {
+
+        return (
+            SUPAPLAY_BASE +
+            "/stream/ani/" +
+            encodeURIComponent(anilistId) +
+            "/" +
+            encodeURIComponent(episodeNumber) +
+            "/" +
+            encodeURIComponent(language)
+        );
+
+    }
+
+function buildMalEmbedUrl(
+    malId,
+    episodeNumber,
+    language
+) {
+
+    return (
+        SUPAPLAY_BASE +
+        "/stream/mal/" +
+        encodeURIComponent(malId) +
+        "/" +
+        encodeURIComponent(episodeNumber) +
+        "/" +
+        encodeURIComponent(language)
+    );
+
+}
+    /*
+    ==========================================
+    MW EMBED URL
+    ==========================================
+    */
+
+    function buildMwEmbedUrl(
+        detailPath,
+        season,
+        episode
+    ) {
+
+        const cleanPath =
+            cleanDetailPath(detailPath);
+
+        const safeSeason =
+            Number(season);
+
+        const safeEpisode =
+            Number(episode);
+
+
+        /*
+        Movie
+        */
+
+        if (
+            safeSeason === 0 &&
+            safeEpisode === 0
+        ) {
+
+            return (
+                SUPAPLAY_BASE +
+                "/mw/" +
+                encodeURIComponent(cleanPath)
+            );
+
+        }
+
+
+        /*
+        Episode
+        */
+
+        return (
+            SUPAPLAY_BASE +
+            "/mw/" +
+            encodeURIComponent(cleanPath) +
+            "/" +
+            encodeURIComponent(
+                String(safeSeason)
+            ) +
+            "/" +
+            encodeURIComponent(
+                String(safeEpisode)
+            )
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    TABS
+    ==========================================
+    */
+
+    document
+        .querySelectorAll(".tab-btn")
+        .forEach(function(button) {
+
+            button.addEventListener(
+                "click",
+                function() {
+
+                    const target =
+                        button.getAttribute(
+                            "data-tab"
+                        );
+
+
+                    document
+                        .querySelectorAll(
+                            ".tab-btn"
+                        )
+                        .forEach(
+                            function(btn) {
+
+                                btn.classList.remove(
+                                    "active"
+                                );
+
+                            }
+                        );
+
+
+                    document
+                        .querySelectorAll(
+                            ".tab-panel"
+                        )
+                        .forEach(
+                            function(panel) {
+
+                                panel.classList.remove(
+                                    "active"
+                                );
+
+                            }
+                        );
+
+
+                    button.classList.add(
+                        "active"
+                    );
+
+
+                    const panel =
+                        document.getElementById(
+                            target
+                        );
+
+
+                    if (panel) {
+
+                        panel.classList.add(
+                            "active"
+                        );
+
+                    }
+
+                }
+            );
+
+        });
+
+
+    /*
+    ==========================================
+    CLASSIC EMBED GENERATOR
+    ==========================================
+    */
+
+    const embedForm =
+        document.getElementById(
+            "embed-form"
+        );
+
+
+    if (embedForm) {
+
+        embedForm.addEventListener(
+            "submit",
+            function(e) {
+
+                e.preventDefault();
+
+
+                const episodeId =
+                    document
+                        .getElementById(
+                            "episode-id"
+                        )
+                        .value
+                        .trim()
+                        .replace(
+                            /[^0-9]/g,
+                            ""
+                        );
+
+
+                const language =
+                    document
+                        .getElementById(
+                            "language"
+                        )
+                        .value === "dub"
+                            ? "dub"
+                            : "sub";
+
+
+                if (!episodeId) {
+
+                    alert(
+                        "Please enter a valid episode embed ID."
+                    );
+
+                    return;
+
+                }
+
+
+                const embedUrl =
+                    buildEmbedUrl(
+                        episodeId,
+                        language
+                    );
+
+
+                const embedCode =
+                    buildIframeCode(
+                        embedUrl
+                    );
+
+
+                document
+                    .getElementById(
+                        "embed-code"
+                    )
+                    .textContent =
+                    embedCode;
+
+
+                document
+                    .getElementById(
+                        "preview-frame"
+                    )
+                    .src =
+                    embedUrl;
+
+
+                document
+                    .getElementById(
+                        "open-embed-link"
+                    )
+                    .href =
+                    embedUrl;
+
+
+                document
+                    .getElementById(
+                        "embed-result"
+                    )
+                    .style.display =
+                    "block";
+
+
+                document
+                    .getElementById(
+                        "embed-result"
+                    )
+                    .scrollIntoView({
+
+                        behavior: "smooth",
+                        block: "start"
+
+                    });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    CLASSIC COPY
+    ==========================================
+    */
+
+    const copyBtn =
+        document.getElementById(
+            "copy-btn"
+        );
+
+
+    if (copyBtn) {
+
+        copyBtn.addEventListener(
+            "click",
+            async function() {
+
+                const code =
+                    document
+                        .getElementById(
+                            "embed-code"
+                        )
+                        .textContent;
+
+
+                await copyText(code);
+
+
+                const originalText =
+                    this.innerHTML;
+
+
+                this.innerHTML =
+                    '<i class="fas fa-check" aria-hidden="true"></i> Copied!';
+
+
+                setTimeout(
+                    () => {
+
+                        this.innerHTML =
+                            originalText;
+
+                    },
+                    1800
+                );
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    ANI EMBED GENERATOR
+    ==========================================
+    */
+
+    const aniForm =
+        document.getElementById(
+            "ani-embed-form"
+        );
+
+
+    if (aniForm) {
+
+        aniForm.addEventListener(
+            "submit",
+            function(e) {
+
+                e.preventDefault();
+
+
+                /*
+                Get AniList ID
+                */
+
+                const anilistId =
+                    document
+                        .getElementById(
+                            "ani-anilist-id"
+                        )
+                        .value
+                        .trim()
+                        .replace(
+                            /[^0-9]/g,
+                            ""
+                        );
+
+
+                /*
+                Get Episode
+                */
+
+                const episodeNumber =
+                    document
+                        .getElementById(
+                            "ani-episode"
+                        )
+                        .value
+                        .trim()
+                        .replace(
+                            /[^0-9]/g,
+                            ""
+                        );
+
+
+                /*
+                Get Language
+                */
+
+                const language =
+                    document
+                        .getElementById(
+                            "ani-language"
+                        )
+                        .value === "dub"
+                            ? "dub"
+                            : "sub";
+
+
+                /*
+                Validate AniList ID
+                */
+
+                if (!anilistId) {
+
+                    alert(
+                        "Please enter a valid AniList ID."
+                    );
+
+                    return;
+
+                }
+
+
+                /*
+                Validate Episode
+                */
+
+                if (
+                    !episodeNumber ||
+                    Number(episodeNumber) < 1
+                ) {
+
+                    alert(
+                        "Please enter a valid episode number."
+                    );
+
+                    return;
+
+                }
+
+
+                /*
+                Build new Ani URL
+
+                Example:
+
+                https://supaplay.fun/stream/ani/21/2/sub
+                */
+
+                const embedUrl =
+                    buildAniEmbedUrl(
+                        anilistId,
+                        episodeNumber,
+                        language
+                    );
+
+
+                /*
+                Build iframe code
+                */
+
+                const embedCode =
+                    buildIframeCode(
+                        embedUrl
+                    );
+
+
+                /*
+                Show generated code
+                */
+
+                document
+                    .getElementById(
+                        "ani-embed-code"
+                    )
+                    .textContent =
+                    embedCode;
+
+
+                /*
+                Load preview
+                */
+
+                document
+                    .getElementById(
+                        "ani-preview-frame"
+                    )
+                    .src =
+                    embedUrl;
+
+
+                /*
+                Open link
+                */
+
+                document
+                    .getElementById(
+                        "ani-open-embed-link"
+                    )
+                    .href =
+                    embedUrl;
+
+
+                /*
+                Show result
+                */
+
+                document
+                    .getElementById(
+                        "ani-embed-result"
+                    )
+                    .style.display =
+                    "block";
+
+
+                /*
+                Scroll to result
+                */
+
+                document
+                    .getElementById(
+                        "ani-embed-result"
+                    )
+                    .scrollIntoView({
+
+                        behavior: "smooth",
+                        block: "start"
+
+                    });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    ANI COPY
+    ==========================================
+    */
+
+    const aniCopyBtn =
+        document.getElementById(
+            "ani-copy-btn"
+        );
+
+
+    if (aniCopyBtn) {
+
+        aniCopyBtn.addEventListener(
+            "click",
+            async function() {
+
+                const code =
+                    document
+                        .getElementById(
+                            "ani-embed-code"
+                        )
+                        .textContent;
+
+
+                await copyText(code);
+
+
+                const originalText =
+                    this.innerHTML;
+
+
+                this.innerHTML =
+                    '<i class="fas fa-check" aria-hidden="true"></i> Copied!';
+
+
+                setTimeout(
+                    () => {
+
+                        this.innerHTML =
+                            originalText;
+
+                    },
+                    1800
+                );
+
+            }
+        );
+
+    }
+
+const malCopyBtn =
+    document.getElementById(
+        "mal-copy-btn"
+    );
+
+if (malCopyBtn) {
+
+    malCopyBtn.addEventListener(
+        "click",
+        async function() {
+
+            const code =
+                document
+                    .getElementById(
+                        "mal-embed-code"
+                    )
+                    .textContent;
+
+            await copyText(code);
+
+            const originalText =
+                this.innerHTML;
+
+            this.innerHTML =
+                '<i class="fas fa-check" aria-hidden="true"></i> Copied!';
+
+            setTimeout(
+                () => {
+
+                    this.innerHTML =
+                        originalText;
+
+                },
+                1800
+            );
+
+        }
+    );
+
+}
+    /*
+    ==========================================
+    MW EVENT LOG
+    ==========================================
+    */
+
+    function appendMwEventLog(data) {
+
+        const log =
+            document.getElementById(
+                "mw-events-log"
+            );
+
+        if (!log) {
+            return;
+        }
+
+
+        const time =
+            new Date().toLocaleTimeString();
+
+
+        const line =
+            "[" +
+            time +
+            "] " +
+            JSON.stringify(
+                data,
+                null,
+                2
+            );
+
+
+        if (
+            log.textContent.trim() ===
+            "Waiting for iframe events..."
+        ) {
+
+            log.textContent =
+                line;
+
+            return;
+
+        }
+
+
+        log.textContent =
+            line +
+            "\n\n" +
+            log.textContent;
+
+    }
+
+
+    /*
+    ==========================================
+    SEND MESSAGE TO MW IFRAME
+    ==========================================
+    */
+
+    function sendMwMessage(payload) {
+
+        const iframe =
+            document.getElementById(
+                "mw-preview-frame"
+            );
+
+
+        if (
+            !iframe ||
+            !iframe.contentWindow
+        ) {
+
+            alert(
+                "MW iframe is not ready."
+            );
+
+            return;
+
+        }
+
+
+        const result =
+            document.getElementById(
+                "mw-embed-result"
+            );
+
+
+        if (
+            !result ||
+            result.style.display === "none"
+        ) {
+
+            alert(
+                "Generate the MW embed first."
+            );
+
+            return;
+
+        }
+
+
+        iframe.contentWindow.postMessage(
+            payload,
+            "*"
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW EMBED GENERATOR
+    ==========================================
+    */
+
+    const mwForm =
+        document.getElementById(
+            "mw-embed-form"
+        );
+
+
+    if (mwForm) {
+
+        mwForm.addEventListener(
+            "submit",
+            function(e) {
+
+                e.preventDefault();
+
+
+                const detailPath =
+                    cleanDetailPath(
+                        document
+                            .getElementById(
+                                "mw-detail-path"
+                            )
+                            .value
+                    );
+
+
+                const season =
+                    Number(
+                        document
+                            .getElementById(
+                                "mw-season"
+                            )
+                            .value
+                    );
+
+
+                const episode =
+                    Number(
+                        document
+                            .getElementById(
+                                "mw-episode"
+                            )
+                            .value
+                    );
+
+
+                if (!detailPath) {
+
+                    alert(
+                        "Please enter a valid MW detailPath."
+                    );
+
+                    return;
+
+                }
+
+
+                if (
+                    !Number.isFinite(season) ||
+                    season < 0 ||
+                    !Number.isFinite(episode) ||
+                    episode < 0
+                ) {
+
+                    alert(
+                        "Please enter valid season and episode numbers."
+                    );
+
+                    return;
+
+                }
+
+
+                const embedUrl =
+                    buildMwEmbedUrl(
+                        detailPath,
+                        season,
+                        episode
+                    );
+
+
+                const embedCode =
+                    buildIframeCode(
+                        embedUrl
+                    );
+
+
+                document
+                    .getElementById(
+                        "mw-embed-code"
+                    )
+                    .textContent =
+                    embedCode;
+
+
+                document
+                    .getElementById(
+                        "mw-preview-frame"
+                    )
+                    .src =
+                    embedUrl;
+
+
+                document
+                    .getElementById(
+                        "mw-open-embed-link"
+                    )
+                    .href =
+                    embedUrl;
+
+
+                document
+                    .getElementById(
+                        "mw-embed-result"
+                    )
+                    .style.display =
+                    "block";
+
+
+                document
+                    .getElementById(
+                        "mw-embed-result"
+                    )
+                    .scrollIntoView({
+
+                        behavior: "smooth",
+                        block: "start"
+
+                    });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW COPY
+    ==========================================
+    */
+
+    const mwCopyBtn =
+        document.getElementById(
+            "mw-copy-btn"
+        );
+
+
+    if (mwCopyBtn) {
+
+        mwCopyBtn.addEventListener(
+            "click",
+            async function() {
+
+                const code =
+                    document
+                        .getElementById(
+                            "mw-embed-code"
+                        )
+                        .textContent;
+
+
+                await copyText(code);
+
+
+                const originalText =
+                    this.innerHTML;
+
+
+                this.innerHTML =
+                    '<i class="fas fa-check" aria-hidden="true"></i> Copied!';
+
+
+                setTimeout(
+                    () => {
+
+                        this.innerHTML =
+                            originalText;
+
+                    },
+                    1800
+                );
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW NEXT
+    ==========================================
+    */
+
+    const mwNextBtn =
+        document.getElementById(
+            "mw-next-btn"
+        );
+
+
+    if (mwNextBtn) {
+
+        mwNextBtn.addEventListener(
+            "click",
+            function() {
+
+                sendMwMessage({
+                    type: "nextEpisode"
+                });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW PREVIOUS
+    ==========================================
+    */
+
+    const mwPrevBtn =
+        document.getElementById(
+            "mw-prev-btn"
+        );
+
+
+    if (mwPrevBtn) {
+
+        mwPrevBtn.addEventListener(
+            "click",
+            function() {
+
+                sendMwMessage({
+                    type: "previousEpisode"
+                });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW PLAY
+    ==========================================
+    */
+
+    const mwPlayBtn =
+        document.getElementById(
+            "mw-play-btn"
+        );
+
+
+    if (mwPlayBtn) {
+
+        mwPlayBtn.addEventListener(
+            "click",
+            function() {
+
+                sendMwMessage({
+                    type: "play"
+                });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW PAUSE
+    ==========================================
+    */
+
+    const mwPauseBtn =
+        document.getElementById(
+            "mw-pause-btn"
+        );
+
+
+    if (mwPauseBtn) {
+
+        mwPauseBtn.addEventListener(
+            "click",
+            function() {
+
+                sendMwMessage({
+                    type: "pause"
+                });
+
+            }
+        );
+
+    }
+
+
+    /*
+    ==========================================
+    MW IFRAME EVENTS
+    ==========================================
+    */
+
+    window.addEventListener(
+        "message",
+        function(event) {
+
+            const data =
+                event.data || {};
+
+
+            if (
+                !data ||
+                typeof data !== "object"
+            ) {
+
+                return;
+
+            }
+
+
+            appendMwEventLog(data);
+
+        }
+    );
+
+</script>
+
+
+<script>
+(function () {
+    "use strict";
+
+    const BASE_URL = "https://supaplay.fun";
+    const EMBED_ORIGIN = new URL(BASE_URL).origin;
+
+    function byId(id) {
+        return document.getElementById(id);
+    }
+
+    function cleanNumeric(value, min) {
+        const n = Number.parseInt(String(value ?? "").trim(), 10);
+        if (!Number.isInteger(n) || n < min) return null;
+        return n;
+    }
+
+    function safeDetailPath(value) {
+        return String(value ?? "")
+            .trim()
+            .replace(/^\/+|\/+$/g, "")
+            .replace(/\s+/g, "-");
+    }
+
+    function buildIframeCodeSafe(url) {
+        const escaped = String(url)
+            .replace(/&/g, "&amp;")
+            .replace(/"/g, "&quot;");
+        return '<iframe src="' + escaped + '" width="100%" height="500" ' +
+            'frameborder="0" scrolling="no" ' +
+            'allow="autoplay; fullscreen; picture-in-picture" ' +
+            'allowfullscreen></iframe>';
+    }
+
+    async function copySafe(text) {
+        text = String(text || "");
+        if (!text) return false;
+
+        try {
+            if (navigator.clipboard && window.isSecureContext) {
+                await navigator.clipboard.writeText(text);
+                return true;
+            }
+        } catch (_) {}
+
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.setAttribute("readonly", "");
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        area.style.pointerEvents = "none";
+        document.body.appendChild(area);
+        area.select();
+
+        let ok = false;
+        try {
+            ok = document.execCommand("copy");
+        } catch (_) {}
+
+        area.remove();
+        return ok;
+    }
+
+    function showCopied(button, original) {
+        if (!button) return;
+        button.innerHTML =
+            '<i class="fas fa-check" aria-hidden="true"></i> Copied!';
+        button.disabled = true;
+
+        window.setTimeout(function () {
+            button.innerHTML = original;
+            button.disabled = false;
+        }, 1800);
+    }
+
+    function wireCopyButton(buttonId, codeId) {
+        const button = byId(buttonId);
+        const code = byId(codeId);
+        if (!button || !code) return;
+
+        button.addEventListener("click", async function () {
+            const original = this.innerHTML;
+            const ok = await copySafe(code.textContent);
+
+            if (ok) {
+                showCopied(this, original);
+            } else {
+                window.alert("Copy failed. Please copy the code manually.");
+            }
+        });
+    }
+
+    /*
+     * MAL EMBED GENERATOR
+     *
+     * This was missing from the original JavaScript:
+     * the MAL form existed in the HTML, but had no submit handler.
+     */
+    const malForm = byId("mal-embed-form");
+
+    if (malForm) {
+        malForm.addEventListener("submit", function (event) {
+            event.preventDefault();
+
+            const malId = cleanNumeric(
+                byId("mal-id")?.value,
+                1
+            );
+
+            const episode = cleanNumeric(
+                byId("mal-episode")?.value,
+                1
+            );
+
+            const languageSelect = byId("mal-language");
+            const language =
+                languageSelect && languageSelect.value === "dub"
+                    ? "dub"
+                    : "sub";
+
+            if (malId === null) {
+                window.alert("Please enter a valid MyAnimeList ID.");
+                byId("mal-id")?.focus();
+                return;
+            }
+
+            if (episode === null) {
+                window.alert("Please enter a valid episode number.");
+                byId("mal-episode")?.focus();
+                return;
+            }
+
+            const embedUrl =
+                BASE_URL +
+                "/stream/mal/" +
+                encodeURIComponent(String(malId)) +
+                "/" +
+                encodeURIComponent(String(episode)) +
+                "/" +
+                encodeURIComponent(language);
+
+            const embedCode = buildIframeCodeSafe(embedUrl);
+
+            const codeBox = byId("mal-embed-code");
+            const preview = byId("mal-preview-frame");
+            const openLink = byId("mal-open-embed-link");
+            const result = byId("mal-embed-result");
+
+            if (codeBox) {
+                codeBox.textContent = embedCode;
+            }
+
+            if (preview) {
+                preview.src = "about:blank";
+                window.requestAnimationFrame(function () {
+                    preview.src = embedUrl;
+                });
+            }
+
+            if (openLink) {
+                openLink.href = embedUrl;
+            }
+
+            if (result) {
+                result.style.display = "block";
+                result.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start"
+                });
+            }
+        });
+    }
+
+    /*
+     * Re-wire copy buttons through a single robust implementation.
+     * The existing handlers may also exist, so this is deliberately
+     * attached only where the page's original handler is absent.
+     */
+    wireCopyButton("mal-copy-btn", "mal-embed-code");
+
+    /*
+     * Better MW postMessage handling.
+     *
+     * The old implementation used "*" as the target origin.
+     * This version sends only to the SupaPlay origin.
+     */
+    window.supaplaySendMwMessage = function (payload) {
+        const iframe = byId("mw-preview-frame");
+        const result = byId("mw-embed-result");
+
+        if (!iframe || !iframe.contentWindow) {
+            window.alert("MW iframe is not ready.");
+            return false;
+        }
+
+        if (!result || result.style.display === "none") {
+            window.alert("Generate the MW embed first.");
+            return false;
+        }
+
+        iframe.contentWindow.postMessage(payload, EMBED_ORIGIN);
+        return true;
+    };
+
+    /*
+     * Keep the existing controls working, but route them through
+     * the safer sender above.
+     */
+    [
+        ["mw-next-btn", { type: "nextEpisode" }],
+        ["mw-prev-btn", { type: "previousEpisode" }],
+        ["mw-play-btn", { type: "play" }],
+        ["mw-pause-btn", { type: "pause" }]
+    ].forEach(function ([id, payload]) {
+        const button = byId(id);
+        if (!button) return;
+
+        button.addEventListener("click", function () {
+            window.supaplaySendMwMessage(payload);
+        });
+    });
+
+    /*
+     * Only accept iframe messages from SupaPlay.
+     * Ignore unrelated window.postMessage traffic.
+     */
+    window.addEventListener("message", function (event) {
+        if (event.origin !== EMBED_ORIGIN) {
+            return;
+        }
+
+        if (!event.data || typeof event.data !== "object") {
+            return;
+        }
+
+        const data = event.data;
+
+        if (!data.type) {
+            return;
+        }
+
+        const log = byId("mw-events-log");
+        if (!log) return;
+
+        const line =
+            "[" +
+            new Date().toLocaleTimeString() +
+            "] " +
+            JSON.stringify(data, null, 2);
+
+        if (log.textContent.trim() === "Waiting for iframe events...") {
+            log.textContent = line;
+        } else {
+            log.textContent = line + "\n\n" + log.textContent;
+        }
+    });
+
+    /*
+     * Clear broken/blank previews when the user generates a new embed.
+     */
+    ["mal-preview-frame", "ani-preview-frame", "preview-frame", "mw-preview-frame"]
+        .forEach(function (id) {
+            const iframe = byId(id);
+            if (!iframe) return;
+
+            iframe.addEventListener("error", function () {
+                console.warn("[SupaPlay] Iframe failed to load:", id);
+            });
+        });
+
+    /*
+     * Prevent accidental duplicate form submissions while an embed
+     * is being generated.
+     */
+    document.querySelectorAll("form").forEach(function (form) {
+        form.addEventListener("submit", function () {
+            const submit = form.querySelector('button[type="submit"]');
+            if (!submit) return;
+
+            window.setTimeout(function () {
+                submit.disabled = false;
+            }, 800);
+
+            submit.disabled = true;
+        });
+    });
+
+})();
+</script>
+
+</body>
+
+</html>
