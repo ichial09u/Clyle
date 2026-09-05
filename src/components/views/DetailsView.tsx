@@ -41,12 +41,14 @@ export default function DetailsView({
       // When the viewer taps an import card (search/genre), the import POST is
       // still running server-side and /api/anime can fail or come back empty —
       // poll briefly so the page fills in live instead of staying skeletal.
+      // Same for `pending: true` responses (cold cache): the hero fills from
+      // the first answer, the sections land on a warm re-poll.
       for (let attempt = 0; attempt < 24 && !cancelled; attempt++) {
         const payload = await grab();
         if (cancelled) return;
         if (payload?.anime) {
           setData({ for: initial.malId, payload });
-          return;
+          if (!payload.pending) return; // complete — sections present
         }
         await new Promise((r) => setTimeout(r, 2_500));
       }

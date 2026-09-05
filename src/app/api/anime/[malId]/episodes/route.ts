@@ -9,6 +9,14 @@ import { jikanHealthy } from "@/lib/jikan";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
 export const dynamic = "force-dynamic";
 
+// ---- 90s per-anime freshness memo (the repeat-view tax fix) ---------------
+// Re-running the AniList freshness race + inline title fill on EVERY view
+// made repeat views cost the same 2-3.5s as the first. Within 90s of the
+// last freshness run for an anime, the grid answers from local rows alone
+// (pure DB, ~10ms) — the first view stays budget-raced, later ones are free.
+const FRESHNESS_MEMO_MS = 90_000;
+const lastFreshRun = new Map<number, number>(); // malId -> last run ts
+
 /**
  * GET /api/anime/{malId}/episodes
  *
@@ -38,6 +46,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // picks the new episodes up. The grid answers from local rows at all times.
   let newlyAdded = 0;
   const freshEpisodes: number[] = [];
+  const memoHit = Date.now() - (lastFreshRun.get(malId) ?? 0) < FRESHNESS_MEMO_MS;
+  if (!memoHit) {
+    if (lastFreshRun.size > 4000) lastFreshRun.clear(); // bounded
+    lastFreshRun.set(malId, Date.now());
+  }
   const backgroundFreshness = async () => {
     try {
       const media = await freshMediaByMal(malId);
@@ -52,7 +65,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       /* background best-effort */
     }
   };
-  if (anime.airing) {
+  if (anime.airing && !memoHit) {
     let media: Awaited<ReturnType<typeof freshMediaByMal>> | null = null;
     try {
       media = await Promise.race([
@@ -94,7 +107,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // So the inline path (a) only runs while Jikan is healthy and (b) races a
   // short budget — on loss the backfill keeps running in the background and
   // the NEXT view of this page has the titles.
-  const titlePages = await episodeTitleBackfillPages(malId);
+  const titlePages = memoHit ? 0 : await episodeTitleBackfillPages(malId);
   if (titlePages > 0) {
     if (titlePages <= 2 && jikanHealthy()) {
       await Promise.race([

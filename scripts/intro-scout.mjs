@@ -292,6 +292,28 @@ async function jobDubProbe(item, bot) {
   void logFinding({ bot, title, ep, status: "dubprobe", verdict: d.verdict, chain });
 }
 
+/* ---------------- ffmpeg decode semaphore ----------------
+ * 21 logical bot lanes, but every ACTIVE job opens an ffmpeg decode
+ * (RAM-hungry: 21 concurrent decodes ≈ 3.4 GB). Cap CONCURRENT DECODES at
+ * 8 — lanes beyond that wait here, which is nearly free. This is the fix
+ * for the OOM spiral (duplicate fleets × 21 decodes killed the dev server). */
+const DECODE_SLOTS = Math.max(1, parseInt(opt("decode-slots", "8"), 10) || 8);
+let activeDecodes = 0;
+const decodeWaiters = [];
+async function acquireDecodeSlot() {
+  if (activeDecodes < DECODE_SLOTS) {
+    activeDecodes++;
+    return;
+  }
+  await new Promise((res) => decodeWaiters.push(res));
+  activeDecodes++;
+}
+function releaseDecodeSlot() {
+  activeDecodes--;
+  const next = decodeWaiters.shift();
+  if (next) next();
+}
+
 /* ---------------- worker pool ---------------- */
 
 const doneThisSession = new Set(); // malId/ep already reported — skip on later sweeps
@@ -327,7 +349,16 @@ async function runQueue(items, lanes) {
         // from opening their streams on the same beat (thundering herd ->
         // provider rate limiter -> "no audio" bursts)
         const jitter = new Promise((r) => setTimeout(r, Math.random() * 4_500));
-        Promise.all([jitter, job]).then(([r]) => done(r)).catch(async (err) => {
+        // decode gate: hold one of DECODE_SLOTS slots for the actual work
+        const runJob = async () => {
+          await acquireDecodeSlot();
+          try {
+            return await job;
+          } finally {
+            releaseDecodeSlot();
+          }
+        };
+        Promise.all([jitter, runJob()]).then(([r]) => done(r)).catch(async (err) => {
           stats.error++;
           const malId = item.malId, ep = item.kind === "establish" ? item.epA : item.ep;
           log(`${bot} ERROR ${item.title} [${malId}] ep${ep}: ${String(err).slice(0, 120)}`);

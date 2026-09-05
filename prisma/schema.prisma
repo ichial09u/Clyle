@@ -321,6 +321,30 @@ model ScoutFinding {
   @@index([createdAt])
 }
 
+// Bug-patrol fleet findings. The 24/7 patrol bots crawl the site like a real
+// user — every API route (status/shape/latency), stream resolution for
+// sampled animes (sub + dub), data-consistency rules over the DB (invalid
+// intro intervals, dub-claim contradictions, orphaned rows), and poster art
+// reachability. Each distinct bug is one row, deduped by (kind, targetKey):
+// re-observations bump `count` + `lastSeen` instead of spamming new rows, and
+// a `fixed` finding that gets re-observed REOPENS automatically (the fix
+// regressed). Triage: status open -> fix -> mark fixed (via POST).
+model BugReport {
+  id        Int      @id @default(autoincrement())
+  kind      String   // "api-error" | "api-slow" | "api-shape" | "page-broken" | "stream-broken" | "dub-claim-mismatch" | "data-consistency" | "art-broken"
+  targetKey String   // stable dedup key, e.g. "GET /api/home" or "stream/malId=21/ep=1/lang=dub"
+  severity  Int      @default(2) // 1 = user-facing breakage, 2 = degraded, 3 = hygiene
+  detail    String?  // latest observation (message, latency, counts)
+  status    String   @default("open") // open | fixed | ignored
+  count     Int      @default(1) // how many sweeps re-observed it
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @updatedAt
+
+  @@unique([kind, targetKey])
+  @@index([status, severity])
+  @@index([lastSeen])
+}
+
 // Community comment on an anime (shows nickname + avatar snapshot at post time).
 // Supports one level of replies (parentId -> parent comment) and likes
 // (likedBy = JSON array of userIds; count = array length, so double-likes are

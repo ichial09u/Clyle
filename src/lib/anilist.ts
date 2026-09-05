@@ -375,6 +375,52 @@ export async function mediaByMal(
   return data?.Media ?? null;
 }
 
+/**
+ * Cache-only peek (memory, then disk) — answers INSTANTLY, never touches the
+ * network. Returns the cached media even when its TTL has expired (the normal
+ * readers' stale-while-revalidate keeps it fresh); null when we have never
+ * seen this anime.
+ *
+ * The details route uses this so its latency is independent of AniList: a
+ * cold-cache detail page answers immediately with `pending: true` while a
+ * background mediaByMal() call warms the cache for the re-poll.
+ */
+export async function peekMediaByMal(malId: number): Promise<AniListMedia | null> {
+  try {
+    const key = cacheKey(MEDIA_FULL_QUERY, { idMal: malId });
+    const hit = cache.get(key);
+    if (hit) return (hit.data as MediaResponse)?.Media ?? null;
+    const entry = await diskRead(key);
+    if (entry) {
+      cache.set(key, entry); // adopt into memory for later readers
+      return (entry.data as MediaResponse)?.Media ?? null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Authoritative "this MAL id is not an anime" probe — true when AniList
+ * ANSWERED "Not Found" for the id (its idMal mapping covers every MAL anime,
+ * so a Not Found means manga/garbage id), false when found OR when the
+ * network itself failed (must not be treated as proof of anything).
+ *
+ * The details route uses this to negative-memo garbage ids safely: a real
+ * anime whose AniList fetch merely hiccuped never gets 404ed.
+ */
+export async function anilistMalIdNotFound(malId: number): Promise<boolean> {
+  try {
+    const data = await rawRequest<MediaResponse>(MEDIA_FULL_QUERY, { idMal: malId }, 1);
+    return !data?.Media;
+  } catch (err) {
+    // permanent = AniList answered: "GraphQL: Not Found" (or an endpoint 404).
+    // Anything else (429/5xx/timeout) is transient — NOT proof.
+    return /GraphQL:|-> 404/.test(String(err));
+  }
+}
+
 /** Lightweight fresh lookup — episode counts & airing state only. */
 export async function freshMediaByMal(malId: number): Promise<AniListMedia | null> {
   const data = await anilist<MediaResponse>(MEDIA_FRESH_QUERY, { idMal: malId }, { fresh: true, retries: 1 });

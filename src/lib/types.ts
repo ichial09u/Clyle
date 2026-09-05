@@ -85,6 +85,9 @@ export interface DetailsPayload {
   anime: AnimeLite;
   otherSeasons: RelatedCard[];
   similar: RelatedCard[];
+  /** true = sections are still filling server-side (cold cache / import) —
+   *  the client re-polls; the hero data in `anime` is already complete. */
+  pending?: boolean;
 }
 
 export interface SearchResult {
