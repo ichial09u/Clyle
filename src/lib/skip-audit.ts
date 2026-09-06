@@ -15,6 +15,9 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
  *                anime's median interval applies
  *   live       — the live AniSkip tier has it (cached from a probe or an
  *                earlier open)
+ *   skipdb     — the SkipDB (skipdb.tv) fill table covers this anime —
+ *                the fallback source for shows AniSkip doesn't carry
+ *                (HxH 2011, Code Geass R2, Oshi no Ko, Naruto Shippuden…)
  *   crowd      — viewers' scrub medians taught the app where the OP ends
  *   na         — no button BY DESIGN: non-TV content (movies, music,
  *                ONA/OVA/specials), TV episodes longer than 30 min (no
@@ -34,7 +37,7 @@ import { skipCoverage, prefetchSkipTimes } from "@/lib/skip-times";
 
 export interface SkipAuditEpisode {
   ep: number;
-  source: "scout" | "exact" | "consensus" | "live" | "crowd" | "na" | "uncovered";
+  source: "scout" | "exact" | "consensus" | "skipdb" | "live" | "crowd" | "na" | "uncovered";
   introEnd: number | null;
 }
 
@@ -55,6 +58,7 @@ export interface SkipAuditReport {
     scout: number;
     exact: number;
     consensus: number;
+    skipdb: number;
     live: number;
     crowd: number;
     na: number;
@@ -72,7 +76,7 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
     orderBy: { popularity: "asc" },
   });
 
-  const totals = { anime: animes.length, sampled: 0, scout: 0, exact: 0, consensus: 0, live: 0, crowd: 0, na: 0, uncovered: 0 };
+  const totals = { anime: animes.length, sampled: 0, scout: 0, exact: 0, consensus: 0, skipdb: 0, live: 0, crowd: 0, na: 0, uncovered: 0 };
   const uncoveredList: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
   const rows: SkipAuditRow[] = [];
 

@@ -1,0 +1,83 @@
+[
+  {
+    "url": "https://www.reddit.com/r/jellyfin/comments/1qml244/introoutro_skip_database",
+    "name": "Intro-outro skip database : r/jellyfin",
+    "snippet": "I am proposing the creation of a global, crowdsourced repository for intro and recap timecodes . The Vision: Centralized API: A database mapped ... Read more",
+    "host_name": "www.reddit.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/jonbarrow/open-anime-timestamps",
+    "name": "jonbarrow/open-anime-timestamps: database and scraper",
+    "snippet": "Open Anime Timestamps is an open source tool for building a database of opening and ending theme timestamps for anime episodes.",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://jonbarrow.dev/works/open-anime-timestamps",
+    "name": "Open Anime Timestamps - Jonathan Barrow",
+    "snippet": "Open Anime Timestamps is an open source tool for building a database of opening and ending theme timestamps for anime episodes It works using acoustic ...",
+    "host_name": "jonbarrow.dev",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://skipdb.tv",
+    "name": "SkipDB - open, crowdsourced skip timestamps",
+    "snippet": "SkipDB is crowdsourced intro, recap, outro and preview timestamps for movies and TV - contributed by people, reviewed by the community, and published openly",
+    "host_name": "skipdb.tv",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://introdb.app",
+    "name": "IntroDB - Skip TV Show Intros",
+    "snippet": "IntroDB crowdsources intro timestamps for TV shows so players can skip with precision. Everything you need to skip intros.",
+    "host_name": "introdb.app",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://theintrodb.org/docs/faq",
+    "name": "FAQ - The Intro Database",
+    "snippet": "To keep our database secure, an account is required to view if media has any timestamps available. We use a mix of multiple algorithms to accept submissions ...",
+    "host_name": "theintrodb.org",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://community.firecore.com/t/support-for-theintrodb-org/58939",
+    "name": "Support for TheIntroDB.org - Suggestions",
+    "snippet": "Feb 6, 2026 — TheIntroDB as a metadata provider to automatically manage intro, recap, and outro skipping . Source: Skip intros, recaps, credits & previews. ...",
+    "host_name": "community.firecore.com",
+    "rank": 6,
+    "date": "Feb 6, 2026",
+    "favicon": ""
+  },
+  {
+    "url": "https://ai.gopubby.com/skip-intro-at-scale-how-i-built-netflixs-missing-feature-for-0-30-per-movie-12ef196bc3d8",
+    "name": "Skip Intro at Scale: How I Built Netflix's Missing Feature for",
+    "snippet": "May 26, 2025 — it processes strategically selected low-resolution segments to identify those crucial timestamps : intro end and outro start. is open source and ...",
+    "host_name": "ai.gopubby.com",
+    "rank": 7,
+    "date": "May 26, 2025",
+    "favicon": ""
+  },
+  {
+    "url": "https://discourse.stashapp.cc/t/skips-db-for-skip-intro-plugin/6402",
+    "name": "Skips-db for skip-intro plugin - Other Projects",
+    "snippet": "Mar 30, 2026 — Successor to Skip- intro database , allowing community submissions. Available as an optional plugin, to submit your custom skip_first times from ... Read more",
+    "host_name": "discourse.stashapp.cc",
+    "rank": 8,
+    "date": "Mar 30, 2026",
+    "favicon": ""
+  }
+]

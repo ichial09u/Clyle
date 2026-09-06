@@ -367,3 +367,38 @@ model Comment {
   @@index([malId, createdAt])
   @@index([parentId])
 }
+
+// SkipDB (skipdb.tv) bridge — MAL -> IMDb title mapping resolved once per
+// anime (Wikidata P4086+P345 dump, Jikan external links as backup). SkipDB
+// is keyed by IMDb ids, so this mapping is what lets the catalog use it.
+// `found=false` is a miss-cache: Jikan had no IMDb link — don't re-ask for
+// 30 days (Jikan is rate-limited to a trickle).
+model SkipDbTitle {
+  malId     Int      @id
+  imdbId    String? // "tt…" series id SkipDB understands
+  found     Boolean  @default(false) // true = imdbId resolved
+  via       String   @default("wikidata") // wikidata | jikan
+  checkedAt DateTime @default(now())
+}
+
+// SkipDB's per-episode skip segments, vendored into our DB by the backfill
+// bot from the official dump (ODbL 1.0) + the live API for fresh episodes.
+// This is the FALLBACK tier for anime AniSkip doesn't cover (HxH 2011,
+// Code Geass R2, Oshi no Ko, Naruto Shippuden, AoT…): the player only asks
+// for these when Zoko/scout/AniSkip all came up empty. Seconds, gated by the
+// same plausibility rules as every other tier — a wrong button is worse
+// than no button.
+model SkipDbFill {
+  id         String   @id @default(cuid())
+  malId      Int
+  ep         Int
+  kind       String // "op" | "ed"
+  start      Float
+  end        Float
+  confidence Float    @default(0) // SkipDB vote score, 0-1
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([malId, ep, kind])
+  @@index([malId])
+}

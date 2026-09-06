@@ -1,0 +1,74 @@
+[
+  {
+    "url": "https://github.com/al8n/skipdb",
+    "name": "SkipDB & Watermark & Txn",
+    "snippet": "Apr 24, 2024 — This repository contains two kinds of in-memory key-value database which supports both async ( async- skipdb ) and sync ( skipdb ):",
+    "host_name": "github.com",
+    "rank": 0,
+    "date": "Apr 24, 2024",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/al8n/skipdb/releases",
+    "name": "Releases · al8n/skipdb",
+    "snippet": "Apr 24, 2024 — SkipDB . An embedded, in-memory, zero-copy, ACID, MVCC, almost lock-free, and serializable snapshot isolation database engine. Read more",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "Apr 24, 2024",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/IoLanguage/SkipDB",
+    "name": "IoLanguage/SkipDB",
+    "snippet": "Apr 20, 2026 — SkipDB is a skip-list based key-value database . SkipDBM manages any number of skipdbs within the same file. The root skipdb can be accessed ... Read more",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "Apr 20, 2026",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/skiptools/skip/blob/main/README.md",
+    "name": "skip/README.md at main · skiptools/skip",
+    "snippet": "Skip is a free, open-source tool for building native iOS and Android apps from a single Swift codebase. Kotlin and Java APIs when needed.",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/SkipLabs/create-skip-service",
+    "name": "SkipLabs/create-skip-service",
+    "snippet": "A CLI tool to bootstrap Skip services with various templates. downloaded through the GitHub API , 60 unauthenticated requests per hour.",
+    "host_name": "github.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/RocketPy-Team/infinity-api",
+    "name": "RocketPy-Team/Infinity-API",
+    "snippet": "Infinity- API is a RESTful Open API and MCP server for RocketPy - Performs rocket simulations and returns simulation data Stores simulation input data in mongo- ...",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://duckdblab.org/en/post/duckdb-http-api-sql-etl",
+    "name": "DuckDB + HTTP API: From Data Collection to Analytics in One",
+    "snippet": "May 16, 2026 — Tired of writing Python scripts just to call an API, parse JSON, and analyze data? DuckDB's httpfs extension lets you do it all in pure SQL.",
+    "host_name": "duckdblab.org",
+    "rank": 6,
+    "date": "May 16, 2026",
+    "favicon": ""
+  },
+  {
+    "url": "https://octokit.github.io/routes/cache/api.github.com/v3/index.html",
+    "name": "GitHub API v3 | GitHub Developer Guide",
+    "snippet": "This describes the resources that make up the official GitHub REST API v3. If you have any problems or requests, please contact GitHub Support or GitHub Premium ... Read more",
+    "host_name": "octokit.github.io",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  }
+]

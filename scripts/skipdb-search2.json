@@ -1,0 +1,74 @@
+[
+  {
+    "url": "https://github.com/synacktraa/ani-skip",
+    "name": "synacktraa/ani-skip - GitHub",
+    "snippet": "A script to automatically skip anime opening and ending sequences, making it easier to watch your favorite shows without having to manually skip the intros",
+    "host_name": "github.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/topics/anime-api-free?o=asc&s=forks",
+    "name": "anime-api-free · GitHub Topics",
+    "snippet": "A lightning-fast serverless scraper API optimized for Vercel. Automatically extracts embedded anime streaming links, bypasses click-ads, and fetches direct ...",
+    "host_name": "github.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/aniskip/aniskip-cli",
+    "name": "GitHub - aniskip/aniskip-cli: A script that offers an automated solution",
+    "snippet": "A CLI to automatically skip anime opening and ending sequences, making it easier to watch your favorite shows without having to manually skip the intros and ...",
+    "host_name": "github.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/anime-vsub/anime-skip-9animetv",
+    "name": "anime-vsub/anime-skip-9animetv: API supports retrieving  - GitHub",
+    "snippet": "API supports retrieving anime `intro`, `outro`. Get the name , intro and outro information of the anime episode.",
+    "host_name": "github.com",
+    "rank": 3,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/Nuvio/comments/1v7wwso/update_were_submitting_intro_timestamps_to_a",
+    "name": "[Update] We're submitting intro timestamps to a proprietary database",
+    "snippet": "Jul 27, 2026 · [Update] We're submitting intro timestamps to a proprietary database - Introducing SkipDB · Open source: https://github.com/SkipDB-TV/skipdb.",
+    "host_name": "www.reddit.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/IoLanguage/SkipDB",
+    "name": "IoLanguage/SkipDB - GitHub",
+    "snippet": "Apr 20, 2026 · SkipDB is a skip-list based key-value database. SkipDBM manages any number of skipdbs within the same file. The root skipdb can be accessed ...",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/LTLA/acceptable-anime-gifs-api/blob/master/README.md",
+    "name": "README.md - LTLA/acceptable-anime-gifs-api - GitHub",
+    "snippet": "This repository implements a REST API for serving anime GIFs from the Acceptable Anime GIFs registry. The API is implemented as a Cloudflare Worker using ...",
+    "host_name": "github.com",
+    "rank": 6,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/deep-sleepy/AnimeSkipAnikku",
+    "name": "AnimeSkip for Anikku - GitHub",
+    "snippet": "A smart skip script for Anikku that automatically skips anime openings, endings, previews, and recaps by detecting chapter markers or scanning for silence.",
+    "host_name": "github.com",
+    "rank": 7,
+    "date": "",
+    "favicon": ""
+  }
+]

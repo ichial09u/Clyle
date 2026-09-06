@@ -133,7 +133,7 @@ async function expectJson(name, path, init, validate) {
     const t = audit.totals;
     console.log(
       `      skip-intro coverage: ${t.coveragePct}% of ${t.sampled} sampled episodes across ${t.anime} anime` +
-        ` (scout ${t.scout} · exact ${t.exact} · consensus ${t.consensus} · live ${t.live} · crowd ${t.crowd} · na ${t.na} · uncovered ${t.uncovered})`,
+        ` (scout ${t.scout} · exact ${t.exact} · consensus ${t.consensus} · skipdb ${t.skipdb} · live ${t.live} · crowd ${t.crowd} · na ${t.na} · uncovered ${t.uncovered})`,
     );
   }
 

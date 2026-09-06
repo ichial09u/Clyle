@@ -1,0 +1,74 @@
+[
+  {
+    "url": "https://github.com/synacktraa/ani-skip",
+    "name": "synacktraa/ani-skip",
+    "snippet": "A script to automatically skip anime opening and ending sequences, making it easier to watch your favorite shows without having to manually skip the intros and ...",
+    "host_name": "github.com",
+    "rank": 0,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://www.reddit.com/r/jellyfin/comments/1qml244/introoutro_skip_database",
+    "name": "Intro-outro skip database : r/jellyfin",
+    "snippet": "Automatic Integration: A plugin that pings the API when you start a show, skipping the intro instantly without needing local CPU-heavy analysis.",
+    "host_name": "www.reddit.com",
+    "rank": 1,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://gitsummarize.com/amvstrm/api?doc=opening-ending-skip-time-provider-aniskip",
+    "name": "Opening/Ending Skip Time Provider (AniSkip)",
+    "snippet": "Opening/Ending Skip Time Provider (AniSkip). Purpose To enhance the user's viewing experience by providing timestamps to automatically skip anime openings ...",
+    "host_name": "gitsummarize.com",
+    "rank": 2,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://discourse.stashapp.cc/t/skips-db-for-skip-intro-plugin/6402",
+    "name": "Skips-db for skip-intro plugin - Other Projects",
+    "snippet": "Successor to Skip-intro database, allowing community submissions. Available as an optional plugin, to submit your custom skip_first times from ...",
+    "host_name": "discourse.stashapp.cc",
+    "rank": 3,
+    "date": "Mar 30, 2026",
+    "favicon": ""
+  },
+  {
+    "url": "https://chromewebstore.google.com/detail/aniskip/npfcdmjgaocepmpdnmliimijgfjbgcdd",
+    "name": "Aniskip - Chrome Web Store",
+    "snippet": "Aniskip allows you to skip over anime openings and endings by adding a skip opening / ending button. The extension also auto skips if specified by the user. The ...",
+    "host_name": "chromewebstore.google.com",
+    "rank": 4,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://github.com/jonbarrow/open-anime-timestamps",
+    "name": "jonbarrow/open-anime-timestamps: database and scraper",
+    "snippet": "What is this? Open Anime Timestamps is an open source tool for building a database of opening and ending theme timestamps for anime episodes. Feel ...",
+    "host_name": "github.com",
+    "rank": 5,
+    "date": "",
+    "favicon": ""
+  },
+  {
+    "url": "https://jellywatch.app/blog/jellyfin-intro-skipper-setup-configuration-troubleshooting-2026",
+    "name": "Jellyfin Intro Skipper 2026: Complete Setup, Configuration",
+    "snippet": "Because detection is audio-based, it works on any TV show regardless of language, and it does not need an internet database of timestamps.",
+    "host_name": "jellywatch.app",
+    "rank": 6,
+    "date": "Jun 7, 2026",
+    "favicon": ""
+  },
+  {
+    "url": "https://addons.mozilla.org/en-US/firefox/addon/aniskip",
+    "name": "Aniskip – Get this Extension for Firefox (en-US)",
+    "snippet": "Download Aniskip for Firefox. An extension which gives the option to skip anime intros, openings and endings on various streaming sites.",
+    "host_name": "addons.mozilla.org",
+    "rank": 7,
+    "date": "Jul 11, 2026",
+    "favicon": ""
+  }
+]

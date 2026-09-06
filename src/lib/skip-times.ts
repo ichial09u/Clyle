@@ -17,6 +17,13 @@
  *      effectively "imports" its own skip intro with it. The player still
  *      has its own last-resort 8-90s heuristic window for TV-length
  *      episodes with no data at all.
+ *   4.5 SkipDB fills (skipdb.tv) — AniSkip doesn't cover everything (HxH
+ *      2011, Code Geass R2, Oshi no Ko, Naruto Shippuden…). SkipDB is the
+ *      open crowdsourced skip-timestamps database (ODbL 1.0), keyed by IMDb
+ *      ids + real season/episode numbers. The backfill bot maps MAL->IMDb
+ *      (Wikidata P4086+P345, Jikan backup), vendors the dump into the
+ *      SkipDbFill table and refreshes weekly; this tier reads it for any
+ *      episode the tiers above left blank.
  *
  * Server-side only (the dataset ships inside the server bundle).
  */
@@ -38,7 +45,7 @@ export interface SkipData {
   intro?: SkipInterval;
   outro?: SkipInterval;
   /** where the data came from — handy for debugging */
-  source?: "zoko" | "scout" | "aniskip" | "aniskip-live" | "crowd";
+  source?: "zoko" | "scout" | "aniskip" | "aniskip-live" | "skipdb" | "crowd";
 }
 
 type EpisodeEntry = { op?: [number, number]; ed?: [number, number] };
@@ -239,6 +246,60 @@ export async function scoutIntro(
 }
 
 /* ------------------------------------------------------------------ *
+ * Tier 3.5 — SkipDB fills (skipdb.tv, open data under ODbL 1.0).
+ * For anime AniSkip doesn't have: the backfill bot maps MAL->IMDb once
+ * (Wikidata + Jikan backup), vendors SkipDB's approved intro/outro segments
+ * per (season, episode) into the SkipDbFill table, and re-downloads the
+ * dump weekly so new episodes keep arriving. Same precedence class as the
+ * vendored AniSkip dataset — community timings on other encodes — so it
+ * only fills gaps the higher tiers left blank, never overrides them.
+ * ---------------------------------------------------------------- */
+
+const SKIPDB_TTL_MS = 60_000;
+const skipDbCache = new Map<
+  number,
+  { rows: Array<{ ep: number; kind: string; start: number; end: number; confidence: number }>; at: number }
+>();
+
+async function skipDbRows(
+  malId: number,
+): Promise<Array<{ ep: number; kind: string; start: number; end: number; confidence: number }>> {
+  const hit = skipDbCache.get(malId);
+  if (hit && Date.now() - hit.at < SKIPDB_TTL_MS) return hit.rows;
+  const rows = await db.skipDbFill.findMany({
+    where: { malId },
+    select: { ep: true, kind: true, start: true, end: true, confidence: true },
+  });
+  skipDbCache.set(malId, { rows, at: Date.now() });
+  return rows;
+}
+
+/**
+ * SkipDB's exact per-episode intervals for one episode (op/ed in seconds),
+ * already sanity-gated. null when the table has nothing for this anime.
+ */
+export async function skipDbIntervals(
+  malId: number,
+  ep: number,
+): Promise<{ op?: SkipInterval; ed?: SkipInterval } | null> {
+  try {
+    const rows = await skipDbRows(malId);
+    if (!rows.length) return null;
+    const out: { op?: SkipInterval; ed?: SkipInterval } = {};
+    for (const kind of ["op", "ed"] as const) {
+      const r = rows.find((x) => x.ep === ep && x.kind === kind);
+      if (!r) continue;
+      const iv = { start: r.start, end: r.end };
+      if (kind === "op" && plausibleIntro(iv)) out.op = iv;
+      if (kind === "ed" && plausibleOutro(iv)) out.ed = iv;
+    }
+    return out.op || out.ed ? out : null;
+  } catch {
+    return null; // table missing / db hiccup — SkipDB is optional, never fatal
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Tier 4 — LIVE AniSkip lookups (cached), for episodes the vendored
  * dump + consensus don't cover: brand-new episodes of airing shows and
  * freshly imported anime. Also used to prefetch skip data when the
@@ -389,7 +450,8 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   // their OP and the anime-wide median must not button them.
   const scout = await scoutIntro(malId, ep);
   const confirmedNone = !!scout?.confirmedNone;
-  const exactKnown = valid(stream.skip?.intro) || !!exactDatasetIntro(malId, ep);
+  const sdbExact = await skipDbIntervals(malId, ep);
+  const exactKnown = valid(stream.skip?.intro) || !!exactDatasetIntro(malId, ep) || !!sdbExact?.op;
   const suppressIntro = confirmedNone && !exactKnown;
   if (suppressIntro) {
     delete skip.intro;
@@ -397,6 +459,20 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   } else if (scout?.interval && (scout.exact || !valid(stream.skip?.intro))) {
     skip.intro = scout.interval;
     skip.source = "scout";
+  }
+  // SkipDB fill tier — exact per-episode community rows for anime AniSkip
+  // doesn't carry. Exact rows survive a fleet confirmed-none (same defense
+  // as the dataset's exact op row above); they never override zoko/scout/
+  // AniSkip data, only fill what's missing.
+  if (!suppressIntro && (!skip.intro || !skip.outro) && sdbExact) {
+    if (!skip.intro && sdbExact.op) {
+      skip.intro = sdbExact.op;
+      skip.source = "skipdb";
+    }
+    if (!skip.outro && sdbExact.ed) {
+      skip.outro = sdbExact.ed;
+      if (!skip.source) skip.source = "skipdb";
+    }
   }
   if (skip.intro && skip.outro) return { ...merged, skip }; // nothing left to ask
 
@@ -459,7 +535,7 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
 export interface SkipCoverage {
   intro?: SkipInterval;
   outro?: SkipInterval;
-  source: "scout" | "exact" | "consensus" | "live" | "crowd";
+  source: "scout" | "exact" | "consensus" | "skipdb" | "live" | "crowd";
   confirmedNone?: boolean;
 }
 
@@ -475,6 +551,10 @@ export async function skipCoverage(
   if (scout?.confirmedNone) {
     const ex = exactDatasetIntro(malId, ep);
     if (ex && plausibleIntro(ex, opts.episodeLengthMin)) return { source: "exact", intro: ex };
+    // a SkipDB exact row for this episode is also vote-backed concrete data
+    // and must not be silenced by the fleet's failed cross-match
+    const sdbN = await skipDbIntervals(malId, ep);
+    if (sdbN?.op && plausibleIntro(sdbN.op, opts.episodeLengthMin)) return { source: "skipdb", intro: sdbN.op };
     return { source: "scout", confirmedNone: true };
   }
   if (scout?.interval) return { source: "scout", intro: scout.interval };
@@ -495,6 +575,14 @@ export async function skipCoverage(
     const cov: SkipCoverage = { source: "consensus" };
     if (plausibleIntro(coOp, opts.episodeLengthMin)) cov.intro = coOp;
     if (plausibleOutro(coEd)) cov.outro = coEd;
+    if (cov.intro || cov.outro) return cov;
+  }
+  // SkipDB tier — the vendored-fill table for anime AniSkip doesn't have
+  const sdb = await skipDbIntervals(malId, ep);
+  if (sdb) {
+    const cov: SkipCoverage = { source: "skipdb" };
+    if (plausibleIntro(sdb.op, opts.episodeLengthMin)) cov.intro = sdb.op;
+    if (plausibleOutro(sdb.ed)) cov.outro = sdb.ed;
     if (cov.intro || cov.outro) return cov;
   }
   const liveCov = (op?: [number, number], ed?: [number, number]): SkipCoverage | null => {
