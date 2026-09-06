@@ -1,0 +1,10 @@
+[army] ONE PIECE sub intro army deployed: 18 verify bots + 6 repair bots
+[army] campaign: eps 1..1176 (halfway = 588); prequeued 238 no-data eps for repair
+[army] fatal: ReferenceError: recheck is not defined
+    at verifyLane (file:///home/z/my-project/scripts/op-sub-intro-army.mjs:260:185)
+    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+    at async Promise.all (index 4)
+    at async main (file:///home/z/my-project/scripts/op-sub-intro-army.mjs:455:3)
+[army] ONE PIECE sub intro army deployed: 18 verify bots + 6 repair bots
+[army] campaign: eps 1..1176 (halfway = 588); prequeued 238 no-data eps for repair
+[army] *** HALFWAY: 588/1176 One Piece sub episodes verified ***
