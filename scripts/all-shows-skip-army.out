@@ -1,0 +1,5 @@
+[army] ALL-SHOWS skip intro army deployed: 16 verify bots + 6 repair bots
+[army] campaign: 33479 sub episodes across 2137 shows (halfway = 16739)
+[army] first up: Detective Conan(1211), Naruto: Shippuden(500), Bleach(366), Boruto: Naruto Next Generations(293), Dragon Ball Z(291), Yu-Gi-Oh!(224), Naruto(220), REBORN!(203)
+[army] skipdb gaps (shows needing vendor): 925 -> 5,7,20,32,44,47,57,68,77,85,86,88…
+[army] *** HALFWAY: 16750/33479 all-shows sub episodes verified ***
