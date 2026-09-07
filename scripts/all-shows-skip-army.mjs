@@ -314,8 +314,15 @@ function loudestSpan(env, spanSec = 70) {
   return { start: bestI * 0.5, end: (bestI + span) * 0.5 };
 }
 
-/** watch one episode's sub encode through ffmpeg, same as the fleet bots */
+/** watch one episode's sub encode through ffmpeg, same as the fleet bots.
+    Results are CACHED per (malId, ep): the backlog is contiguous episode
+    runs and each repair analyzes its neighbor — without the cache the same
+    encode gets analyzed twice (once as partner, once as principal). */
+const encodeCache = new Map();
 async function watchEncode(malId, ep) {
+  const k = `${malId}/${ep}`;
+  const hit = encodeCache.get(k);
+  if (hit) return hit;
   const resolved = await resolveSubStream(malId, ep);
   if (!resolved || resolved._404 || !resolved.src) return null;
   let r = await analyzePlaylist(resolved.src, { log: () => {}, maxSec: 400, minSec: 240 });
@@ -324,6 +331,8 @@ async function watchEncode(malId, ep) {
     r = await analyzePlaylist(resolved.src, { log: () => {}, maxSec: 400, minSec: 240 });
   }
   if (r.status !== "ok") return null;
+  encodeCache.set(k, r);
+  if (encodeCache.size > 240) encodeCache.delete(encodeCache.keys().next().value);
   return r;
 }
 
@@ -396,14 +405,20 @@ async function repairLane(bot) {
       if (posted) {
         repairDone.add(key);
         if (partnerNeeded) { repairDone.add(pKey); repairPartnered.add(pKey); }
-        // re-verify after the scout cache (60s) turns over
-        await sleep(65_000);
-        const v = await verifyEpisode(bot, malId, ep);
-        await logVerdict({ bot, key, verdict: `REPAIRED->${v.verdict}`, intro: v.intro ?? null, seekTarget: v.seekTarget ?? null, detail: `measured ${r.A.start.toFixed(1)}-${r.A.end.toFixed(1)} (q=${r.A.quality.toFixed(2)}); post-repair check: ${v.detail}` });
-        if (v.verdict === "PASS") {
-          state.pass++; state.noButton = Math.max(0, state.noButton - (state.failKeys.includes(key) ? 1 : 0)); state.badData = Math.max(0, state.badData - (state.failKeys.includes(key) ? 1 : 0));
-          state.failKeys = state.failKeys.filter((k) => k !== key);
-        } else { state.repairFailed++; await logVerdict({ bot, key, verdict: "REPAIR-STILL-BAD", detail: v.detail }); }
+        // post-repair QA re-check — DETACHED so the 60s scout-cache turnover
+        // doesn't stall the lane; the interval is already posted and the
+        // player picks it up within 60s regardless.
+        void (async () => {
+          await sleep(70_000);
+          try {
+            const v = await verifyEpisode(bot, malId, ep);
+            await logVerdict({ bot, key, verdict: `REPAIRED->${v.verdict}`, intro: v.intro ?? null, seekTarget: v.seekTarget ?? null, detail: `measured ${r.A.start.toFixed(1)}-${r.A.end.toFixed(1)} (q=${r.A.quality.toFixed(2)}); post-repair check: ${v.detail}` });
+            if (v.verdict === "PASS") {
+              state.pass++; state.noButton = Math.max(0, state.noButton - 1); state.badData = Math.max(0, state.badData - (v.verdict === "BAD-DATA" ? 1 : 0));
+              state.failKeys = state.failKeys.filter((k) => k !== key && k !== pKey);
+            } else { state.repairFailed++; await logVerdict({ bot, key, verdict: "REPAIR-STILL-BAD", detail: v.detail }); }
+          } catch { /* QA check is best-effort */ }
+        })();
       } else {
         state.repairFailed++;
         await logVerdict({ bot, key, verdict: "REPAIR-POST-FAIL", detail: "scout API rejected findings" });
@@ -506,6 +521,9 @@ async function main() {
       }
     }
     if (REPAIR_ONLY) {
+      // group contiguous runs together so the encode cache hits (episode N
+      // is episode N+1's partner — one analysis serves both)
+      repairQueue.sort((a, b) => a.malId - b.malId || a.ep - b.ep);
       // nothing left to verify — the verify lanes exit immediately; the
       // repair exit gate (verified >= total) is pre-satisfied so the run
       // ends exactly when the repair queue drains.
