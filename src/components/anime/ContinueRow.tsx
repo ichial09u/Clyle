@@ -1,18 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Play, X } from "lucide-react";
+import { X } from "lucide-react";
 import type { ContinueItem } from "@/lib/types";
 import { getEpThumb } from "@/lib/client-store";
 
 /**
- * "Continue Watching" — VERTICAL stack (user: "make it be vertical and not
- * horizontal, showing only the card, nothing else"). One full-width card per
- * anime, everything lives ON the card (art, title, EP · percent, lang,
- * resume position); tapping the card resumes that episode at that exact
- * second — just how Continue Watching works. Red bar = exact progress
- * through the current episode. Card art is the episode's own captured scene
- * once that episode has been played; the poster is the fallback.
+ * "Continue Watching" — Netflix-style horizontal poster strip (user's
+ * screenshot order). Pure cover cards, bigger than the homepage row
+ * (150×212 → 192×271 vs homepage 126×178): episode scene thumbnail once
+ * the episode has been played, poster as fallback. No text overlays —
+ * the ONLY things on the card are the artwork, a bottom flush red
+ * progress bar (exact percent through the episode) and the small ✕.
+ * Tapping the card resumes that episode at the saved second.
  */
 export default function ContinueRow({
   items,
@@ -45,55 +45,37 @@ export default function ContinueRow({
   return (
     <section className="mt-5">
       <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Continue Watching</h2>
-      <div className="flex flex-col gap-3 px-4">
+      <div className="flex gap-2.5 px-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-proximity">
         {items.map((item) => {
           const thumb = thumbs[item.malId] ?? null;
           return (
-            <div key={item.malId} className="relative w-full">
-              <button onClick={() => onResume(item)} className="block w-full text-left active:scale-[0.98] transition">
-                <div className="relative w-full aspect-video md:aspect-[21/9] rounded-[8px] overflow-hidden bg-[#161616]">
-                  {thumb ? (
-                    <img src={thumb} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
-                  ) : item.image ? (
-                    <img src={item.image} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#222] to-[#111]" />
-                  )}
-                  {/* dark gradient so the text/bar reads over the artwork */}
-                  <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent" />
+            <div key={item.malId} className="relative shrink-0 snap-start">
+              <button
+                onClick={() => onResume(item)}
+                className="relative block w-[150px] h-[212px] md:w-[172px] md:h-[243px] lg:w-[192px] lg:h-[271px] rounded-[10px] overflow-hidden bg-[#161616] active:scale-[0.97] transition"
+                aria-label={`Resume ${item.title} episode ${item.episode}`}
+              >
+                {thumb ? (
+                  <img src={thumb} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                ) : item.image ? (
+                  <img src={item.image} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-[#222] to-[#111]" />
+                )}
 
-                  {/* play badge */}
-                  <span className="absolute inset-0 flex items-center justify-center">
-                    <span className="w-11 h-11 rounded-full bg-black/55 backdrop-blur flex items-center justify-center">
-                      <Play className="w-5 h-5 text-white ml-0.5" />
-                    </span>
-                  </span>
-
-                  {/* everything on the card: title, episode + percent */}
-                  <span className="absolute left-3 right-16 bottom-6 text-[12.5px] font-bold text-white drop-shadow truncate">
-                    {item.title}
-                  </span>
-                  <span className="absolute left-3 bottom-2.5 text-[11px] font-bold text-gray-200 drop-shadow">
-                    EP {item.episode} · {item.percent}%
-                  </span>
-                  <span className="absolute right-3 bottom-2.5 text-[9.5px] text-gray-300 uppercase tracking-wide">
-                    {item.lang}
-                  </span>
-
-                  {/* the red progress bar — shows where you were last */}
-                  <span className="absolute left-3 right-3 bottom-[6px] h-[3px] rounded-full bg-white/25 overflow-hidden">
-                    <span className="block h-full bg-[#d32f2f] rounded-full" style={{ width: `${Math.max(3, item.percent)}%` }} />
-                  </span>
-                </div>
+                {/* bottom flush red progress bar — where you were last */}
+                <span className="absolute inset-x-0 bottom-0 h-[4px] bg-white/20">
+                  <span className="block h-full bg-[#d32f2f]" style={{ width: `${Math.max(3, item.percent)}%` }} />
+                </span>
               </button>
 
               {/* remove from Continue Watching */}
               <button
                 onClick={() => onRemove(item.malId)}
-                className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/65 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#d32f2f] active:scale-95 transition"
+                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/65 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#d32f2f] active:scale-95 transition"
                 aria-label={`Remove ${item.title} from Continue Watching`}
               >
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           );

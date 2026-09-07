@@ -56,7 +56,7 @@ try {
 }
 
 // ---------- 1) manifest ----------
-const all = execSync("git ls-files", { cwd: ROOT, encoding: "utf8" })
+const all = execSync("git ls-files", { cwd: ROOT, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })
   .split("\n")
   .filter(Boolean);
 const manifest = all.filter((f) => !EXCLUDE.some((re) => re.test(f)));

@@ -35,9 +35,13 @@
  * Report:    scripts/all-shows-skip-report.json (final)
  *
  * Usage: node scripts/all-shows-skip-army.mjs [--lanes 16] [--repair-lanes 6]
+ *        [--scan-missing]  queue = every sub ep without concrete intro
+ *                          coverage (DB-driven — survives verdict-log loss)
  */
 
-import { appendFile, writeFile } from "node:fs/promises";
+import { appendFile, writeFile, readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { analyzePlaylist, matchEnvelope, plausibleInterval } from "./lib/intro-detect.mjs";
 
@@ -49,15 +53,16 @@ const opt = (name, def) => { const i = args.indexOf(`--${name}`); return i >= 0 
 const BASE = opt("base", "http://localhost:3000");
 const MIRROR = opt("mirror", BASE);
 const SCOUT_TOKEN = opt("token", "clyle-scout-v1");
+const LANG = opt("lang", "sub"); // "sub" | "dub" — which stream path the army walks
 const VERIFY_LANES = Math.max(1, parseInt(opt("lanes", "16"), 10) || 16);
 const REPAIR_LANES = Math.max(1, parseInt(opt("repair-lanes", "6"), 10) || 6);
 const MIN_QUALITY = 0.72;
 const EXCLUDE_MAL = new Set([21]); // One Piece — already verified 1176/1176
 const UA = "Mozilla/5.0 (ClyleAllShowsArmy/1.0)";
 
-const PROGRESS_FILE = new URL("./all-shows-skip-progress.json", import.meta.url).pathname;
-const REPORT_FILE = new URL("./all-shows-skip-report.json", import.meta.url).pathname;
-const LOG_FILE = new URL("./all-shows-skip-army.log", import.meta.url).pathname;
+const PROGRESS_FILE = new URL(LANG === "sub" ? "./all-shows-skip-progress.json" : `./all-shows-skip-progress-${LANG}.json`, import.meta.url).pathname;
+const REPORT_FILE = new URL(LANG === "sub" ? "./all-shows-skip-report.json" : `./all-shows-skip-report-${LANG}.json`, import.meta.url).pathname;
+const LOG_FILE = new URL(LANG === "sub" ? "./all-shows-skip-army.log" : `./all-shows-skip-army-${LANG}.log`, import.meta.url).pathname;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const jitter = (ms) => ms * (0.75 + Math.random() * 0.5);
@@ -81,7 +86,7 @@ const state = {
   updatedAt: null,
   total: 0, shows: 0, verified: 0, done: false,
   halfway: false, halfwayLogged: false, half: 0,
-  pass: 0, noButton: 0, badData: 0, streamFail: 0, resolveFail: 0,
+  pass: 0, noButton: 0, badData: 0, streamFail: 0, resolveFail: 0, noDub: 0,
   repaired: 0, repairFailed: 0, noOpConfirmed: 0, pendingRepair: 0,
   skipdbGaps: [],            // shows with SkipDbTitle but no fills (backfill loop fixes)
   showsCompleted: 0,
@@ -115,9 +120,9 @@ async function fetchJson(url, timeoutMs = 75_000) {
 }
 
 /** the exact stream call the player makes on the sub path */
-async function resolveSubStream(malId, ep) {
+async function resolveSubStream(malId, ep, lang = "sub") {
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const r = await fetchJson(`${BASE}/api/stream?malId=${malId}&ep=${ep}&lang=sub&server=1`);
+    const r = await fetchJson(`${BASE}/api/stream?malId=${malId}&ep=${ep}&lang=${lang}&server=1`);
     if (r.status === 200 && r.json?.src) return r.json;
     if (r.status === 404) return { _404: true };
     if (attempt < 2) await sleep(3_000);
@@ -207,10 +212,10 @@ function shapeOk(start, end, duration) {
  *   click seeks to max(start, end-3)            (WatchView :1198)
  * Verdict: PASS | NO-BUTTON | BAD-DATA | STREAM | RESOLVE-FAIL
  */
-async function verifyEpisode(bot, malId, ep) {
-  const resolved = await resolveSubStream(malId, ep);
+async function verifyEpisode(bot, malId, ep, lang = "sub") {
+  const resolved = await resolveSubStream(malId, ep, lang);
   if (!resolved) return { verdict: "RESOLVE-FAIL", detail: "stream resolve failed twice" };
-  if (resolved._404) return { verdict: "RESOLVE-FAIL", detail: "no sub page for this episode (404)" };
+  if (resolved._404) return { verdict: lang === "sub" ? "RESOLVE-FAIL" : "NO-DUB", detail: lang === "sub" ? "no sub page for this episode (404)" : "no dub stream for this episode (404)" };
 
   const intro = resolved.skip?.intro;
   const source = resolved.skip?.source ?? "none";
@@ -254,21 +259,40 @@ async function verifyLane(bot, onVerdict) {
     if (!job) return;
     const { malId, ep, title } = job;
     const key = `${malId}/${ep}`;
-    let v = await verifyEpisode(bot, malId, ep);
-    if (v.verdict === "RESOLVE-FAIL") { await sleep(jitter(4_000)); v = await verifyEpisode(bot, malId, ep); } // one whole retry
+    let v = await verifyEpisode(bot, malId, ep, LANG);
+    if (v.verdict === "RESOLVE-FAIL") { await sleep(jitter(4_000)); v = await verifyEpisode(bot, malId, ep, LANG); } // one whole retry
     state.verified++;
     if (v.verdict === "PASS") state.pass++;
-    else if (v.verdict === "NO-BUTTON") { state.noButton++; state.failKeys.push(key); pushRepair(malId, ep); }
-    else if (v.verdict === "BAD-DATA") { state.badData++; state.failKeys.push(key); pushRepair(malId, ep); }
+    else if (v.verdict === "NO-BUTTON") {
+      state.noButton++; state.failKeys.push(key);
+      // dub guard: an ep that HAS concrete intro coverage (verified on the
+      // sub path) but shows no button on the dub stream means the DUB encode
+      // disagrees with the shared interval. NEVER repair-overwrite it — the
+      // sub's verified row would be clobbered. Log the mismatch instead.
+      if (LANG !== "sub" && hasIntroData(malId, ep)) {
+        await logVerdict({ bot, key, title, verdict: "DUB-MISMATCH", detail: `dub stream shows no button but intro coverage exists (${v.detail})` });
+      } else {
+        pushRepair(malId, ep);
+      }
+    }
+    else if (v.verdict === "BAD-DATA") {
+      state.badData++; state.failKeys.push(key);
+      if (LANG !== "sub" && hasIntroData(malId, ep)) {
+        await logVerdict({ bot, key, title, verdict: "DUB-MISMATCH", detail: `dub stream data disagrees with shared interval (${v.detail})` });
+      } else {
+        pushRepair(malId, ep);
+      }
+    }
+    else if (v.verdict === "NO-DUB") { state.noDub++; /* per-ep no-dub — expected for dub-lagging shows, not a failure */ }
     else if (v.verdict === "STREAM") { state.streamFail++; state.failKeys.push(key); }
     else { state.resolveFail++; state.failKeys.push(key); }
-    await logVerdict({ bot, key, title, verdict: v.verdict, intro: v.intro ?? null, source: v.source ?? null, seekTarget: v.seekTarget ?? null, duration: v.duration ?? null, detail: v.detail });
+    await logVerdict({ bot, key, title, lang: LANG, verdict: v.verdict, intro: v.intro ?? null, source: v.source ?? null, seekTarget: v.seekTarget ?? null, duration: v.duration ?? null, detail: v.detail });
     void onVerdict?.(job, v);
     if (state.verified % 25 === 0) snapshotProgress();
     if (state.halfway && !state.halfwayLogged) {
       state.halfwayLogged = true;
       await logVerdict({ bot, key, verdict: "HALFWAY", detail: `${state.verified}/${state.total} episodes across all shows entered, button clicked, verified` });
-      console.log(`[army] *** HALFWAY: ${state.verified}/${state.total} all-shows sub episodes verified ***`);
+      console.log(`[army] *** HALFWAY: ${state.verified}/${state.total} all-shows ${LANG} episodes verified ***`);
     }
     await sleep(jitter(350));
   }
@@ -319,11 +343,11 @@ function loudestSpan(env, spanSec = 70) {
     runs and each repair analyzes its neighbor — without the cache the same
     encode gets analyzed twice (once as partner, once as principal). */
 const encodeCache = new Map();
-async function watchEncode(malId, ep) {
-  const k = `${malId}/${ep}`;
+async function watchEncode(malId, ep, lang = "sub") {
+  const k = `${lang}/${malId}/${ep}`;
   const hit = encodeCache.get(k);
   if (hit) return hit;
-  const resolved = await resolveSubStream(malId, ep);
+  const resolved = await resolveSubStream(malId, ep, lang);
   if (!resolved || resolved._404 || !resolved.src) return null;
   let r = await analyzePlaylist(resolved.src, { log: () => {}, maxSec: 400, minSec: 240 });
   if (r.status !== "ok" && /STARVED|timeout|fetch|429|503/i.test(r.detail || "")) {
@@ -349,9 +373,9 @@ async function reportFindings(bot, findings) {
 }
 
 /** measure ep+partner envelopes, cross-match (consecutive eps share the OP) */
-async function measurePair(malId, ep, partnerEp) {
-  const A = await watchEncode(malId, ep);
-  const B = A && partnerEp !== ep ? await watchEncode(malId, partnerEp) : null;
+async function measurePair(malId, ep, partnerEp, lang = "sub") {
+  const A = await watchEncode(malId, ep, lang);
+  const B = A && partnerEp !== ep ? await watchEncode(malId, partnerEp, lang) : null;
   if (!A || !B) return { ok: false, why: "analyze failed (stream/starve)" };
 
   const anchorsA = [...(A.wall ? [A.wall] : []), loudestSpan(A.env)].filter(Boolean);
@@ -394,13 +418,14 @@ async function repairLane(bot) {
       noOpSet.add(key); state.noOpConfirmed++; repairInFlight--; snapshotProgress(); continue;
     }
 
-    const r = await measurePair(malId, ep, partnerEp);
+    const r = await measurePair(malId, ep, partnerEp, LANG);
     if (r.ok) {
       const title = titleByShow.get(malId) ?? `mal ${malId}`;
-      const findings = [{ malId, ep, status: "ok", start: r.A.start, end: r.A.end, quality: r.A.quality, detail: `all-shows-army pair ${ep}+${partnerEp} (measured on our sub encode) — ${title}` }];
+      const tag = LANG === "sub" ? "all-shows-army" : `all-shows-army-${LANG}`;
+      const findings = [{ malId, ep, status: "ok", start: r.A.start, end: r.A.end, quality: r.A.quality, detail: `${tag} pair ${ep}+${partnerEp} (measured on our ${LANG} encode) — ${title}` }];
       const pKey = `${malId}/${partnerEp}`;
       const partnerNeeded = !repairDone.has(pKey) && !noOpSet.has(pKey) && !repairPartnered.has(pKey) && (repairQueued.has(pKey) || !hasIntroData(malId, partnerEp));
-      if (partnerNeeded) findings.push({ malId, ep: partnerEp, status: "ok", start: r.B.start, end: r.B.end, quality: r.B.quality, detail: `all-shows-army pair ${partnerEp}+${ep} (measured on our sub encode)` });
+      if (partnerNeeded) findings.push({ malId, ep: partnerEp, status: "ok", start: r.B.start, end: r.B.end, quality: r.B.quality, detail: `${tag} pair ${partnerEp}+${ep} (measured on our ${LANG} encode)` });
       const posted = await reportFindings(bot, findings);
       if (posted) {
         repairDone.add(key);
@@ -411,7 +436,7 @@ async function repairLane(bot) {
         void (async () => {
           await sleep(70_000);
           try {
-            const v = await verifyEpisode(bot, malId, ep);
+            const v = await verifyEpisode(bot, malId, ep, LANG);
             await logVerdict({ bot, key, verdict: `REPAIRED->${v.verdict}`, intro: v.intro ?? null, seekTarget: v.seekTarget ?? null, detail: `measured ${r.A.start.toFixed(1)}-${r.A.end.toFixed(1)} (q=${r.A.quality.toFixed(2)}); post-repair check: ${v.detail}` });
             if (v.verdict === "PASS") {
               state.pass++; state.noButton = Math.max(0, state.noButton - 1); state.badData = Math.max(0, state.badData - (v.verdict === "BAD-DATA" ? 1 : 0));
@@ -460,6 +485,8 @@ function hasIntroData(malId, ep) {
 const scoutByShow = new Map();
 
 const WAVE2 = args.includes("--wave2");
+const SCAN_MISSING = args.includes("--scan-missing");
+const SCAN_DUB = args.includes("--scan-dub");
 
 async function main() {
   // the vendored dataset the API merges from (read-only tier copy)
@@ -486,7 +513,106 @@ async function main() {
     scoutByShow.get(s.malId).push(s);
   }
 
-  if (WAVE2) {
+  if (SCAN_DUB) {
+    // DUB WALK (user: "do what u did to dub as well"): every episode of every
+    // show with a PROBE-CONFIRMED real English dub, verified on the DUB
+    // stream path (lang=dub) — the player's exact click-chain against the
+    // dub encode. Dub lags sub for airing shows, so per-ep 404s are
+    // expected and counted as NO-DUB (not a failure). Skip data is shared
+    // across langs (same video), so most eps should PASS with the same
+    // interval; a dub encode that disagrees is logged DUB-MISMATCH by the
+    // verify lane (never repair-overwritten) — only eps with NO coverage
+    // anywhere get measured (the repair squadron, on the dub encode).
+    const dubOk = await db.dubProbe.findMany({ where: { ok: true }, select: { malId: true }, distinct: ["malId"] });
+    const dubShows = new Set(dubOk.map((d) => d.malId).filter((m) => epsByShow.has(m)));
+    for (const malId of dubShows) {
+      for (const ep of epsByShow.get(malId)) workQueue.push({ malId, ep, title: titleByShow.get(malId) });
+    }
+    const dcounts = new Map();
+    for (const j of workQueue) dcounts.set(j.malId, (dcounts.get(j.malId) ?? 0) + 1);
+    // biggest shows first — most viewers affected first
+    workQueue.sort((a, b) => (dcounts.get(b.malId) ?? 0) - (dcounts.get(a.malId) ?? 0) || a.malId - b.malId || a.ep - b.ep);
+    state.total = workQueue.length;
+    state.shows = dcounts.size;
+    state.half = Math.floor(state.total / 2);
+    console.log(`[army] DUB walk: ${dubShows.size} shows with probe-confirmed dub → ${state.total} episodes`);
+  } else if (SCAN_MISSING) {
+    // LOG-LOSS-PROOF QUEUE: rebuild straight from the DB + datasets — every
+    // sub episode with no concrete intro coverage. The old WAVE-2 path
+    // rebuilt its queue from the verdict log (lost with the session env —
+    // every relaunch saw an empty queue); this one reads the DB, which IS
+    // the ground truth. Concrete coverage = any of:
+    //   ds exact op row (plausible)        — vendored AniSkip dataset
+    //   scout exact row (end > start)      — fleet-measured on our encodes
+    //   scout anime-wide median (2+ rows)  — fleet consensus
+    //   SkipDB fill op (plausible)         — vendor tier
+    //   live-tier cache op hit             — aniskip answered before
+    // Everything else (crowd guesses, zoko-native, nothing) stays IN the
+    // queue: those buttons are unverified or absent — exactly the mission.
+    const fillRows = await db.skipDbFill.findMany({
+      select: { malId: true, ep: true, kind: true, start: true, end: true },
+    });
+    const fillOp = new Set();
+    for (const f of fillRows) {
+      if (f.kind !== "op" || !(f.end > f.start)) continue;
+      if (f.start <= 420 && f.end - f.start <= 180) fillOp.add(`${f.malId}/${f.ep}`);
+    }
+
+    const liveOp = new Set();
+    const cacheDir = join(process.cwd(), "db", "aniskip-cache");
+    for (const malId of epsByShow.keys()) {
+      const h = createHash("sha1").update(String(malId)).digest("hex").slice(0, 16);
+      let j;
+      try { j = JSON.parse(await readFile(join(cacheDir, `${h}.json`), "utf8")); } catch { continue; }
+      for (const [ep, entry] of Object.entries(j)) {
+        if (entry?.op && Array.isArray(entry.op) && entry.op.length === 2) liveOp.add(`${malId}/${ep}`);
+      }
+    }
+
+    const med = (xs) => { const s = [...xs].sort((a, b) => a - b); return s[Math.floor(s.length / 2)]; };
+    const consOp = new Map(); // dataset consensus per show (2+ op rows)
+    for (const malId of epsByShow.keys()) {
+      const byEp = ds[String(malId)];
+      if (!byEp) continue;
+      const starts = [], ends = [];
+      for (const entry of Object.values(byEp)) if (entry.op) { starts.push(entry.op[0]); ends.push(entry.op[1]); }
+      if (starts.length < 2) continue;
+      const s = med(starts), e = med(ends);
+      if (Number.isFinite(s) && Number.isFinite(e) && e > s && s <= 320 && e - s <= 180) consOp.set(malId, [s, e]);
+    }
+
+    for (const [malId, epList] of epsByShow) {
+      const rows = scoutByShow.get(malId);
+      const measured = rows ? rows.filter((r) => !r.nodetect && r.end > r.start) : [];
+      let scoutMed = null;
+      if (measured.length >= 2) {
+        const s = med(measured.map((r) => r.start)), e = med(measured.map((r) => r.end));
+        if (e > s && e - s <= 150 && s <= 320) scoutMed = [s, e];
+      }
+      const cons = consOp.get(malId);
+      for (const ep of epList) {
+        const k = `${malId}/${ep}`;
+        const dRow = ds[String(malId)]?.[String(ep)];
+        if (dRow?.op && dRow.op[1] > dRow.op[0] && dRow.op[0] <= 420 && dRow.op[1] - dRow.op[0] <= 180) continue; // ds exact
+        const r = rows?.find((x) => x.ep === ep);
+        if (r && !r.nodetect && r.end > r.start) continue; // scout exact
+        if (fillOp.has(k)) continue;                       // SkipDB fill
+        if (r?.nodetect) { workQueue.push({ malId, ep, title: titleByShow.get(malId) }); continue; } // fleet couldn't align → re-measure
+        if (scoutMed) continue;                            // scout median covers the show
+        if (cons && !r) continue;                          // dataset consensus covers the show
+        if (liveOp.has(k)) continue;                       // live cache answered before
+        workQueue.push({ malId, ep, title: titleByShow.get(malId) });
+      }
+    }
+
+    const counts = new Map();
+    for (const j of workQueue) counts.set(j.malId, (counts.get(j.malId) ?? 0) + 1);
+    // biggest shows first — most viewers affected first
+    workQueue.sort((a, b) => (counts.get(b.malId) ?? 0) - (counts.get(a.malId) ?? 0) || a.malId - b.malId || a.ep - b.ep);
+    state.total = workQueue.length;
+    state.shows = counts.size;
+    state.half = Math.floor(state.total / 2);
+  } else if (WAVE2) {
     // RE-VERIFICATION WAVE: rebuild from the wave-1 log — every episode
     // whose LATEST verdict is anything other than a clean PASS
     // (resolve-fails from the dev-server death, no-buttons, false no-ops
@@ -559,8 +685,9 @@ async function main() {
   state.skipdbGaps = titlesFound.map((t) => t.malId).filter((m) => !fillSet.has(m) && epsByShow.has(m));
 
   console.log(`[army] ALL-SHOWS skip intro army deployed: ${VERIFY_LANES} verify bots + ${REPAIR_LANES} repair bots`);
-  console.log(`[army] campaign${WAVE2 ? " (WAVE-2)" : ""}: ${state.total} sub episodes across ${state.shows} shows (halfway = ${state.half})`);
-  if (!WAVE2) console.log(`[army] first up: ${ordered.slice(0, 8).map((s) => `${titleByShow.get(s.malId)}(${epsByShow.get(s.malId).length})`).join(", ")}`);
+  const waveTag = SCAN_DUB ? " (DUB WALK)" : SCAN_MISSING ? " (SCAN-MISSING)" : WAVE2 ? " (WAVE-2)" : "";
+  console.log(`[army] campaign${waveTag}[${LANG}]: ${state.total} episodes across ${state.shows} shows (halfway = ${state.half})`);
+  if (!WAVE2 && !SCAN_MISSING && !SCAN_DUB) console.log(`[army] first up: ${ordered.slice(0, 8).map((s) => `${titleByShow.get(s.malId)}(${epsByShow.get(s.malId).length})`).join(", ")}`);
   else console.log(`[army] first up: ${workQueue.slice(0, 8).map((j) => `${j.key ?? `${j.malId}/${j.ep}`} ${j.title}`).join(", ")}`);
   console.log(`[army] skipdb gaps (shows needing vendor): ${state.skipdbGaps.length} -> ${state.skipdbGaps.slice(0, 12).join(",")}${state.skipdbGaps.length > 12 ? "…" : ""}`);
   await logVerdict({ verdict: "CAMPAIGN-START", total: state.total, shows: state.shows, half: state.half, verifyLanes: VERIFY_LANES, repairLanes: REPAIR_LANES, skipdbGaps: state.skipdbGaps.length });
@@ -574,7 +701,17 @@ async function main() {
   await Promise.all(lanes);
   clearInterval(heart);
 
-  for (let i = 0; i < 240 && (repairQueue.length || repairInFlight); i++) await sleep(5_000);
+  // repair tail: wait until every pushed repair is settled (done / noOp /
+  // strike-capped) — uncapped because the campaign report is only truthful
+  // when the queue is actually empty. Repairs always terminate: 2 failed
+  // partner pairs = NO-OP-CONFIRMED, which removes the job.
+  let lastTail = -1;
+  for (;;) {
+    const tail = repairQueue.length + repairInFlight;
+    if (!tail) break;
+    if (tail !== lastTail) { lastTail = tail; console.log(`[army] repair tail: ${tail} eps left`); }
+    await sleep(5_000);
+  }
   state.verified = state.total; state.done = true; state.pendingRepair = 0;
   snapshotProgress();
 
@@ -584,12 +721,12 @@ async function main() {
     startedAt: state.startedAt, finishedAt: new Date().toISOString(),
     shows: state.shows, total: state.total, verified: state.verified,
     pass: state.pass, repaired: state.repaired, noOpConfirmed: state.noOpConfirmed,
-    noButton: state.noButton, badData: state.badData, streamFail: state.streamFail, resolveFail: state.resolveFail,
+    noButton: state.noButton, badData: state.badData, streamFail: state.streamFail, resolveFail: state.resolveFail, noDub: state.noDub,
     repairFailed: state.repairFailed, skipdbGaps: state.skipdbGaps,
     stillFailing: [...new Set(state.failKeys)].sort(),
   };
   void writeFile(REPORT_FILE, JSON.stringify(report, null, 2));
-  console.log(`[army] CAMPAIGN COMPLETE: ${state.verified}/${state.total} eps — pass=${state.pass} repaired=${state.repaired} noOp=${state.noOpConfirmed} noButton=${state.noButton} badData=${state.badData} stream=${state.streamFail} resolve=${state.resolveFail}`);
+  console.log(`[army] CAMPAIGN COMPLETE [${LANG}]: ${state.verified}/${state.total} eps — pass=${state.pass} repaired=${state.repaired} noOp=${state.noOpConfirmed} noButton=${state.noButton} badData=${state.badData} stream=${state.streamFail} resolve=${state.resolveFail} noDub=${state.noDub}`);
   await logVerdict({ verdict: "CAMPAIGN-COMPLETE", ...report });
 }
 
