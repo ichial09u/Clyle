@@ -977,6 +977,17 @@ export default function WatchView({
               ) : null}
             </video>
 
+            {/* brand mark — tiny, see-through, top-left of the picture. It
+                rides ABOVE the video surface (fullscreen included) but below
+                the control layers, never intercepts taps, and steps aside
+                while casting (the TV is the screen then). */}
+            <div
+              className="pointer-events-none absolute left-3 top-[52px] z-[15] select-none font-slab text-[11px] font-bold tracking-[0.22em] text-white/25 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]"
+              aria-hidden="true"
+            >
+              CLYLE
+            </div>
+
             {/* casting overlay — playback lives on the TV now; the phone is
                 the remote: play/pause, ±10s, a scrub bar, and next-episode
                 (side-loaded into the LIVE session — the TV never disconnects

@@ -6,10 +6,13 @@ import type { ContinueItem } from "@/lib/types";
 import { getEpThumb } from "@/lib/client-store";
 
 /**
- * "Continue Watching" rail — one card per anime, red bar = exact progress
- * through the current episode; tapping resumes that episode at that second.
- * Card art is the episode's own captured scene (like Crunchyroll's preview
- * thumbnails) once that episode has been played; the poster is the fallback.
+ * "Continue Watching" — VERTICAL stack (user: "make it be vertical and not
+ * horizontal, showing only the card, nothing else"). One full-width card per
+ * anime, everything lives ON the card (art, title, EP · percent, lang,
+ * resume position); tapping the card resumes that episode at that exact
+ * second — just how Continue Watching works. Red bar = exact progress
+ * through the current episode. Card art is the episode's own captured scene
+ * once that episode has been played; the poster is the fallback.
  */
 export default function ContinueRow({
   items,
@@ -42,13 +45,13 @@ export default function ContinueRow({
   return (
     <section className="mt-5">
       <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Continue Watching</h2>
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 pb-1">
+      <div className="flex flex-col gap-3 px-4">
         {items.map((item) => {
           const thumb = thumbs[item.malId] ?? null;
           return (
-            <div key={item.malId} className="relative shrink-0 w-[196px] md:w-[240px] lg:w-[276px]">
-              <button onClick={() => onResume(item)} className="block w-full text-left active:scale-[0.97] transition">
-                <div className="relative w-full h-[110px] md:h-[135px] lg:h-[155px] rounded-[8px] overflow-hidden bg-[#161616]">
+            <div key={item.malId} className="relative w-full">
+              <button onClick={() => onResume(item)} className="block w-full text-left active:scale-[0.98] transition">
+                <div className="relative w-full aspect-video md:aspect-[21/9] rounded-[8px] overflow-hidden bg-[#161616]">
                   {thumb ? (
                     <img src={thumb} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
                   ) : item.image ? (
@@ -57,38 +60,40 @@ export default function ContinueRow({
                     <div className="absolute inset-0 bg-gradient-to-br from-[#222] to-[#111]" />
                   )}
                   {/* dark gradient so the text/bar reads over the artwork */}
-                  <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-black/85 to-transparent" />
+                  <div className="absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/90 via-black/55 to-transparent" />
 
                   {/* play badge */}
                   <span className="absolute inset-0 flex items-center justify-center">
-                    <span className="w-10 h-10 rounded-full bg-black/55 backdrop-blur flex items-center justify-center">
+                    <span className="w-11 h-11 rounded-full bg-black/55 backdrop-blur flex items-center justify-center">
                       <Play className="w-5 h-5 text-white ml-0.5" />
                     </span>
                   </span>
 
-                  {/* episode + percent */}
-                  <span className="absolute left-2 bottom-2 text-[11px] font-bold text-white drop-shadow">
+                  {/* everything on the card: title, episode + percent */}
+                  <span className="absolute left-3 right-16 bottom-6 text-[12.5px] font-bold text-white drop-shadow truncate">
+                    {item.title}
+                  </span>
+                  <span className="absolute left-3 bottom-2.5 text-[11px] font-bold text-gray-200 drop-shadow">
                     EP {item.episode} · {item.percent}%
                   </span>
-                  <span className="absolute right-2 bottom-2 text-[9.5px] text-gray-300 uppercase tracking-wide">
+                  <span className="absolute right-3 bottom-2.5 text-[9.5px] text-gray-300 uppercase tracking-wide">
                     {item.lang}
                   </span>
 
-                  {/* the red progress bar — exact position in this episode */}
-                  <span className="absolute left-2 right-2 bottom-[5px] h-[3px] rounded-full bg-white/25 overflow-hidden">
+                  {/* the red progress bar — shows where you were last */}
+                  <span className="absolute left-3 right-3 bottom-[6px] h-[3px] rounded-full bg-white/25 overflow-hidden">
                     <span className="block h-full bg-[#d32f2f] rounded-full" style={{ width: `${Math.max(3, item.percent)}%` }} />
                   </span>
                 </div>
-                <p className="mt-1.5 text-[11.5px] text-gray-300 truncate w-full">{item.title}</p>
               </button>
 
               {/* remove from Continue Watching */}
               <button
                 onClick={() => onRemove(item.malId)}
-                className="absolute top-1 right-1 w-6 h-6 rounded-full bg-black/65 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#d32f2f] active:scale-95 transition"
+                className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-black/65 backdrop-blur flex items-center justify-center text-gray-300 hover:text-white hover:bg-[#d32f2f] active:scale-95 transition"
                 aria-label={`Remove ${item.title} from Continue Watching`}
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
           );
