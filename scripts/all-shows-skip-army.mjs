@@ -444,6 +444,8 @@ function hasIntroData(malId, ep) {
 }
 const scoutByShow = new Map();
 
+const WAVE2 = args.includes("--wave2");
+
 async function main() {
   // the vendored dataset the API merges from (read-only tier copy)
   ds = (await import("../src/lib/skip-times.data.json", { with: { type: "json" } })).default;
@@ -469,15 +471,66 @@ async function main() {
     scoutByShow.get(s.malId).push(s);
   }
 
-  // biggest shows first — most viewers affected first
-  const ordered = [...shows]
-    .filter((s) => (epsByShow.get(s.malId) ?? []).length > 0)
-    .sort((a, b) => (epsByShow.get(b.malId) ?? []).length - (epsByShow.get(a.malId) ?? []).length || a.malId - b.malId);
+  if (WAVE2) {
+    // RE-VERIFICATION WAVE: rebuild from the wave-1 log — every episode
+    // whose LATEST verdict is anything other than a clean PASS
+    // (resolve-fails from the dev-server death, no-buttons, false no-ops
+    // confirmed while the server was down, stream fails, bad data).
+    // --repair-only: seed the REPAIR queue directly with the NO-BUTTON /
+    // BAD-DATA keys (verify already done; just the measurement tail).
+    const REPAIR_ONLY = args.includes("--repair-only");
+    const latest = new Map(); // key -> { verdict, title }
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const raw = await readFile(LOG_FILE, "utf8");
+      for (const l of raw.split("\n")) {
+        if (!l.trim()) continue;
+        let j; try { j = JSON.parse(l); } catch { continue; }
+        if (!j.key || typeof j.key !== "string" || !j.key.includes("/")) continue;
+        const v = j.verdict ?? "";
+        if (!v || v === "CAMPAIGN-START" || v === "CAMPAIGN-COMPLETE" || v === "HALFWAY" || v === "REPAIR-RETRY" || v.startsWith("REPAIRED->")) continue;
+        latest.set(j.key, { verdict: v, title: j.title ?? null });
+      }
+    } catch { /* no log — fresh start */ }
+    for (const [key, info] of latest) {
+      if (info.verdict === "PASS") continue;
+      const slash = key.indexOf("/");
+      const malId = parseInt(key.slice(0, slash), 10);
+      const ep = parseInt(key.slice(slash + 1), 10);
+      if (!Number.isFinite(malId) || !Number.isFinite(ep)) continue;
+      if (!epsByShow.has(malId)) continue; // show since dropped from catalog
+      if (REPAIR_ONLY) {
+        if (info.verdict === "NO-BUTTON" || info.verdict === "BAD-DATA") pushRepair(malId, ep);
+      } else {
+        workQueue.push({ malId, ep, title: titleByShow.get(malId) ?? info.title ?? key });
+      }
+    }
+    if (REPAIR_ONLY) {
+      // nothing left to verify — the verify lanes exit immediately; the
+      // repair exit gate (verified >= total) is pre-satisfied so the run
+      // ends exactly when the repair queue drains.
+      state.total = Math.max(1, repairQueue.length);
+      state.verified = state.total;
+      state.shows = new Set(repairQueue.map((j) => j.malId)).size;
+      state.half = 0;
+      console.log(`[army] WAVE-2 REPAIR-ONLY: ${repairQueue.length} eps queued for measurement across ${state.shows} shows`);
+    } else {
+      state.total = workQueue.length;
+      state.shows = new Set(workQueue.map((j) => j.malId)).size;
+      state.half = Math.floor(state.total / 2);
+      console.log(`[army] WAVE-2 re-verification: ${state.total} eps across ${state.shows} shows (latest-verdict != PASS)`);
+    }
+  } else {
+    // biggest shows first — most viewers affected first
+    const ordered = [...shows]
+      .filter((s) => (epsByShow.get(s.malId) ?? []).length > 0)
+      .sort((a, b) => (epsByShow.get(b.malId) ?? []).length - (epsByShow.get(a.malId) ?? []).length || a.malId - b.malId);
 
-  for (const s of ordered) for (const ep of epsByShow.get(s.malId)) workQueue.push({ malId: s.malId, ep, title: titleByShow.get(s.malId) });
-  state.total = workQueue.length;
-  state.shows = ordered.length;
-  state.half = Math.floor(state.total / 2);
+    for (const s of ordered) for (const ep of epsByShow.get(s.malId)) workQueue.push({ malId: s.malId, ep, title: titleByShow.get(s.malId) });
+    state.total = workQueue.length;
+    state.shows = ordered.length;
+    state.half = Math.floor(state.total / 2);
+  }
 
   // shows the SkipDB backfill loop still owes fills for (user: "use SkipDB")
   const [titlesFound, fillShows] = await Promise.all([
@@ -488,8 +541,9 @@ async function main() {
   state.skipdbGaps = titlesFound.map((t) => t.malId).filter((m) => !fillSet.has(m) && epsByShow.has(m));
 
   console.log(`[army] ALL-SHOWS skip intro army deployed: ${VERIFY_LANES} verify bots + ${REPAIR_LANES} repair bots`);
-  console.log(`[army] campaign: ${state.total} sub episodes across ${state.shows} shows (halfway = ${state.half})`);
-  console.log(`[army] first up: ${ordered.slice(0, 8).map((s) => `${titleByShow.get(s.malId)}(${epsByShow.get(s.malId).length})`).join(", ")}`);
+  console.log(`[army] campaign${WAVE2 ? " (WAVE-2)" : ""}: ${state.total} sub episodes across ${state.shows} shows (halfway = ${state.half})`);
+  if (!WAVE2) console.log(`[army] first up: ${ordered.slice(0, 8).map((s) => `${titleByShow.get(s.malId)}(${epsByShow.get(s.malId).length})`).join(", ")}`);
+  else console.log(`[army] first up: ${workQueue.slice(0, 8).map((j) => `${j.key ?? `${j.malId}/${j.ep}`} ${j.title}`).join(", ")}`);
   console.log(`[army] skipdb gaps (shows needing vendor): ${state.skipdbGaps.length} -> ${state.skipdbGaps.slice(0, 12).join(",")}${state.skipdbGaps.length > 12 ? "…" : ""}`);
   await logVerdict({ verdict: "CAMPAIGN-START", total: state.total, shows: state.shows, half: state.half, verifyLanes: VERIFY_LANES, repairLanes: REPAIR_LANES, skipdbGaps: state.skipdbGaps.length });
   snapshotProgress();

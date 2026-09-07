@@ -5,7 +5,7 @@ cd /home/z/my-project
 
 # 1) the verification army (16 verify + 6 repair lanes)
 if ! pgrep -f "all-shows-skip-army.mjs" >/dev/null 2>&1; then
-  setsid nohup node scripts/all-shows-skip-army.mjs --lanes 16 --repair-lanes 6 </dev/null >> scripts/all-shows-skip-army.out 2>&1 &
+  setsid nohup node scripts/all-shows-skip-army.mjs --wave2 --repair-only --lanes 1 --repair-lanes 14 </dev/null >> scripts/all-shows-skip-army.out 2>&1 &
   disown 2>/dev/null
   echo "[boot] all-shows-skip-army launched (pg $!)"
 else
