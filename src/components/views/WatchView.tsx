@@ -439,13 +439,23 @@ export default function WatchView({
     };
   }, [anime.malId, episode, lang, server]);
 
-  /* -------- persist watch progress (heartbeat / pause / exit / ended) -------- */
+  /* -------- persist watch progress (heartbeat / pause / exit / ended) --------
+     EXIT-FLUSH TRAP (fixed): React detaches JSX refs (videoRef.current = null)
+     BEFORE unmount effect cleanups run, so the old "flush on unmount" read
+     videoRef.current === null and silently dropped the save — seek + exit
+     immediately = the CW bar stayed at the last 10s heartbeat. lastPosRef /
+     lastDurRef are plain refs (never attached to JSX, never detached) and are
+     synced on every timeupdate and every seek, so the exit flush always has
+     the exact second you left at. */
+  const lastPosRef = useRef(0);
+  const lastDurRef = useRef(0);
   const saveNow = useCallback(
     (opts?: { keepalive?: boolean; completed?: boolean }) => {
+      if (iframeFallback) return;
       const v = videoRef.current;
-      if (!v || iframeFallback) return;
-      const pos = v.currentTime;
-      const dur = v.duration || 0;
+      const pos = v ? v.currentTime : lastPosRef.current;
+      const dur = (v && v.duration) || lastDurRef.current || 0;
+      if (!pos && !opts?.completed) return; // nothing ever played
       saveProgressDetailed(
         {
           malId: anime.malId,
@@ -693,10 +703,14 @@ export default function WatchView({
     const video = videoRef.current;
     if (!video) return;
     const onTime = () => {
+      lastPosRef.current = video.currentTime; // exit-flush source of truth
       setCurrentTime(video.currentTime);
       if (video.buffered.length) setBuffered(video.buffered.end(video.buffered.length - 1));
     };
-    const onMeta = () => setDuration(video.duration || 0);
+    const onMeta = () => {
+      if (video.duration) lastDurRef.current = video.duration;
+      setDuration(video.duration || 0);
+    };
     const onPlay = () => {
       // mid-cast the TV owns playback — any stray local play() (stale
       // gesture promise, hls restart, double-tap) is silenced immediately
@@ -806,6 +820,7 @@ export default function WatchView({
     const video = videoRef.current;
     if (!video || castStateRef.current === "casting") return;
     video.currentTime = Math.max(0, Math.min(duration || s, s));
+    lastPosRef.current = video.currentTime; // seek + instant exit must still save HERE
     setCurrentTime(video.currentTime);
   };
 

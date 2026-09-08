@@ -115,6 +115,10 @@ export default function Page() {
     return () => window.removeEventListener("popstate", onPop);
   }, [stack.length, pop]);
 
+  /** Exit-the-player = homepage (user ask). goTab("home") resets the stack to
+   *  the home root and syncs the bottom nav — no episodes view left underneath. */
+  const goTabHome = useCallback(() => goTab("home"), [goTab]);
+
   const openAnime = useCallback(
     (a: AnimeLite) => push({ name: "details", anime: a }),
     [push],
@@ -177,7 +181,10 @@ export default function Page() {
             episode={v.ep}
             lang={v.lang}
             server={v.server}
-            onBack={pop}
+            // exiting the player ALWAYS lands on the homepage (user ask) —
+            // goTab resets the stack to the home root, so no episodes grid
+            // is left sitting underneath the fade
+            onBack={goTabHome}
             onEpisodeChange={(ep, lang, server) =>
               setStack((s) => [...s.slice(0, -1), { name: "watch", anime: v.anime, ep, lang, server }])
             }
