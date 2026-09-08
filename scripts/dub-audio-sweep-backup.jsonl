@@ -24,3 +24,5 @@
 {"at":"2026-09-08T14:46:33.987Z","malId":48960,"title":"Hunter","provider":"allmanga","ep":1,"status":"inconclusive","detail":"ep1-allmanga: no usable dub HLS — inconclusive"}
 {"at":"2026-09-08T14:47:08.564Z","malId":49233,"title":"Saga of Tanya the Evil Season 2","provider":"animegg","status":"wrong-show","metaTitle":"youjo senki"}
 {"at":"2026-09-08T14:47:11.352Z","malId":49233,"title":"Saga of Tanya the Evil Season 2","provider":"anineko","ep":1,"status":"inconclusive","detail":"ep1-anineko: no usable dub HLS — inconclusive"}
+{"at":"2026-09-08T14:47:46.094Z","malId":49233,"title":"Saga of Tanya the Evil Season 2","provider":"anineko","ep":5,"status":"inconclusive","detail":"ep5-anineko: no mirror yielded segments — inconclusive"}
+{"at":"2026-09-08T14:47:56.669Z","malId":49233,"title":"Saga of Tanya the Evil Season 2","provider":"reanime","ep":1,"status":"inconclusive","detail":"ep1-reanime: no usable dub HLS — inconclusive"}
