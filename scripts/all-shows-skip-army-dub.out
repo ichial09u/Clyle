@@ -1,0 +1,7 @@
+[army] DUB walk: 1176 shows with probe-confirmed dub → 19053 episodes
+[army] ALL-SHOWS skip intro army deployed: 12 verify bots + 20 repair bots
+[army] campaign (DUB WALK)[dub]: 19053 episodes across 1176 shows (halfway = 9526)
+[army] first up: 1735/1 Naruto: Shippuden, 1735/2 Naruto: Shippuden, 1735/3 Naruto: Shippuden, 1735/4 Naruto: Shippuden, 1735/5 Naruto: Shippuden, 1735/6 Naruto: Shippuden, 1735/7 Naruto: Shippuden, 1735/8 Naruto: Shippuden
+[army] skipdb gaps (shows needing vendor): 925 -> 5,7,20,32,44,47,57,68,77,85,86,88…
+[army] *** HALFWAY: 9544/19053 all-shows dub episodes verified ***
+[army] CAMPAIGN COMPLETE [dub]: 19053/19053 eps — pass=16150 repaired=119 noOp=344 noButton=385 badData=5 stream=21 resolve=1565 noDub=927

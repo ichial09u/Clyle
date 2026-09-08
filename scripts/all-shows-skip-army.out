@@ -24,3 +24,9 @@
 [army] campaign (WAVE-2): 1260 sub episodes across 115 shows (halfway = 0)
 [army] first up: 
 [army] skipdb gaps (shows needing vendor): 925 -> 5,7,20,32,44,47,57,68,77,85,86,88…
+[army] ALL-SHOWS skip intro army deployed: 12 verify bots + 20 repair bots
+[army] campaign (SCAN-MISSING): 2170 sub episodes across 563 shows (halfway = 1085)
+[army] first up: 10015/1 Yu-Gi-Oh! Zexal, 10015/2 Yu-Gi-Oh! Zexal, 10015/3 Yu-Gi-Oh! Zexal, 10015/4 Yu-Gi-Oh! Zexal, 10015/5 Yu-Gi-Oh! Zexal, 10015/6 Yu-Gi-Oh! Zexal, 10015/7 Yu-Gi-Oh! Zexal, 10015/8 Yu-Gi-Oh! Zexal
+[army] skipdb gaps (shows needing vendor): 925 -> 5,7,20,32,44,47,57,68,77,85,86,88…
+[army] *** HALFWAY: 1089/2170 all-shows sub episodes verified ***
+[army] CAMPAIGN COMPLETE: 2170/2170 eps — pass=507 repaired=266 noOp=1588 noButton=1640 badData=0 stream=1 resolve=22
