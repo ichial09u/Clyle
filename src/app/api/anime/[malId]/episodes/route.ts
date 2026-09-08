@@ -9,6 +9,8 @@ import { jikanHealthy } from "@/lib/jikan";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
 import { cachedBackupDubSummary, warmBackupDubSummary } from "@/lib/anivexa";
 import { backupServerId, type BackupServerId } from "@/lib/backup-servers";
+import { getDubAudioVerdict } from "@/lib/dub-audio";
+
 export const dynamic = "force-dynamic";
 
 // ---- 90s per-anime freshness memo (the repeat-view tax fix) ---------------
@@ -273,16 +275,35 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       const summary = await cachedBackupDubSummary(malId);
       if (summary != null) {
         const neededSet = new Set(needed);
+        // Fleet verdict gate: a provider the audio fleet measured FAKE for an
+        // episode (Japanese audio under a DUB label — the DAN DA DAN pattern)
+        // must not claim that episode. Providers whose entire needed coverage
+        // is fake drop off the sheet entirely — "whoever HAS that dub" means
+        // a REAL dub, measured, not merely declared.
+        const fakeRows = await db.dubAudio.findMany({
+          where: { malId, verdict: "fake", server: { startsWith: "anivexa-" } },
+          select: { ep: true, server: true },
+        });
+        const fakeByServer = new Map<string, Set<number>>();
+        for (const r of fakeRows) {
+          let set = fakeByServer.get(r.server);
+          if (!set) fakeByServer.set(r.server, (set = new Set()));
+          set.add(r.ep);
+        }
         backupDub = summary
+          .map((b) => {
+            const fakes = fakeByServer.get(backupServerId(b.provider));
+            const covered = fakes ? b.covered.filter((ep) => !fakes.has(ep)) : b.covered;
+            return {
+              server: backupServerId(b.provider),
+              provider: b.provider,
+              name: b.name,
+              through: covered.length ? covered[covered.length - 1] : null,
+              covered,
+            };
+          })
           // only providers that actually dub at least ONE uncovered episode
-          .filter((b) => b.covered.some((ep) => neededSet.has(ep)))
-          .map((b) => ({
-            server: backupServerId(b.provider),
-            provider: b.provider,
-            name: b.name,
-            through: b.through,
-            covered: b.covered,
-          }));
+          .filter((b) => b.covered.some((ep) => neededSet.has(ep)));
       } else {
         const title = anime.titleEnglish?.trim() || anime.title;
         after(() => warmBackupDubSummary(malId, title).catch(() => undefined));

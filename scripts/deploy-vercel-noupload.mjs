@@ -32,7 +32,10 @@ const EXCLUDE = [
 // full upload died mid-loop; Sep 8's partial covered db/*; the 10 src edits
 // went up in the previous run)
 const MUST_UPLOAD = [
-  "src/components/anime/ContinueRow.tsx",
+  // Sep 8 backup-dub fleet gates: verdict gating in anivexa.ts + episodes route
+  "src/lib/anivexa.ts",
+  "src/app/api/anime/[malId]/episodes/route.ts",
+  "db/custom.db",
 ];
 
 const api = async (path, init = {}) => {
@@ -71,25 +74,64 @@ for (const rel of MUST_UPLOAD) {
 console.log(`uploaded ${uploaded} changed files`);
 
 // ---------- create deployment ----------
+const shaOf = new Map(); // sha -> rel (first file wins; caches can collide-free)
 const files = manifest.map((rel) => {
   const buf = readFileSync(join(ROOT, rel));
-  return { file: rel, sha: createHash("sha1").update(buf).digest("hex"), size: buf.length };
+  const sha = createHash("sha1").update(buf).digest("hex");
+  if (!shaOf.has(sha)) shaOf.set(sha, rel);
+  return { file: rel, sha, size: buf.length };
 });
-const createRes = await api("/v13/deployments", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    name: "temporary-spry-granite-1f0h7ae",
-    target: "production",
-    files,
-    meta: { deployedBy: "api-script-minimal" },
-  }),
-});
-const created = await createRes.json();
-if (!createRes.ok) {
-  console.error("deploy create failed:", createRes.status, JSON.stringify(created).slice(0, 900));
+
+async function uploadFile(rel) {
+  const buf = readFileSync(join(ROOT, rel));
+  const sha = createHash("sha1").update(buf).digest("hex");
+  const res = await api("/v2/files", {
+    method: "POST",
+    headers: { "x-vercel-digest": sha, "Content-Type": "application/octet-stream" },
+    body: buf,
+  });
+  const ok = res.ok || res.status === 409;
+  console.log(`upload ${rel}: ${res.status}${ok ? "" : " " + (await res.text()).slice(0, 160)}`);
+  return ok;
+}
+
+// Cache files (db/anivexa-cache, db/anikoto, custom.db) churn while the dev
+// server runs, so a manifest computed a moment ago can reference shas the
+// server hasn't seen. On `missing_files`, hash-match the reported shas back
+// to local files, upload them, retry — up to 3 rounds.
+async function createDeployment() {
+  for (let round = 0; round < 3; round++) {
+    const createRes = await api("/v13/deployments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "temporary-spry-granite-1f0h7ae",
+        target: "production",
+        files,
+        meta: { deployedBy: "api-script-minimal" },
+      }),
+    });
+    const created = await createRes.json();
+    if (createRes.ok) return created;
+    const missing = created?.error?.missing ?? [];
+    if (created?.error?.code === "missing_files" && missing.length) {
+      console.log(`deploy create: ${missing.length} file(s) missing server-side — backfilling (round ${round + 1})`);
+      let allOk = true;
+      for (const sha of missing) {
+        const rel = shaOf.get(sha);
+        if (!rel) { console.error(`  cannot map sha ${sha} to a local file`); allOk = false; continue; }
+        if (!(await uploadFile(rel))) allOk = false;
+      }
+      if (!allOk) process.exit(1);
+      continue; // retry create
+    }
+    console.error("deploy create failed:", createRes.status, JSON.stringify(created).slice(0, 900));
+    process.exit(1);
+  }
+  console.error("deploy create: still missing files after 3 backfill rounds");
   process.exit(1);
 }
+const created = await createDeployment();
 const dplId = created.id;
 console.log(`deployment created: ${dplId} -> ${created.url}`);
 

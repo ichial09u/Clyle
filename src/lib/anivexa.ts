@@ -46,9 +46,11 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { mediaByMal } from "@/lib/anilist";
+import { getDubAudioVerdict } from "@/lib/dub-audio";
 import {
   ANIVEXA_PROVIDERS,
   BACKUP_PROVIDER_NAMES,
+  backupServerId,
   type AnivexaProvider,
 } from "@/lib/backup-servers";
 
@@ -367,7 +369,17 @@ export async function anivexaDubStream(
     if (p !== prefer && candidates.some((c) => c.provider === p)) order.push(p);
   }
 
-  for (const provider of order.slice(0, maxAttempts)) {
+  // Fleet verdict gate (DubAudio): a provider whose dub was MEASURED as
+  // Japanese audio under the DUB label (or otherwise fake) for this episode
+  // never plays — filtered BEFORE maxAttempts so gating doesn't burn
+  // attempts. No verdict yet = no opinion (the sweep fills it in over time).
+  const gated: AnivexaProvider[] = [];
+  for (const provider of order) {
+    if ((await getDubAudioVerdict(malId, ep, backupServerId(provider)).catch(() => null)) === "fake") continue;
+    gated.push(provider);
+  }
+
+  for (const provider of gated.slice(0, maxAttempts)) {
     if (Date.now() > deadline) break; // dub latency budget spent — let the main chain answer
     const streams = await anivexaWatch(provider, anilistId, "dub", ep);
     if (!streams?.length) continue;
