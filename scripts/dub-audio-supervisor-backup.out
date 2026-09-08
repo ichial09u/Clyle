@@ -1,1 +1,6 @@
 [bk-supervisor] 2026-09-08T14:43:43+00:00 starting backup dub-audio sweep
+[bk-supervisor] 2026-09-08T14:57:13+00:00 sweep exited (0) — next pass in 15 min
+[bk-supervisor] 2026-09-08T15:12:13+00:00 starting backup dub-audio sweep
+[bk-supervisor] 2026-09-08T15:24:08+00:00 sweep exited (0) — next pass in 15 min
+[bk-supervisor] 2026-09-08T15:39:08+00:00 starting backup dub-audio sweep
+[bk-supervisor] 2026-09-08T15:51:09+00:00 sweep exited (0) — next pass in 15 min
