@@ -13,12 +13,24 @@
  * (MyAnimeList) API and playback is always delegated to Zoko's own player.
  */
 
+import type { BackupServerId } from "@/lib/backup-servers";
+
+export type { BackupServerId } from "@/lib/backup-servers";
+export { isBackupServer, backupProviderOf, backupServerId, backupServerName } from "@/lib/backup-servers";
+
 export const ZOKO_BASE = "https://zokoanime.video";
 
 export type Lang = "sub" | "dub";
 
-/** Playback servers, as shown in the app's episode sheet. */
-export type ServerId = "zoko" | "kiwi";
+/**
+ * Playback servers, as shown in the app's episode sheet.
+ *
+ * "zoko" / "kiwi" are the main chain. The "anivexa-*" ids are the BACKUP DUB
+ * servers (the Anivexa network) — they exist per-title, appear ONLY on
+ * episodes where that provider carries a dub our main chain can't serve,
+ * and resolve through /api/stream like every other server.
+ */
+export type ServerId = "zoko" | "kiwi" | BackupServerId;
 
 export const SERVERS: Array<{ id: ServerId; name: string; note: string }> = [
   { id: "zoko", name: "Zoko", note: "Zoko player" },

@@ -3,6 +3,14 @@ import { resolveStream } from "@/lib/zoko-stream";
 import { megaplayDub, verifyRealMegaplayDub } from "@/lib/megaplay";
 import { anikotoDub, verifyRealAnikotoDub } from "@/lib/anikoto";
 import { supaplayDub } from "@/lib/supaplay";
+import { anivexaDubStream } from "@/lib/anivexa";
+import {
+  isBackupServer,
+  backupProviderOf,
+  backupServerName,
+  backupServerId,
+  type BackupServerId,
+} from "@/lib/backup-servers";
 import { withSkipDataLive } from "@/lib/skip-times";
 import { db } from "@/lib/db";
 import type { Lang, ServerId } from "@/lib/zoko";
@@ -27,6 +35,11 @@ export const maxDuration = 60;
  *   5. Megaplay-embed (megaplay.buzz getSources via AniKoto embed ids) —
  *      carries dubs flikhub misses (JJK S2 case); needs an
  *      Anime.anikotoSeriesId mapping from the dub-hunt campaign.
+ *   6. Anivexa backup network (AniNeko / AnimeGG / AniWatch / AllManga /
+ *      Reanime) — the user-requested backup DUB servers for titles our
+ *      chain can't dub (and per-episode dub gaps like One Piece's newest
+ *      arc). Requesting server=anivexa-<provider> goes there FIRST and
+ *      falls back down this chain when the provider can't deliver.
  * All backfill sources are DUB ONLY — SUB always flows through Zoko/Kiwi.
  * The response's `serverUsed` keeps reporting Zoko/Kiwi (or the requested
  * server for backfill hits); `provider` names the actual source.
@@ -36,7 +49,9 @@ export async function GET(req: Request) {
   const malId = parseInt(sp.get("malId") ?? "", 10);
   const ep = parseInt(sp.get("ep") ?? "", 10);
   const lang: Lang = sp.get("lang") === "dub" ? "dub" : "sub";
-  const server: ServerId = sp.get("server") === "kiwi" ? "kiwi" : "zoko";
+  const rawServer = sp.get("server") ?? "zoko";
+  const backupWanted = isBackupServer(rawServer);
+  const server: ServerId = rawServer === "kiwi" ? "kiwi" : backupWanted ? rawServer : "zoko";
   const fresh = sp.get("fresh") === "1";
 
   if (!Number.isFinite(malId) || malId <= 0 || !Number.isFinite(ep) || ep <= 0) {
@@ -44,10 +59,29 @@ export async function GET(req: Request) {
   }
 
   if (lang === "sub") {
-    // SUB always flows through Zoko/Kiwi — single resolve, no backfill.
-    const stream = await resolveStream(malId, ep, "sub", server, { fresh });
+    // SUB always flows through Zoko/Kiwi — the backup network is DUB only,
+    // so even a backup server request answers with Zoko's sub.
+    const stream = await resolveStream(malId, ep, "sub", backupWanted ? "zoko" : server, { fresh });
     if (!stream) return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
-    return respond(malId, ep, stream, server, server);
+    return respond(malId, ep, stream, backupWanted ? "zoko" : server, backupWanted ? "zoko" : server);
+  }
+
+  // ---- explicit BACKUP DUB server request ("DUB AniNeko" button) --------
+  // The user picked a specific backup provider: try it FIRST. If its
+  // upstream is dead or it never declared this episode, fall through to the
+  // standard dub chain below so the player never sits on a spinner.
+  if (backupWanted) {
+    const provider = backupProviderOf(server as BackupServerId);
+    const animeRow = await db.anime.findUnique({
+      where: { malId },
+      select: { titleEnglish: true, title: true },
+    });
+    const title = animeRow?.titleEnglish?.trim() || animeRow?.title || null;
+    const backup = await anivexaDubStream(malId, ep, { title, prefer: provider, maxAttempts: 1 }).catch(() => null);
+    if (backup) {
+      return respond(malId, ep, { src: backup.src, subtitles: [] }, server, server, backup.referer);
+    }
+    // else: fall through — better a real dub from another source than a 404
   }
 
   // ---- DUB: two-phase parallel resolution --------------------------------
@@ -60,12 +94,17 @@ export async function GET(req: Request) {
   // empty does Phase B race the three backfill sources concurrently. The
   // selection order below still honours the same priority as before, so the
   // response is identical — just reached much sooner.
-  const other: ServerId = server === "kiwi" ? "zoko" : "kiwi";
-  const pRequested = resolveStream(malId, ep, "dub", server, { fresh }).catch(() => null);
+  //
+  // A BACKUP server request that its own provider couldn't serve lands HERE —
+  // `mainServer` keeps the Zoko/Kiwi machinery honest (never pass an
+  // anivexa-* id into resolveStream) and the response reports the REAL source.
+  const mainServer: "zoko" | "kiwi" = server === "kiwi" ? "kiwi" : "zoko";
+  const other: "zoko" | "kiwi" = mainServer === "kiwi" ? "zoko" : "kiwi";
+  const pRequested = resolveStream(malId, ep, "dub", mainServer, { fresh }).catch(() => null);
   const pOther = resolveStream(malId, ep, "dub", other, { fresh }).catch(() => null);
 
   const requested = await pRequested;
-  if (requested) return respond(malId, ep, requested, server, server);
+  if (requested) return respond(malId, ep, requested, mainServer, mainServer);
   const alt = await pOther;
   if (alt) return respond(malId, ep, alt, other, other);
 
@@ -74,7 +113,7 @@ export async function GET(req: Request) {
   // and the megaplay-embed network is the final net. The 24h-cached verdicts
   // keep the ad-stub fake dubs out; a transient "couldn't check" (null)
   // never blocks playback.
-  const pSupa = server === "zoko" ? supaplayDub(malId, ep, { fresh }).catch(() => null) : null;
+  const pSupa = mainServer === "zoko" ? supaplayDub(malId, ep, { fresh }).catch(() => null) : null;
   const pMega = (async () => {
     const megaVerdict = await verifyRealMegaplayDub(malId, ep);
     if (megaVerdict === false) return null;
@@ -87,29 +126,51 @@ export async function GET(req: Request) {
   })().catch(() => null);
 
   const supa = await pSupa;
-  if (supa) return respond(malId, ep, supa, server, "supaplay");
+  if (supa) return respond(malId, ep, supa, mainServer, "supaplay");
   const mega = await pMega;
-  if (mega) return respond(malId, ep, mega, server, "yenime");
+  if (mega) return respond(malId, ep, mega, mainServer, "yenime");
   const koto = await pKoto;
-  if (koto) return respond(malId, ep, koto, server, "megaplay-embed");
+  if (koto) return respond(malId, ep, koto, mainServer, "megaplay-embed");
+
+  // Phase C — the Anivexa backup network, the final net. One provider
+  // attempt here keeps the worst-case dub latency bounded; a provider that
+  // was already tried above is skipped by the prefer-miss path.
+  const backup = await anivexaDubStream(malId, ep, {
+    prefer: backupWanted ? backupProviderOf(server as BackupServerId) : null,
+    maxAttempts: 1,
+  }).catch(() => null);
+  if (backup) {
+    return respond(malId, ep, { src: backup.src, subtitles: [] }, server, backupServerId(backup.provider), backup.referer);
+  }
 
   return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
 }
 
-/** Enrich + send one resolved stream (skip data, provider, no-store). */
+/** Enrich + send one resolved stream (skip data, provider, referer, no-store). */
 async function respond(
   malId: number,
   ep: number,
   stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
   serverUsed: ServerId,
-  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed",
+  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | ServerId,
+  referer?: string | null,
 ) {
   // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip
   // dataset + a cached live AniSkip query for brand-new/uncovered episodes
   // (the live query wants the episode's length in minutes for its filters)
   const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
   const enriched = await withSkipDataLive(malId, ep, stream, { episodeLengthMin: meta?.durationMin });
-  return NextResponse.json({ ...enriched, serverUsed, provider }, {
-    headers: { "Cache-Control": "no-store" },
-  });
+  return NextResponse.json(
+    {
+      ...enriched,
+      serverUsed,
+      provider,
+      // backup dub sources need their Referer riding along on every proxy
+      // fetch (rf param) — the player forwards it on the first playlist call
+      ...(referer ? { referer } : {}),
+      // a friendly display name for the toast ("DUB via AniNeko (backup)")
+      ...(isBackupServer(provider) ? { providerName: backupServerName(provider) } : {}),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

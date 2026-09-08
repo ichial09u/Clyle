@@ -109,6 +109,35 @@ async function expectJson(name, path, init, validate) {
     (r, b) => b?.skip?.intro && Number.isFinite(b.skip.intro.end) && b.skip.intro.end > b.skip.intro.start,
   );
 
+  // ---- 3b) BACKUP DUB servers (the Anivexa network) ------------------------
+  // The episodes payload must always carry the backupDub key (null = still
+  // probing is fine) and an explicit backup-server dub request must resolve
+  // a real stream — falling back down the dub chain when the picked
+  // provider can't serve (that's the designed behavior).
+  await expectJson(
+    "GET /api/anime/21/episodes (backupDub key present)",
+    "/api/anime/21/episodes",
+    {},
+    (r, b) => r.ok && "backupDub" in b && (b.backupDub === null || Array.isArray(b.backupDub)),
+  );
+  {
+    // explicit backup request — provider label honest even on fallback
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 75_000);
+      const res = await fetch(`${BASE}/api/stream?malId=21&ep=1100&lang=dub&server=anivexa-anineko`, { signal: ctrl.signal, headers: { "Content-Type": "application/json" } }).finally(() => clearTimeout(t));
+      const body = await res.json().catch(() => null);
+      const ok = res.ok && typeof body?.src === "string" && body.src.length > 10 && !!body.provider;
+      record(
+        "GET /api/stream (backup dub resolves; honest provider)",
+        ok,
+        ok ? `provider=${body.provider}${body.referer ? " +referer" : ""}` : `status ${res.status} ${JSON.stringify(body).slice(0, 120)}`,
+      );
+    } catch (err) {
+      record("GET /api/stream (backup dub resolves; honest provider)", false, String(err).slice(0, 140));
+    }
+  }
+
   // ---- 3c) skip-intro audit: the bot walks EVERY anime in the catalog and
   // verifies the Skip Intro data pipeline is healthy. Since the blind 8-90s
   // heuristic was removed, an episode with no measured data shows NO button

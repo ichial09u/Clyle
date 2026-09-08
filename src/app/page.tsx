@@ -14,6 +14,7 @@ import MyListView from "@/components/views/MyListView";
 import LatestView from "@/components/views/LatestView";
 import ProfileView from "@/components/views/ProfileView";
 import type { Lang, ServerId } from "@/lib/zoko";
+import { isBackupServer } from "@/lib/zoko";
 
 type View =
   | { name: "home" }
@@ -155,7 +156,9 @@ export default function Page() {
         anime: mini,
         ep,
         lang: item.lang === "dub" ? "dub" : "sub",
-        server: item.server === "kiwi" ? "kiwi" : "zoko",
+        // backup-server sessions resume on their own server when we know it;
+        // unknown/stale ids land on Zoko (the dub chain still backfills)
+        server: item.server === "kiwi" ? "kiwi" : isBackupServer(item.server) ? item.server : "zoko",
       });
     },
     [push],

@@ -7,6 +7,8 @@ import { probeDubAvailable } from "@/lib/zoko-stream";
 import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
 import { jikanHealthy } from "@/lib/jikan";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
+import { cachedBackupDubSummary, warmBackupDubSummary } from "@/lib/anivexa";
+import { backupServerId, type BackupServerId } from "@/lib/backup-servers";
 export const dynamic = "force-dynamic";
 
 // ---- 90s per-anime freshness memo (the repeat-view tax fix) ---------------
@@ -238,6 +240,58 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     dubMissing = [...s1Miss].filter((ep) => s2Miss.has(ep)).sort((x, y) => x - y);
   }
 
+  // ---- BACKUP DUB servers (the Anivexa network) ---------------------------
+  // "Add backup players for animes that HAS dub but we don't have yet —
+  // whoever has that dub gets their server; if only 1 has it, only 1 dub
+  // button." Episodes our chain can't dub (sub-only titles, the dub hasn't
+  // reached the newest arc, or holes like DAN DA DAN 4-6) get one button per
+  // outside provider that actually carries that dub. null = still probing
+  // (the background warm fills it; /api/stream still backfills at play
+  // time), [] = probed and nothing helps, otherwise one entry per provider
+  // that covers at least ONE un-covered episode.
+  let backupDub:
+    | Array<{ server: BackupServerId; provider: string; name: string; through: number | null; covered: number[] }>
+    | null = null;
+  {
+    const s1 = anime.dubThruS1 ?? null;
+    const s2 = anime.dubThruS2 ?? null;
+    const boundariesKnown = s1 != null || s2 != null;
+    // null chainMax = unprobed -> optimistic full coverage (no clutter)
+    const chainMax = boundariesKnown ? Math.max(s1 ?? 0, s2 ?? 0) : null;
+    const needed: number[] = [];
+    if (totalNum > 0) {
+      if (chainMax != null) {
+        for (let e = chainMax + 1; e <= totalNum; e++) needed.push(e);
+      }
+      for (const e of dubMissing) if (!needed.includes(e)) needed.push(e);
+      if (dubServers.length === 0 && needed.length === 0) {
+        // sub-only show, boundaries proven 0 — every episode is uncovered
+        for (let e = 1; e <= totalNum; e++) needed.push(e);
+      }
+    }
+    if (needed.length > 0) {
+      const summary = await cachedBackupDubSummary(malId);
+      if (summary != null) {
+        const neededSet = new Set(needed);
+        backupDub = summary
+          // only providers that actually dub at least ONE uncovered episode
+          .filter((b) => b.covered.some((ep) => neededSet.has(ep)))
+          .map((b) => ({
+            server: backupServerId(b.provider),
+            provider: b.provider,
+            name: b.name,
+            through: b.through,
+            covered: b.covered,
+          }));
+      } else {
+        const title = anime.titleEnglish?.trim() || anime.title;
+        after(() => warmBackupDubSummary(malId, title).catch(() => undefined));
+      }
+    } else if (totalNum > 0) {
+      backupDub = []; // chain covers everything — no backup clutter
+    }
+  }
+
   return NextResponse.json({
     malId,
     title: anime.titleEnglish?.trim() || anime.title,
@@ -249,6 +303,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     dubServers,
     dubThrough: { s1: anime.dubThruS1 ?? null, s2: anime.dubThruS2 ?? null },
     dubMissing,
+    backupDub,
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
   });

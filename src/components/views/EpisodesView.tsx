@@ -11,7 +11,7 @@ import {
   setLangPref,
   useProgressVersion,
 } from "@/lib/client-store";
-import { type Lang } from "@/lib/zoko";
+import { type Lang, type ServerId } from "@/lib/zoko";
 
 /** percent -> red bar width inside the episode button (8% padding each side) */
 function barWidth(p: { pos: number; dur: number; completed: boolean } | undefined): number {
@@ -41,7 +41,7 @@ export default function EpisodesView({
 }: {
   anime: AnimeLite;
   onBack: () => void;
-  onWatchEpisode: (ep: number, server: "zoko" | "kiwi", lang: Lang) => void;
+  onWatchEpisode: (ep: number, server: ServerId, lang: Lang) => void;
 }) {
   const [data, setData] = useState<EpisodesPayload | null>(null);
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
@@ -132,10 +132,12 @@ export default function EpisodesView({
       /* prefetch is best-effort */
     }
   };
-  const play = (lang: Lang, server: "zoko" | "kiwi") => {
+  const play = (lang: Lang, server: ServerId) => {
     if (picked != null) onWatchEpisode(picked, server, lang);
     // remember for next time — the sheet will lead with this language/server
-    setLangPref(anime.malId, { lang, server });
+    // (the lang-pref store only knows the main servers; a backup pick lands
+    // on zoko so the NEXT sheet still leads with the right language)
+    setLangPref(anime.malId, { lang, server: server === "kiwi" ? "kiwi" : "zoko" });
     setPicked(null);
   };
 
@@ -305,36 +307,71 @@ export default function EpisodesView({
                     if (thru != null) return picked! <= thru; // 0 = no dub anywhere
                     return animeLevel.includes(server);
                   };
-                  const all = [
-                    { lang: "sub" as Lang, server: "zoko" as const },
-                    { lang: "sub" as Lang, server: "kiwi" as const },
-                    ...([["zoko", "s1"] as const, ["kiwi", "s2"] as const] as Array<["zoko" | "kiwi", "s1" | "s2"]>)
-                      .filter(([s]) => dubFor(s))
-                      .map(([s]) => ({ lang: "dub" as Lang, server: s })),
+                  const all: Array<{ lang: Lang; server: ServerId }> = [
+                    { lang: "sub", server: "zoko" },
+                    { lang: "sub", server: "kiwi" },
+                    ...(["zoko", "kiwi"] as const)
+                      .filter((s) => dubFor(s))
+                      .map((s) => ({ lang: "dub" as Lang, server: s })),
+                  ];
+                  // BACKUP DUB servers (the Anivexa network): a backup button
+                  // appears ONLY when the main chain can't dub THIS episode
+                  // (no DUB Zoko/Kiwi button here) AND that provider's dub
+                  // list covers it — "whoever has that dub gets their server;
+                  // if only 1 has it, only 1 dub button".
+                  const mainCanDub = dubFor("zoko") || dubFor("kiwi");
+                  const backups = !mainCanDub
+                    ? (episodesData?.backupDub ?? []).filter(
+                        (b) => (b.covered ?? []).includes(picked!),
+                      )
+                    : [];
+                  const allWithBackups: Array<{ lang: Lang; server: ServerId }> = [
+                    ...all,
+                    ...backups.map((b) => ({ lang: "dub" as Lang, server: b.server as ServerId })),
                   ];
                   // your last-used language first (so the top-left button is
                   // what you were watching), then the other language
-                  const preferred = prefWorks ? all.filter((b) => b.lang === pref.lang) : [];
-                  const rest = all.filter((b) => !preferred.includes(b));
+                  const preferred = prefWorks
+                    ? allWithBackups.filter((b) => b.lang === pref.lang)
+                    : [];
+                  const rest = allWithBackups.filter((b) => !preferred.includes(b));
                   const ordered = [...preferred, ...rest];
                   return (
                     <div className="grid grid-cols-2 gap-2">
                       {ordered.map(({ lang, server }) => {
-                        const n: 1 | 2 = server === "zoko" ? 1 : 2;
-                        const isPref = lang === pref.lang && server === pref.server;
+                        const n: 1 | 2 | null = server === "zoko" ? 1 : server === "kiwi" ? 2 : null;
+                        const isBackup = server.startsWith("anivexa-");
+                        const backupName =
+                          (episodesData?.backupDub ?? []).find((b) => b.server === server)?.name ?? "Backup";
+                        const isPref =
+                          lang === pref.lang &&
+                          (server === pref.server ||
+                            (isBackup && pref.server.startsWith("anivexa-")));
                         return (
                           <button
                             key={`${lang}-${server}`}
                             onClick={() => play(lang, server)}
-                            title={isPref ? "Your last choice" : undefined}
-                            className={`flex items-center justify-center gap-2 rounded-lg active:scale-[0.98] transition text-[13px] font-bold py-3 text-center text-black ${
+                            title={
+                              isPref
+                                ? "Your last choice"
+                                : isBackup
+                                  ? `DUB via ${backupName} (backup server)`
+                                  : undefined
+                            }
+                            className={`flex items-center justify-center gap-2 rounded-lg active:scale-[0.98] transition text-[13px] font-bold py-3 text-center ${
                               isPref
                                 ? "bg-[#ff5252] hover:bg-[#ff6b6b] text-white"
-                                : "bg-white hover:bg-gray-200"
+                                : isBackup
+                                  ? "bg-[#26263a] hover:bg-[#32324a] text-gray-100"
+                                  : "bg-white hover:bg-gray-200 text-black"
                             }`}
                           >
-                            <MonitorPlay className={`w-4 h-4 ${isPref ? "text-white" : "text-[#d32f2f]"}`} />
-                            {lang.toUpperCase()} Server #{n}
+                            <MonitorPlay
+                              className={`w-4 h-4 ${
+                                isPref ? "text-white" : isBackup ? "text-[#8f9bff]" : "text-[#d32f2f]"
+                              }`}
+                            />
+                            {isBackup ? `DUB ${backupName}` : `${lang.toUpperCase()} Server #${n}`}
                           </button>
                         );
                       })}
@@ -351,6 +388,18 @@ export default function EpisodesView({
                     (bt.s2 != null && picked! > bt.s2 && bt.s2 > 0) ||
                     (episodesData?.dubMissing ?? []).includes(picked!);
                   const nonePerLevel = (episodesData?.dubServers?.length ?? 0) === 0;
+                  // a backup server covering this episode means a DUB *does*
+                  // exist (just not on Zoko/Kiwi) — don't claim "no dub"
+                  const backupCovers = (episodesData?.backupDub ?? []).some(
+                    (b) => (b.covered ?? []).includes(picked!),
+                  );
+                  if (backupCovers) {
+                    return (
+                      <p className="mt-2 text-center text-[10.5px] text-gray-500">
+                        English DUB available on the backup servers above
+                      </p>
+                    );
+                  }
                   if (noneAtAll || (!bt.s1 && !bt.s2 && nonePerLevel)) {
                     return <p className="mt-2 text-center text-[10.5px] text-gray-500">No DUB available for this anime yet</p>;
                   }

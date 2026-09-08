@@ -7,7 +7,7 @@ import {
   Check, Play, Pause, Maximize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
-import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId } from "@/lib/zoko";
+import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupProviderOf } from "@/lib/zoko";
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref, clearProgressTombstone } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
@@ -18,11 +18,15 @@ import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
 
 type Panel = null | "quality" | "speed" | "subs";
-type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: "zoko" | "kiwi" | "supaplay" | "yenime" };
+type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
-const proxyUrl = (u: string, type: "m3u8" | "seg" | "vtt") => `/api/stream/proxy?type=${type}&u=${encodeURIComponent(u)}`;
+// `referer` rides along as `rf` on the FIRST playlist call — the proxy allows
+// rf-carrying requests whose host isn't in its static allowlist, which is how
+// the Anivexa backup network's rotating CDN hosts get through.
+const proxyUrl = (u: string, type: "m3u8" | "seg" | "vtt", referer?: string | null) =>
+  `/api/stream/proxy?type=${type}&u=${encodeURIComponent(u)}${referer ? `&rf=${encodeURIComponent(referer)}` : ""}`;
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -51,7 +55,9 @@ export default function WatchView({
   // remember what the player is using so the episode list's server sheet
   // leads with the same language when you press back (DUB stays DUB)
   useEffect(() => {
-    setLangPref(anime.malId, { lang, server });
+    // the lang-pref store only tracks the main servers; a backup server
+    // session remembers its language under Zoko
+    setLangPref(anime.malId, { lang, server: server === "kiwi" ? "kiwi" : "zoko" });
   }, [anime.malId, lang, server]);
   const [stream, setStream] = useState<Resolved | null>(null);
   const [streamError, setStreamError] = useState(false);
@@ -75,6 +81,10 @@ export default function WatchView({
   // which servers carry that dub ("zoko", "kiwi") — when the player's current
   // server isn't one of them, toggling DUB auto-switches to one that is
   const [dubServers, setDubServers] = useState<Array<ServerId> | null>(null);
+  // BACKUP DUB servers (the Anivexa network) — per-title; `covered` lists the
+  // exact episodes that provider dubs, so buttons show only where real
+  // coverage exists and the main chain can't serve the dub itself
+  const [backupDub, setBackupDub] = useState<Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null>(null);
   // generic in-player toast (dub fallback notices); cast errors use castMsg
   const [playerMsg, setPlayerMsg] = useState<string | null>(null);
 
@@ -91,12 +101,13 @@ export default function WatchView({
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
         if (!ok || !d) return;
         if (typeof d.hasDub === "boolean") setHasDub(d.hasDub);
         if (Array.isArray(d.dubServers)) setDubServers(d.dubServers);
         if (d.dubThrough && (d.dubThrough.s1 != null || d.dubThrough.s2 != null)) setDubThrough(d.dubThrough);
         if (Array.isArray(d.dubMissing)) setDubMissing(d.dubMissing);
+        if (Array.isArray(d.backupDub)) setBackupDub(d.backupDub);
         if (Array.isArray(d.episodes)) {
           const map: Record<number, string> = {};
           for (const e of d.episodes) if (e.title) map[e.number] = e.title;
@@ -398,21 +409,26 @@ export default function WatchView({
         }
         const data = (await res.json()) as Resolved;
         if (!cancelled) {
-          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip });
-          // the DUB backfill sources (SupaPlay / yenime) kick in when neither
-          // Zoko nor Kiwi carries a real dub — say so, it explains any minor
-          // differences (sub style, quality ladder)
-          if (lang === "dub" && (data.provider === "yenime" || data.provider === "supaplay")) {
-            showPlayerMsg(
-              data.provider === "yenime"
-                ? "English DUB via Yenime — Zoko/Kiwi had none"
-                : "English DUB via SupaPlay — Zoko/Kiwi had none",
-              5_000,
-            );
+          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null });
+          // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
+          // network) kick in when neither Zoko nor Kiwi carries a real dub —
+          // say so, it explains any minor differences (sub style, quality ladder)
+          if (lang === "dub" && data.provider) {
+            if (data.provider === "yenime" || data.provider === "supaplay") {
+              showPlayerMsg(
+                data.provider === "yenime"
+                  ? "English DUB via Yenime — Zoko/Kiwi had none"
+                  : "English DUB via SupaPlay — Zoko/Kiwi had none",
+                5_000,
+              );
+            } else if (data.provider.startsWith("anivexa-")) {
+              const nm = data.providerName || data.provider.slice("anivexa-".length);
+              showPlayerMsg(`English DUB via ${nm} (backup server) — Zoko/Kiwi had none`, 6_000);
+            }
           }
           // absolute public URL the Chromecast receiver can fetch through our proxy
           const isHls = /\.m3u8($|\?)/i.test(data.src);
-          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}`;
+          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}${data.referer ? `&rf=${encodeURIComponent(data.referer)}` : ""}`;
         }
       } catch {
         if (!cancelled) setStreamError(true);
@@ -630,7 +646,7 @@ export default function WatchView({
       // progressive source (SupaPlay DUB backfill ships signed MP4s) —
       // hls.js can't take these; the native video element plays them directly
       setLevels([]);
-      video.src = proxyUrl(stream.src, "seg");
+      video.src = proxyUrl(stream.src, "seg", stream.referer);
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (Hls.isSupported()) {
       const hls = new Hls({
@@ -639,7 +655,7 @@ export default function WatchView({
         backBufferLength: 30,
       });
       hlsRef.current = hls;
-      hls.loadSource(proxyUrl(stream.src, "m3u8"));
+      hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer));
       hls.attachMedia(video);
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
         setLevels(data.levels ?? []);
@@ -657,7 +673,7 @@ export default function WatchView({
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       // Safari native HLS
-      video.src = proxyUrl(stream.src, "m3u8");
+      video.src = proxyUrl(stream.src, "m3u8", stream.referer);
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (!destroyed) {
       setStreamError(true);
@@ -828,13 +844,14 @@ export default function WatchView({
   };
 
   /** Switch stream server mid-playback without losing the spot. */
-  const switchServer = (next: "zoko" | "kiwi") => {
+  const switchServer = (next: ServerId) => {
     if (next === server || castStateRef.current === "casting") return;
     const pos = videoRef.current?.currentTime ?? 0;
     saveNow(); // save your spot RIGHT NOW
     pendingSeekRef.current = pos; // the new source resumes exactly here
     setPanel(null);
-    onEpisodeChange(episode, lang, next);
+    // backup servers are DUB only — switching to one flips the language too
+    onEpisodeChange(episode, isBackupServer(next) ? "dub" : lang, next);
   };
 
   const applySpeed = (s: number) => {
@@ -1267,6 +1284,14 @@ export default function WatchView({
             onClick={(e) => {
               e.stopPropagation();
               if (lang === "sub" && epHasDub === false) {
+                // main chain can't dub this episode — but a BACKUP server
+                // might carry it (Anivexa network): jump straight there
+                const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
+                if (b) {
+                  showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
+                  onEpisodeChange(episode, "dub", b.server as ServerId);
+                  return;
+                }
                 showPlayerMsg(
                   epDubThru === 0
                     ? "No English DUB available for this title yet"
@@ -1294,9 +1319,11 @@ export default function WatchView({
             {playerTitle}
           </button>
           <div className="flex-1" />
-          <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">
-            <Download className="w-5 h-5" />
-          </button>
+          {!isBackupServer(server) ? (
+            <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">
+              <Download className="w-5 h-5" />
+            </button>
+          ) : null}
         </div>
 
         {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
@@ -1447,8 +1474,31 @@ export default function WatchView({
                   </button>
                 ))}
               </div>
+              {/* BACKUP DUB servers — one button per Anivexa provider whose
+                  dub list contains THIS episode; hidden entirely when the
+                  main chain dubs the episode. Switching keeps your spot. */}
+              {(backupDub ?? [])
+                .filter((b) => (b.covered ?? []).includes(episode))
+                .map((b) => {
+                  const active = server === b.server;
+                  return (
+                    <button
+                      key={b.server}
+                      onClick={() => switchServer(b.server as ServerId)}
+                      disabled={active}
+                      className={`mt-2 w-full rounded-lg py-2 text-[12.5px] font-bold transition active:scale-[0.98] ${
+                        active
+                          ? "bg-[#3b3b60] text-white cursor-default"
+                          : "bg-[#1c1c2e] hover:bg-[#282840] text-gray-200"
+                      }`}
+                    >
+                      {b.name} (backup DUB)
+                      {active ? <span className="ml-1.5 text-[10px] font-normal">· in use</span> : null}
+                    </button>
+                  );
+                })}
               <p className="mt-1.5 text-[10.5px] text-gray-500">Switching server keeps your exact spot — no restart.</p>
-              <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay (Server #1) or Yenime (Server #2).</p>
+              <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay, Yenime, or the Anivexa backup servers.</p>
             </div>
           </div>
         ) : null}

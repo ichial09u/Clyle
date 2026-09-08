@@ -69,6 +69,14 @@ export interface EpisodesPayload {
    * button even though they sit under the boundary.
    */
   dubMissing: number[];
+  /**
+   * BACKUP DUB servers (the Anivexa network) for episodes our main chain
+   * can't dub. One entry per provider that actually carries the dub over the
+   * uncovered episodes — a title only ONE backup can dub shows exactly ONE
+   * dub button. null = still probing (buttons appear on a later view; play
+   * time still backfills transparently), [] = probed, nothing helps.
+   */
+  backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null;
   episodes: EpisodeInfo[];
   newlyAdded: number;
 }
