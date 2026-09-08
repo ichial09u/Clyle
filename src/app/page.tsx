@@ -15,6 +15,7 @@ import LatestView from "@/components/views/LatestView";
 import ProfileView from "@/components/views/ProfileView";
 import type { Lang, ServerId } from "@/lib/zoko";
 import { isBackupServer } from "@/lib/zoko";
+import { animeFromContinue } from "@/lib/client-store";
 
 type View =
   | { name: "home" }
@@ -36,31 +37,7 @@ interface ScreenAnim {
   nonce: number;
 }
 
-/** Build a minimal AnimeLite from a Continue Watching row so the player can start instantly. */
-function animeFromContinue(item: ContinueItem): AnimeLite {
-  return {
-    malId: item.malId,
-    title: item.title,
-    titleEnglish: null,
-    image: item.image,
-    banner: item.banner,
-    synopsis: null,
-    type: item.type,
-    ratingShort: null,
-    status: null,
-    airing: false,
-    season: null,
-    year: null,
-    durationMin: null,
-    score: null,
-    rank: null,
-    popularity: null,
-    totalEpisodes: item.totalEpisodes || item.episode,
-    genres: [],
-    inCatalog: true,
-    source: "seed",
-  };
-}
+// animeFromContinue moved to @/lib/client-store (shared with the CW (i) button)
 
 export default function Page() {
   const [stack, setStack] = useState<View[]>([{ name: "home" }]);

@@ -9,7 +9,7 @@ import ContinueRow from "@/components/anime/ContinueRow";
 import Top10Bell from "@/components/anime/Top10Bell";
 import {
   loadContinueItems, removeProgress, sweepRemovedProgress, timeAgo, useProgressVersion,
-  fetchTop10Month, type Top10MonthEntry,
+  fetchTop10Month, animeFromContinue, type Top10MonthEntry,
 } from "@/lib/client-store";
 import { getUserId } from "@/lib/profile-store";
 
@@ -140,6 +140,7 @@ export default function HomeView({
         <ContinueRow
           items={continueItems.slice(0, 12)}
           onResume={onResume}
+          onInfo={(item) => onDetails(animeFromContinue(item))}
           onRemove={(malId) => {
             removeProgress(malId);
             setContinueItems((items) => items.filter((i) => i.malId !== malId));

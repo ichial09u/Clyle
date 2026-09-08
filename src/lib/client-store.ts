@@ -758,6 +758,37 @@ export function minimalLite(malId: number, title: string, image: string | null):
 }
 
 /**
+ * Build a minimal AnimeLite from a Continue Watching item — shared by the
+ * resume path (page.tsx) and the CW (i) info button (HomeView). DetailsView
+ * re-enriches from the API by malId, so the null fields are fine.
+ */
+export function animeFromContinue(item: ContinueItem): AnimeLite {
+  return {
+    malId: item.malId,
+    title: item.title,
+    titleEnglish: null,
+    image: item.image,
+    banner: item.banner,
+    logo: null,
+    synopsis: null,
+    type: item.type,
+    ratingShort: null,
+    status: null,
+    airing: false,
+    season: null,
+    year: null,
+    durationMin: null,
+    score: null,
+    rank: null,
+    popularity: null,
+    totalEpisodes: item.totalEpisodes || item.episode,
+    genres: [],
+    inCatalog: true,
+    source: "local",
+  };
+}
+
+/**
  * The day's most-watched anime: the server's global ranking merged with this
  * device's instant local buckets (max, not sum — no double counting; local
  * covers the un-flushed tail and offline/served-cold cases).
