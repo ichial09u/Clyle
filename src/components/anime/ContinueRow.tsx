@@ -1,13 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { Info, X } from "lucide-react";
 import type { ContinueItem } from "@/lib/types";
-import { getEpThumb } from "@/lib/client-store";
 
 /**
  * "Continue Watching" — Crunchyroll-app-style portrait cards (user's
- * screenshot format): full-bleed artwork, (i) info button top-left,
+ * screenshot format): full-bleed poster art, (i) info button top-left,
  * ✕ remove button top-right, bold "Episode N" at the bottom with a
  * heavy drop shadow, and a bottom-flush red progress bar (exact
  * percent through the episode). Tapping the card resumes that
@@ -24,31 +22,12 @@ export default function ContinueRow({
   onRemove: (malId: number) => void;
   onInfo?: (item: ContinueItem) => void;
 }) {
-  // resolve the per-episode scene thumbnails from the local store
-  const [thumbs, setThumbs] = useState<Record<number, string | null>>({});
-
-  useEffect(() => {
-    const resolve = () => {
-      const next: Record<number, string | null> = {};
-      for (const it of items) next[it.malId] = getEpThumb(it.malId, it.episode, it.lang);
-      setThumbs(next);
-    };
-    resolve();
-    window.addEventListener("epthumbs-changed", resolve);
-    window.addEventListener("progress-changed", resolve);
-    return () => {
-      window.removeEventListener("epthumbs-changed", resolve);
-      window.removeEventListener("progress-changed", resolve);
-    };
-  }, [items]);
-
   if (!items.length) return null;
   return (
     <section className="mt-5">
       <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Continue Watching</h2>
       <div className="flex gap-2.5 px-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-proximity">
         {items.map((item) => {
-          const thumb = thumbs[item.malId] ?? null;
           return (
             <div key={item.malId} className="relative shrink-0 snap-start">
               <button
@@ -56,13 +35,10 @@ export default function ContinueRow({
                 className="group relative block w-[150px] h-[212px] md:w-[172px] md:h-[243px] lg:w-[192px] lg:h-[271px] rounded-[12px] overflow-hidden bg-[#161616] active:scale-[0.97] transition"
                 aria-label={`Resume ${item.title} episode ${item.episode}`}
               >
-                {thumb ? (
-                  <img src={thumb} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
-                ) : item.image ? (
+                {item.image ? (
                   <img src={item.image} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
                 ) : (
                   <div className="absolute inset-0 bg-gradient-to-br from-[#222] to-[#111]" />
-
                 )}
 
                 {/* bottom gradient so the episode label reads on any artwork */}

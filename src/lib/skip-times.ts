@@ -448,9 +448,13 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   // episode (Kimetsu ep1: 10k votes vs one failed audio match). Consensus /
   // live / crowd intros are NOT protected — finale episodes genuinely drop
   // their OP and the anime-wide median must not button them.
-  const scout = await scoutIntro(malId, ep);
+  // scout + skipdb in parallel — the two sources are independent, and the
+  // sequential round-trips used to add dead latency to EVERY stream resolve
+  const [scout, sdbExact] = await Promise.all([
+    scoutIntro(malId, ep),
+    skipDbIntervals(malId, ep),
+  ]);
   const confirmedNone = !!scout?.confirmedNone;
-  const sdbExact = await skipDbIntervals(malId, ep);
   const exactKnown = valid(stream.skip?.intro) || !!exactDatasetIntro(malId, ep) || !!sdbExact?.op;
   const suppressIntro = confirmedNone && !exactKnown;
   if (suppressIntro) {

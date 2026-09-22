@@ -41,7 +41,9 @@ export async function GET(req: NextRequest) {
   try {
     const upstream = await fetch(url.toString(), {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; ClyleBot/1.0)", Accept: "image/*,*/*;q=0.8" },
-      cache: "no-store",
+      // art URLs are immutable — let the Next data cache hold them for a
+      // week so repeat hero/poster renders skip the upstream entirely
+      next: { revalidate: 604800 },
       signal: AbortSignal.timeout(12_000),
     });
     if (!upstream.ok || !upstream.body) {

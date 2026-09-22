@@ -11,6 +11,20 @@ interface TopList {
   data: JikanAnime[];
 }
 
+/* -------- 60s response cache --------
+ * The home screen is identical for every visitor (global catalog data), but
+ * it used to re-run its whole build — including ~75 SEQUENTIAL catalog
+ * upsert writes — inside the request path on every visit. Coming back from
+ * the player (exit → homepage) re-mounts HomeView and refetches /api/home,
+ * so that cost landed on every single return home: the hero sat on its
+ * skeleton for seconds. The built payload is now memoized for 60s (a
+ * rebuild happens at most once a minute, and NEVER on cache hits), and the
+ * persistence loop was demoted to fire-and-forget bookkeeping — the sync
+ * endpoint keeps healing the catalog in the background anyway. */
+let homeCache: { at: number; payload: HomePayload } | null = null;
+const HOME_CACHE_MS = 60_000;
+const HOME_HTTP_CACHE = "public, s-maxage=60, stale-while-revalidate=120";
+
 function dedup(items: AnimeLite[]): AnimeLite[] {
   const seen = new Set<number>();
   return items.filter((a) => (seen.has(a.malId) ? false : (seen.add(a.malId), true)));
@@ -28,6 +42,12 @@ function dedup(items: AnimeLite[]): AnimeLite[] {
  * AniList), and finally the local catalog ordering.
  */
 export async function GET() {
+  // 0) cache hit — serve the built payload instantly (this is the path every
+  //    return-to-home takes; the hero must snap in, not rebuild the world)
+  if (homeCache && Date.now() - homeCache.at < HOME_CACHE_MS) {
+    return NextResponse.json(homeCache.payload, { headers: { "Cache-Control": HOME_HTTP_CACHE } });
+  }
+
   // 1) make sure the catalog has details — fire-and-forget so the response
   //    stays fast; sparse rows heal over successive visits (via AniList).
   const sparse = await db.anime.findMany({
@@ -105,6 +125,8 @@ export async function GET() {
   }
 
   // 4) build the home screen from catalog anime only ("only animes Zoko has")
+  //    (persistence of what we saw happens AFTER the payload is built — and
+  //    fire-and-forget, so no visitor ever waits on bookkeeping writes)
   const rows = await db.anime.findMany({ where: { inCatalog: true } });
   const catalog = rows.map(lite);
   const byId = new Map(catalog.map((a) => [a.malId, a]));
@@ -118,7 +140,11 @@ export async function GET() {
   const airingList = pickFrom(airing, 12).length ? pickFrom(airing, 12) : byAiring.slice(0, 12);
 
   const spotlight = airingList.length >= 4 ? airingList : byPop.slice(0, 12);
-  const hero = dedup(spotlight).slice(0, 5);
+  // Hero is PINNED to ONE PIECE (malId 21) — the flagship title is always the
+  // first thing on the home screen, every visit, no rotation. Fallback to the
+  // old spotlight hero only if that catalog row ever disappears.
+  const onePiece = byId.get(21);
+  const hero = onePiece ? [onePiece] : dedup(spotlight).slice(0, 5);
 
   const trending = pickFrom(popular, 12);
   const mostPopular = pickFrom(top, 12);
@@ -142,5 +168,47 @@ export async function GET() {
     sections,
     lastSync: { at: sync.at },
   };
-  return NextResponse.json(payload);
+  homeCache = { at: Date.now(), payload };
+  // 5) persist everything we saw (non-catalog rows are kept as import
+  //    suggestions) — out of band, AFTER the visitor already got their answer
+  persistSeenAsync([top, popular, airing, favorite, season], popRank);
+  return NextResponse.json(payload, { headers: { "Cache-Control": HOME_HTTP_CACHE } });
+}
+
+/** Fire-and-forget persistence of the ranking rows we just showed. The old
+ *  code awaited these ~75 sequential upserts INSIDE the request — the single
+ *  biggest reason the home screen (hero included) felt slow. Nothing here
+ *  feeds the current response; the sync endpoint + the next rebuild pick it
+ *  up. */
+function persistSeenAsync(
+  lists: JikanAnime[][],
+  popRank: Map<number, number>,
+): void {
+  void (async () => {
+    try {
+      const seenIds = new Set<number>();
+      const all: JikanAnime[] = [];
+      for (const list of lists) {
+        for (const a of list) {
+          if (seenIds.has(a.mal_id)) continue;
+          seenIds.add(a.mal_id);
+          all.push(a);
+        }
+      }
+      const catalogIds = new Set(
+        (await db.anime.findMany({ where: { inCatalog: true }, select: { malId: true } })).map((r) => r.malId),
+      );
+      for (const a of all) {
+        const ranked = popRank.get(a.mal_id);
+        if (ranked) a.popularity = a.popularity ?? ranked; // keep MAL rank when we have one
+        if (catalogIds.has(a.mal_id)) {
+          await upsertAnime(a, { inCatalog: true, source: "seed" });
+        } else {
+          await upsertAnime(a, { inCatalog: false, source: "rankings" });
+        }
+      }
+    } catch {
+      /* bookkeeping — never surfaces to the viewer */
+    }
+  })();
 }

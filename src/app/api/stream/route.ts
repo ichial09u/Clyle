@@ -12,6 +12,7 @@ import {
   type BackupServerId,
 } from "@/lib/backup-servers";
 import { withSkipDataLive } from "@/lib/skip-times";
+import { ZOKO_REFERER } from "@/lib/stream-proxy-registry";
 import { db } from "@/lib/db";
 import type { Lang, ServerId } from "@/lib/zoko";
 
@@ -63,7 +64,11 @@ export async function GET(req: Request) {
     // so even a backup server request answers with Zoko's sub.
     const stream = await resolveStream(malId, ep, "sub", backupWanted ? "zoko" : server, { fresh });
     if (!stream) return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
-    return respond(malId, ep, stream, backupWanted ? "zoko" : server, backupWanted ? "zoko" : server);
+    // ZOKO_REFERER rides along so the player's FIRST proxy call is self-vetting:
+    // Zoko rotates CDN domains (aniwatchtv.uk -> 1embed.buzz -> next), and the
+    // proxy's static allowlist can never keep up. With rf= present the proxy
+    // accepts the master playlist, and every child inherits the same rf.
+    return respond(malId, ep, stream, backupWanted ? "zoko" : server, backupWanted ? "zoko" : server, ZOKO_REFERER);
   }
 
   // ---- explicit BACKUP DUB server request ("DUB AniNeko" button) --------
@@ -104,9 +109,9 @@ export async function GET(req: Request) {
   const pOther = resolveStream(malId, ep, "dub", other, { fresh }).catch(() => null);
 
   const requested = await pRequested;
-  if (requested) return respond(malId, ep, requested, mainServer, mainServer);
+  if (requested) return respond(malId, ep, requested, mainServer, mainServer, ZOKO_REFERER);
   const alt = await pOther;
-  if (alt) return respond(malId, ep, alt, other, other);
+  if (alt) return respond(malId, ep, alt, other, other, ZOKO_REFERER);
 
   // Phase B — the DUB backfill sources, all at once. SupaPlay only belongs
   // to Server #1 requests (its DUB source); megaplay/yenime is Server #2's,

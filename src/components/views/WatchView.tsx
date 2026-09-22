@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupProviderOf } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, getEpThumb, saveEpThumb, recordWatchSeconds, setLangPref, clearProgressTombstone } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
@@ -127,6 +127,10 @@ export default function WatchView({
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  // thumb position while the user is dragging the seek bar — the bar and the
+  // elapsed label follow the THUMB during a drag, the <video> only seeks ONCE
+  // (on release); per-pixel seeking used to abort HLS fragments constantly
+  const [scrub, setScrub] = useState<number | null>(null);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [levels, setLevels] = useState<Array<Level>>([]);
@@ -660,9 +664,15 @@ export default function WatchView({
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (Hls.isSupported()) {
       const hls = new Hls({
-        // small start buffer, snappy startup
-        maxBufferLength: 30,
-        backBufferLength: 30,
+        // startup quality floor: assume a 4 Mbps link so the opening seconds
+        // play at high quality instead of crawling up from 360p
+        abrEwmaDefaultEstimate: 4_000_000,
+        // deeper buffer = fewer proxy round-trips; 60s of back-buffer keeps
+        // rewinds inside the browser cache
+        maxBufferLength: 60,
+        backBufferLength: 60,
+        // fetch the first fragment while the manifest is still parsing
+        startFragPrefetch: true,
       });
       hlsRef.current = hls;
       hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer));
@@ -749,61 +759,21 @@ export default function WatchView({
     };
   }, [stream, iframeFallback, saveNow]);
 
-  /* -------- episode scene thumbnail (Crunchyroll-style Continue Watching art)
-     Once per episode session, at a random moment 8-28s in, grab whatever
-     frame is on screen and store it as this episode's thumbnail. Streams play
-     through our same-origin proxy via MSE, so the canvas stays untainted;
-     any failure is silently ignored (the poster art remains the fallback). */
+  /* -------- next-episode pre-resolve --------
+     While THIS episode plays, quietly resolve the next one 15s in. The
+     /api/stream resolution (upstream scrape + dub checks + skip data) is
+     cached server-side, so the warm request is a no-op upstream — and
+     tapping "Next episode" starts playing almost instantly instead of
+     staring at the spinner through a cold resolve. */
   useEffect(() => {
-    if (!ready || iframeFallback) return;
-    if (getEpThumb(anime.malId, episode, lang)) return; // this episode already has its scene
-    let tries = 0;
-    let timer = 0;
-    const capture = () => {
-      timer = 0;
-      const v = videoRef.current;
-      if (!v || streamErrorRef.current || castStateRef.current === "casting") return;
-      if (getEpThumb(anime.malId, episode, lang)) return; // captured meanwhile
-      // wait for real frames: decoded video, actually playing, a few seconds in
-      if (v.readyState < 2 || v.paused || v.ended || !v.videoWidth || v.currentTime < 3) {
-        if (++tries <= 12) timer = window.setTimeout(capture, 5000);
-        return;
-      }
-      try {
-        const W = 224;
-        const H = 126; // 16:9 card
-        const canvas = document.createElement("canvas");
-        canvas.width = W;
-        canvas.height = H;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        // center-crop the source frame to 16:9 so nothing looks squashed
-        const srcAspect = v.videoWidth / v.videoHeight;
-        let sx = 0;
-        let sy = 0;
-        let sw = v.videoWidth;
-        let sh = v.videoHeight;
-        if (srcAspect > W / H) {
-          sw = v.videoHeight * (W / H);
-          sx = (v.videoWidth - sw) / 2;
-        } else {
-          sh = v.videoWidth / (W / H);
-          sy = (v.videoHeight - sh) / 2;
-        }
-        ctx.drawImage(v, sx, sy, sw, sh, 0, 0, W, H);
-        const url = canvas.toDataURL("image/jpeg", 0.62);
-        if (url.length > 64) saveEpThumb(anime.malId, episode, lang, url);
-      } catch {
-        /* tainted canvas / quota — poster stays the fallback */
-      }
-    };
-    // the "random scene": fire at a random moment 8-28s into the session,
-    // then poll every 5s until frames are really flowing (~1 min patience)
-    timer = window.setTimeout(capture, 8000 + Math.floor(Math.random() * 20000));
-    return () => {
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [ready, iframeFallback, anime.malId, episode, lang]);
+    if (!ready || iframeFallback || episode >= total) return;
+    const t = window.setTimeout(() => {
+      fetch(`/api/stream?malId=${anime.malId}&ep=${episode + 1}&lang=${lang}&server=${server}`)
+        .then(() => undefined)
+        .catch(() => undefined);
+    }, 15_000);
+    return () => window.clearTimeout(t);
+  }, [ready, iframeFallback, anime.malId, episode, total, lang, server]);
 
   const go = useCallback((ep: number) => {
     if (ep >= 1 && ep <= total) onEpisodeChange(ep, lang, server);
@@ -830,8 +800,8 @@ export default function WatchView({
   // Throttled to one vote/minute; the server validates + takes medians.
   const lastSkipVoteRef = useRef(0);
   const userScrub = (to: number) => {
-    const from = currentTime;
-    seekTo(to);
+    const from = scrub ?? currentTime;
+    setScrub(to); // visual only — the seek itself commits on release
     try {
       const now = Date.now();
       if (now - lastSkipVoteRef.current < 60_000) return;
@@ -945,7 +915,7 @@ export default function WatchView({
   // the real English track instead of blindly playing subtitles[0].
   const subTrack = pickSubtitleTrack(stream?.subtitles);
 
-  const pct = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const pct = duration > 0 ? ((scrub ?? currentTime) / duration) * 100 : 0;
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
   const casting = castState === "casting";
   const castUsable = castState !== "unavailable";
@@ -1003,7 +973,7 @@ export default function WatchView({
                   kind="subtitles"
                   srcLang={subTrack.lang || "en"}
                   label={subTrack.label || "English"}
-                  src={proxyUrl(subTrack.src, "vtt")}
+                  src={proxyUrl(subTrack.src, "vtt", stream?.referer)}
                   default
                 />
               ) : null}
@@ -1267,7 +1237,7 @@ export default function WatchView({
                   setStream(null);
                   fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
                     .then((r) => (r.ok ? r.json() : null))
-                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip }))
+                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null }))
                     .catch(() => setStreamError(true));
                 }}
                 className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -1351,7 +1321,7 @@ export default function WatchView({
           <div className="mx-auto w-full md:max-w-[760px] lg:max-w-[1040px]">
           {!iframeFallback ? (
             <div className="flex items-center gap-2">
-              <span className="text-[10.5px] text-gray-200 tabular-nums w-11 text-right shrink-0">{fmtTime(currentTime)}</span>
+              <span className="text-[10.5px] text-gray-200 tabular-nums w-11 text-right shrink-0">{fmtTime(scrub ?? currentTime)}</span>
               <div className="relative h-4 flex items-center flex-1">
                 <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full overflow-hidden">
                   <div className="h-full bg-white/25" style={{ width: `${bufPct}%` }} />
@@ -1363,8 +1333,22 @@ export default function WatchView({
                   min={0}
                   max={duration || 0}
                   step={0.5}
-                  value={currentTime}
+                  value={scrub ?? currentTime}
                   onChange={(e) => userScrub(parseFloat(e.target.value))}
+                  onPointerUp={() => {
+                    if (scrub != null) {
+                      seekTo(scrub);
+                      setScrub(null);
+                    }
+                  }}
+                  onPointerCancel={() => setScrub(null)}
+                  onKeyUp={(e) => {
+                    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+                      if (scrub != null) seekTo(scrub);
+                      setScrub(null);
+                    }
+                  }}
+                  onBlur={() => setScrub(null)}
                   className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
                   aria-label="Seek"
                 />

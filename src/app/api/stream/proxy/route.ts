@@ -32,7 +32,7 @@ const ZOKO_ORIGIN = "https://zokoanime.video";
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-const CDN_SUFFIXES = [".aniwatchtv.uk", ".zokoanime.video"];
+const CDN_SUFFIXES = [".aniwatchtv.uk", ".zokoanime.video", ".1embed.buzz"];
 
 /**
  * Upstream headers for one host: each provider's CDN only accepts the
@@ -266,7 +266,9 @@ export async function GET(req: Request) {
     return new NextResponse(rewritePlaylist(enriched ?? text, target, inheritedReferer), {
       headers: {
         "Content-Type": "application/vnd.apple.mpegurl",
-        "Cache-Control": "no-store",
+        // playlists: 30s edge/browser cache — tokens rotate, but 30s is well
+        // inside their lifetime and kills the double-fetch on seek-backs
+        "Cache-Control": "public, max-age=30",
         "Access-Control-Allow-Origin": "*",
       },
     });
@@ -286,6 +288,10 @@ export async function GET(req: Request) {
   return new NextResponse(upstream.body, {
     headers: {
       ...headers,
+      // segments are immutable at a given (tokened) URL — a day of browser
+      // caching means seek-backs and ABR down-switches hit memory, not the
+      // proxy lambda again (overrides the no-store default above)
+      "Cache-Control": "public, max-age=86400, immutable",
       "Content-Type": contentType || "video/mp2t",
       ...(upstream.headers.get("content-length") ? { "Content-Length": upstream.headers.get("content-length") as string } : {}),
     },

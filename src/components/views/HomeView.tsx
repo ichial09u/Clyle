@@ -25,7 +25,6 @@ export default function HomeView({
   onResume: (item: ContinueItem) => void;
 }) {
   const [data, setData] = useState<HomePayload | null>(null);
-  const [heroIdx, setHeroIdx] = useState(0);
   const [error, setError] = useState(false);
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
   const [suggestions, setSuggestions] = useState<AnimeLite[]>([]);
@@ -104,15 +103,6 @@ export default function HomeView({
     };
   }, []);
 
-  // auto-rotate the hero like a spotlight — opening slide varies per visit
-  // so the same background isn't shown first every time
-  useEffect(() => {
-    if (!data?.hero?.length || data.hero.length < 2) return;
-    setHeroIdx(Math.floor(Math.random() * data.hero.length));
-    const t = setInterval(() => setHeroIdx((i) => (i + 1) % data.hero.length), 9000);
-    return () => clearInterval(t);
-  }, [data]);
-
   // background auto-sync: pull new episodes when the app opens (throttled server-side)
   useEffect(() => {
     const t = setTimeout(() => {
@@ -121,7 +111,8 @@ export default function HomeView({
     return () => clearTimeout(t);
   }, []);
 
-  const hero = data?.hero?.[heroIdx] ?? null;
+  // hero is pinned server-side to ONE PIECE — always slide 0, no rotation
+  const hero = data?.hero?.[0] ?? null;
 
   return (
     <div className="pb-24">
@@ -130,7 +121,7 @@ export default function HomeView({
 
       <HeroBanner
         items={data?.hero ?? []}
-        index={heroIdx}
+        index={0}
         ctaLabel="Details"
         onCta={() => hero && onDetails(hero)}
       />
@@ -207,7 +198,6 @@ export default function HomeView({
                     ) : isNew ? (
                       <span className="shrink-0 bg-red-600 text-white font-bold px-1 py-[2px] rounded-[3px] text-[9px] leading-none tracking-wide">NEW</span>
                     ) : null}
-                    <span className="text-gray-500 truncate">Anime Trending</span>
                   </p>
                 </div>
               );
