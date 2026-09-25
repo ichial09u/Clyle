@@ -69,6 +69,8 @@ export async function GET(req: Request) {
         rank: null,
         popularity: null,
         totalEpisodes: 0,
+        nextEpisodeAt: null,
+        nextEpisodeNum: null,
         genres: [],
         inCatalog: false,
         source: "snapshot",

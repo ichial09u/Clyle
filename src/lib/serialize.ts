@@ -30,6 +30,8 @@ export function lite(row: Anime): AnimeLite {
     rank: row.rank,
     popularity: row.popularity,
     totalEpisodes: row.totalEpisodes,
+    nextEpisodeAt: row.nextEpisodeAt,
+    nextEpisodeNum: row.nextEpisodeNum,
     genres,
     inCatalog: row.inCatalog,
     source: row.source,

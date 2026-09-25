@@ -70,7 +70,7 @@ const MEDIA_CORE = `
   isAdult
   studios(isMain: true) { nodes { name } }
   trailer { id site }
-  nextAiringEpisode { episode }
+  nextAiringEpisode { episode airingAt }
 `;
 
 const HOME_QUERY = `
@@ -117,7 +117,7 @@ query MediaFresh($idMal: Int) {
     idMal
     episodes
     status
-    nextAiringEpisode { episode }
+    nextAiringEpisode { episode airingAt }
   }
 }`;
 
@@ -314,7 +314,7 @@ export interface AniListMedia {
   isAdult?: boolean;
   studios?: { nodes?: Array<{ name: string }> } | null;
   trailer?: { id?: string | null; site?: string | null } | null;
-  nextAiringEpisode?: { episode?: number | null } | null;
+  nextAiringEpisode?: { episode?: number | null; airingAt?: number | null } | null;
   relations?: { edges?: Array<{ relationType?: string | null; node?: AniListMedia | null }> } | null;
   recommendations?: { nodes?: Array<{ mediaRecommendation?: AniListMedia | null }> } | null;
 }
@@ -574,6 +574,11 @@ export function anilistToJikan(m: AniListMedia): JikanAnime | null {
       m.trailer?.site === "youtube" && m.trailer.id
         ? { youtube_id: m.trailer.id }
         : undefined,
+    // app extension (not part of MAL's shape): exact next-episode air time —
+    // powers the "New episode soon" card badges and the hero countdown
+    next_episode_airing_at:
+      m.status === "RELEASING" ? m.nextAiringEpisode?.airingAt ?? null : null,
+    next_episode: m.nextAiringEpisode?.episode ?? null,
   };
 }
 

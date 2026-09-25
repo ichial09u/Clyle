@@ -78,6 +78,8 @@ function toRow(a: JikanAnime) {
     studios: JSON.stringify((a.studios ?? []).map((s) => s.name)),
     trailerYt: a.trailer?.youtube_id ?? null,
     totalEpisodes: a.episodes ?? 0,
+    nextEpisodeAt: a.next_episode_airing_at ?? null,
+    nextEpisodeNum: a.next_episode ?? null,
   };
 }
 
@@ -99,6 +101,16 @@ export async function upsertAnime(a: JikanAnime, opts: { inCatalog: boolean; sou
       ...(row.rank ? {} : { rank: undefined }),
       ...(row.members ? {} : { members: undefined }),
       ...(row.popularity ? {} : { popularity: undefined }),
+      // Next-episode air time: only sources that actually KNOW it (AniList's
+      // nextAiringEpisode) may overwrite it. Raw MAL payloads carry no air
+      // time — keep the stored value for still-airing shows (AniList filled
+      // it earlier), and clear it once a show stops airing (finished/hiatus
+      // schedules must not leave a stale "soon" badge behind).
+      ...(row.nextEpisodeAt
+        ? {}
+        : a.airing
+          ? { nextEpisodeAt: undefined, nextEpisodeNum: undefined }
+          : { nextEpisodeAt: null, nextEpisodeNum: null }),
       lastSyncedAt: new Date(),
       ...(opts.inCatalog ? { inCatalog: true } : {}),
     },
@@ -326,11 +338,29 @@ async function runSync(_force = false): Promise<SyncResult> {
     const airing = await db.anime.findMany({
       where: { inCatalog: true, airing: true },
       select: { malId: true, totalEpisodes: true, durationMin: true },
-      orderBy: { popularity: "asc" },
+      // Stalest first (never-synced rows — lastSyncedAt null — sort first):
+      // each check bumps lastSyncedAt, so the 12 slots round-robin over the
+      // whole airing catalog. The old popularity order was poisoned by
+      // pop-null season imports (SQLite sorts NULLs first) — flagship
+      // titles like One Piece never got checked at all.
+      orderBy: [{ lastSyncedAt: "asc" }, { popularity: "asc" }],
       take: 12, // keep the run inside Jikan's per-minute budget
     });
 
-    for (const a of airing) {
+    // Flagship airing titles are checked on EVERY sync (round-robin alone
+    // can leave them behind dozens of stale imports for days): their air
+    // times drive the "New episode soon" card badges and the hero countdown,
+    // which must never lag a schedule change.
+    const priority = await db.anime.findMany({
+      where: { inCatalog: true, airing: true, popularity: { not: null } },
+      orderBy: { popularity: "asc" },
+      take: 3,
+      select: { malId: true, totalEpisodes: true, durationMin: true },
+    });
+    const prioIds = new Set(priority.map((a) => a.malId));
+    const batch = [...priority, ...airing.filter((a) => !prioIds.has(a.malId))];
+
+    for (const a of batch) {
       // fresh (cache-bypassing) fetch so brand-new episodes are caught immediately
       const media = await freshMediaByMal(a.malId);
       const aired = airedEpisodeCount(media);
@@ -342,9 +372,17 @@ async function runSync(_force = false): Promise<SyncResult> {
         continue;
       }
       animeChecked++;
+      // persist the exact next-episode air time alongside the check — this
+      // loop is the freshest path (runs on every app open + cron), so the
+      // "New episode soon" badges and the hero countdown stay accurate
+      const nextAir = media.status === "RELEASING" ? media.nextAiringEpisode ?? null : null;
       await db.anime.update({
         where: { malId: a.malId },
-        data: { lastSyncedAt: new Date() },
+        data: {
+          lastSyncedAt: new Date(),
+          nextEpisodeAt: nextAir?.airingAt ?? null,
+          nextEpisodeNum: nextAir?.episode ?? null,
+        },
       });
       if (aired > a.totalEpisodes) {
         await db.anime.update({ where: { malId: a.malId }, data: { totalEpisodes: aired } });

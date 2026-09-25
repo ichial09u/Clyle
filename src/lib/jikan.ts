@@ -263,6 +263,10 @@ export interface JikanAnime {
     relation: string;
     entry: Array<{ mal_id: number; name: string; type: string }>;
   }>;
+  // App extension fields (set by the AniList mapper; raw MAL payloads lack
+  // them): exact next-episode air time (unix seconds UTC) + its number.
+  next_episode_airing_at?: number | null;
+  next_episode?: number | null;
 }
 
 export function posterUrl(a: JikanAnime | null | undefined): string | null {

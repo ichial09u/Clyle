@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Heart } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { useMyList } from "@/lib/client-store";
@@ -25,6 +25,29 @@ function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children
 }
 
 type ArtStatus = "loading" | "loaded" | "error";
+
+/**
+ * Live "next episode in …" countdown, ticking every second. Returns null
+ * when there is no scheduled episode, it already aired, or the timer has
+ * not mounted yet (first client render matches SSR — no hydration flicker).
+ */
+function useEpisodeCountdown(atSec: number | null | undefined): string | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  if (!atSec || now == null) return null;
+  const delta = atSec * 1000 - now;
+  if (delta <= 0) return null;
+  const s = Math.floor(delta / 1000);
+  const d = Math.floor(s / 86400);
+  const hh = String(Math.floor((s % 86400) / 3600)).padStart(2, "0");
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  const ss = String(s % 60).padStart(2, "0");
+  return d > 0 ? `${d}d ${hh}:${mm}:${ss}` : `${hh}:${mm}:${ss}`;
+}
 
 export default function HeroBanner({ items, index, ctaLabel, onCta }: HeroBannerProps) {
   const { has, toggle } = useMyList();
@@ -76,6 +99,10 @@ export default function HeroBanner({ items, index, ctaLabel, onCta }: HeroBanner
     }
   }
 
+  // global next-episode countdown (server-fed air time, client-ticked clock)
+  // — called BEFORE the skeleton early-return so the hook order never changes
+  const countdown = useEpisodeCountdown(anime?.nextEpisodeAt);
+
   if (!anime) {
     return <div className="h-[470px] md:h-[560px] lg:h-[640px] bg-black animate-pulse" />;
   }
@@ -105,6 +132,17 @@ export default function HeroBanner({ items, index, ctaLabel, onCta }: HeroBanner
 
       {/* content */}
       <div className="absolute inset-x-0 bottom-0 flex flex-col items-center text-center px-4 pb-3">
+        {/* next-episode countdown — pinned to the featured title on the big poster */}
+        {countdown ? (
+          <div className="mb-2.5 flex items-center gap-2 bg-black/65 rounded-full pl-2.5 pr-3.5 py-1.5 backdrop-blur-[2px]">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse shrink-0" />
+            <span className="text-[10px] font-bold text-gray-300 tracking-[0.14em]">NEXT EPISODE</span>
+            <span className="font-slab text-[13px] md:text-[14px] font-bold text-white tabular-nums leading-none">
+              {anime.nextEpisodeNum ? `EP ${anime.nextEpisodeNum} · ` : ""}{countdown}
+            </span>
+          </div>
+        ) : null}
+
         <h1 className="font-slab text-[26px] md:text-[32px] lg:text-[40px] leading-tight font-bold text-white drop-shadow-lg max-w-[92%] lg:max-w-[80%]">
           {anime.title}
         </h1>

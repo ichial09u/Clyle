@@ -20,6 +20,10 @@ export interface AnimeLite {
   rank: number | null;
   popularity: number | null;
   totalEpisodes: number;
+  /** unix SECONDS (UTC) the next episode airs — null when finished/unscheduled.
+   *  Cards show "New episode soon" within 3 days of it; the hero counts down. */
+  nextEpisodeAt: number | null;
+  nextEpisodeNum: number | null;
   genres: string[];
   inCatalog: boolean;
   source: string;

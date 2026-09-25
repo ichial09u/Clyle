@@ -34,6 +34,8 @@ model Anime {
   trailerYt    String?
   logoUrl      String? // official title-logo art (fanart.tv-style clearlogo) overlaid inside poster cards
   totalEpisodes Int     @default(0) // known episode count from MAL
+  nextEpisodeAt  Int?   // unix SECONDS (UTC) the next episode airs — null when finished/unscheduled. Powers "New episode soon" card badges + the hero countdown
+  nextEpisodeNum Int?   // number of that next episode (paired with nextEpisodeAt)
   inCatalog     Boolean @default(true) // "Zoko has it"
   hasDub        Boolean? // Zoko dub verdict: does a REAL (non-fake) English dub stream exist? (null = not probed yet)
   hasDubKiwi    Boolean? // Kiwi dub verdict — same probe against the Kiwi server (null = not probed)

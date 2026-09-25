@@ -63,7 +63,7 @@ async function expectJson(name, path, init, validate) {
   }
 
   // ---- 2) catalog APIs ----
-  const home = await expectJson("GET /api/home", "/api/home", {}, (r, b) => Array.isArray(b?.hero) && b.hero.length > 0 && Array.isArray(b?.sections));
+  const home = await expectJson("GET /api/home", "/api/home", {}, (r, b) => Array.isArray(b?.hero) && b.hero.length > 0 && Array.isArray(b?.sections) && b.hero[0] && typeof b.hero[0].nextEpisodeAt !== "undefined");
   await expectJson("GET /api/latest", "/api/latest", {}, (r, b) => r.ok && b != null);
   await expectJson("GET /api/genres", "/api/genres", {}, (r, b) => r.ok && b != null);
 

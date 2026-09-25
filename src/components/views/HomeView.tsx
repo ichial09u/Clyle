@@ -188,7 +188,7 @@ export default function HomeView({
                   <span className="absolute -left-0.5 -top-1 z-10 font-slab text-[42px] font-extrabold leading-none text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.9)]">
                     {i + 1}
                   </span>
-                  <PosterCard image={a.image} title={a.title} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3 md:w-[150px] md:h-[212px] lg:w-[172px] lg:h-[243px]" />
+                  <PosterCard image={a.image} title={a.title} nextEpisodeAt={a.nextEpisodeAt} onClick={() => onSelect(a)} className="w-[126px] h-[178px] ml-3 md:w-[150px] md:h-[212px] lg:w-[172px] lg:h-[243px]" />
                   <p className="mt-1.5 text-[11px] text-gray-300 truncate w-[126px] ml-3 md:w-[150px] lg:w-[172px]">{a.title}</p>
                   <p className="mt-0.5 text-[10px] ml-3 flex items-center gap-1 min-h-[16px]">
                     {movedUp ? (
