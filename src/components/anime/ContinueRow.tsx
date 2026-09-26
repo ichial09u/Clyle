@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Info, X } from "lucide-react";
 import type { ContinueItem } from "@/lib/types";
+import { artUrl } from "@/lib/art";
 
 /**
  * "Continue Watching" — Crunchyroll-app-style portrait cards (user's
@@ -11,6 +13,34 @@ import type { ContinueItem } from "@/lib/types";
  * percent through the episode). Tapping the card resumes that
  * episode at the saved second; tapping (i) opens the show's details.
  */
+
+/**
+ * Poster with a two-step fallback. Progress rows (and the local entries
+ * mirrored from them) snapshot the poster URL saved at watch time — a URL
+ * that later dies in the BROWSER (CDN hot-link filtering, host blocks) used
+ * to leave a permanent dark card, because the saved snapshot never updates
+ * and the server-side catalog join that would heal it is not always reached.
+ * Fallback chain: saved URL direct → same URL through our own /api/art
+ * proxy (server-side fetch survives anything the browser itself hits) →
+ * nothing (the card's dark gradient takes over).
+ */
+function CardPoster({ src, title }: { src: string; title: string }) {
+  // 0 = direct, 1 = proxied retry, 2 = give up (gradient)
+  const [stage, setStage] = useState<0 | 1 | 2>(0);
+  if (stage === 2) return null;
+  const url = stage === 0 ? src : artUrl(src);
+  return (
+    <img
+      key={url}
+      src={url}
+      alt={title}
+      loading="lazy"
+      onError={() => setStage((s) => (s === 0 ? 1 : 2))}
+      className="absolute inset-0 w-full h-full object-cover"
+    />
+  );
+}
+
 export default function ContinueRow({
   items,
   onResume,
@@ -36,7 +66,7 @@ export default function ContinueRow({
                 aria-label={`Resume ${item.title} episode ${item.episode}`}
               >
                 {item.image ? (
-                  <img src={item.image} alt={item.title} loading="lazy" className="absolute inset-0 w-full h-full object-cover" />
+                  <CardPoster src={item.image} title={item.title} />
                 ) : (
                   <div className="absolute inset-0 bg-gradient-to-br from-[#222] to-[#111]" />
                 )}
