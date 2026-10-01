@@ -27,7 +27,9 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
     setSyncing(true);
     setResult(null);
     try {
-      const res = await fetch("/api/sync", { method: "POST" });
+      // force=1: an explicit user request always really syncs (bypasses the
+      // arrival-kick throttle)
+      const res = await fetch("/api/sync?force=1", { method: "POST" });
       const payload = (await res.json()) as { episodesAdded: number; animeAdded: number; ok: boolean };
       setResult(
         payload.ok

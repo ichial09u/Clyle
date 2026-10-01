@@ -13,6 +13,22 @@ import {
 } from "@/lib/client-store";
 import { getUserId } from "@/lib/profile-store";
 
+// ---- arrival episode import ----------------------------------------------
+// "As soon as you get into the website or app the episodes import": one kick
+// per arrival — cold open, navigating back home, or PWA coming back to the
+// foreground. The server (POST /api/sync?kick=1) throttles real sweeps to one
+// per 5 min and answers instantly otherwise, so extra kicks are near-free.
+// Module-scope timestamp: survives view switches inside the SPA so a quick
+// home → details → home round-trip doesn't re-kick.
+const KICK_MIN_GAP_MS = 60_000;
+let lastKickAt = 0;
+
+function kickEpisodeImport() {
+  if (Date.now() - lastKickAt < KICK_MIN_GAP_MS) return;
+  lastKickAt = Date.now();
+  fetch("/api/sync?kick=1", { method: "POST" }).catch(() => undefined);
+}
+
 export default function HomeView({
   onSelect,
   onDetails,
@@ -103,12 +119,16 @@ export default function HomeView({
     };
   }, []);
 
-  // background auto-sync: pull new episodes when the app opens (throttled server-side)
+  // arrival kick — starts the episode import the moment the app is open and
+  // again every time the PWA returns to the foreground (a restored session
+  // must catch episodes that aired while it was backgrounded)
   useEffect(() => {
-    const t = setTimeout(() => {
-      fetch("/api/sync", { method: "POST" }).catch(() => undefined);
-    }, 2500);
-    return () => clearTimeout(t);
+    kickEpisodeImport();
+    const onVis = () => {
+      if (document.visibilityState === "visible") kickEpisodeImport();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
   }, []);
 
   // hero is pinned server-side to ONE PIECE — always slide 0, no rotation

@@ -73,6 +73,24 @@ export default function EpisodesView({
           if (!cancelled) {
             setData(payload);
             setLoadedFor(anime.malId);
+            // The route deferred its freshness check (AniList was slow) — a
+            // brand-new episode may be importing right now. Refetch shortly
+            // so it appears HERE, without the user leaving and coming back.
+            if (payload.freshnessPending) {
+              for (const delay of [3_000, 8_000]) {
+                setTimeout(async () => {
+                  if (cancelled) return;
+                  try {
+                    const res2 = await fetch(`/api/anime/${anime.malId}/episodes`);
+                    if (!res2.ok || cancelled) return;
+                    const p2 = (await res2.json()) as EpisodesPayload;
+                    if (!cancelled) setData(p2);
+                  } catch {
+                    /* best effort */
+                  }
+                }, delay);
+              }
+            }
             return;
           }
         } catch {

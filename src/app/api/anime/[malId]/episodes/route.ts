@@ -50,6 +50,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   // picks the new episodes up. The grid answers from local rows at all times.
   let newlyAdded = 0;
   const freshEpisodes: number[] = [];
+  // true when the freshness check was deferred past this response (AniList
+  // slow or schedule-less) — a brand-new episode may be importing right now
+  // and the client refetches shortly so it shows up without a re-visit.
+  let freshnessPending = false;
   const memoHit = Date.now() - (lastFreshRun.get(malId) ?? 0) < FRESHNESS_MEMO_MS;
   if (!memoHit) {
     if (lastFreshRun.size > 4000) lastFreshRun.clear(); // bounded
@@ -89,10 +93,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
           freshEpisodes.push(...added);
         }
       } else {
+        freshnessPending = true; // no schedule — probe MAL's list
         after(() => backgroundFreshness());
       }
     } else {
       // AniList slow or unreachable — the grid must not wait on it
+      freshnessPending = true;
       after(() => backgroundFreshness());
     }
     // brand-new episodes import their skip intro/ending along with them
@@ -327,5 +333,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     backupDub,
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
+    freshnessPending,
   });
 }

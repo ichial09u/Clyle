@@ -83,6 +83,13 @@ export interface EpisodesPayload {
   backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null;
   episodes: EpisodeInfo[];
   newlyAdded: number;
+  /**
+   * true = this show is airing and a brand-new episode may have JUST aired,
+   * but the freshness check (AniList) was too slow to wait for inline — the
+   * import is finishing in the background and the client should refetch
+   * shortly so the episode appears without the user leaving and coming back.
+   */
+  freshnessPending?: boolean;
 }
 
 export interface RelatedCard {
