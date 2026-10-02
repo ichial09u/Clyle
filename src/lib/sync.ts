@@ -415,8 +415,43 @@ async function runSync(_force = false): Promise<SyncResult> {
     //    aired-count path creates bare rows; MAL's list has the names
     //    ("Ryomen Sukuna"). Bounded: only pages with untitled episodes.
     // ---------------------------------------------------------------
-    for (const malId of new Set(newEpisodes.map((n) => n.malId))) {
+    const importedShowIds = new Set(newEpisodes.map((n) => n.malId));
+    for (const malId of importedShowIds) {
       await backfillEpisodeTitles(malId).catch(() => undefined);
+    }
+
+    // ---------------------------------------------------------------
+    // 3b) HEAL previously-untitled episodes on airing shows — a same-day
+    //     import usually beats MAL's episode-list publishing (One Piece:
+    //     Zoko serves ep 1180 from AniList's aired count while MAL's list
+    //     still ends at 1168). The import-time backfill above runs BEFORE
+    //     MAL has the names, and without this retry the row stays
+    //     "Episode N" until a user happens to reopen the page days later.
+    //     Bounded: 4 stalest-checked airing shows per sweep — the moment
+    //     MAL publishes, the next sync (arrival kick / cron) fills them.
+    // ---------------------------------------------------------------
+    if (episodesAdded > 0 || Math.random() < 0.25) {
+      try {
+        // relation EXISTS filter — the naive two-step (distinct animeIds with
+        // untitled rows -> IN [...]) blew SQLite's parameter limit once the
+        // untitled set grew to five figures
+        const heal = await db.anime.findMany({
+          where: {
+            inCatalog: true,
+            airing: true,
+            episodes: { some: { lang: "sub", title: null } },
+            malId: { notIn: [...importedShowIds] },
+          },
+          orderBy: { lastSyncedAt: "asc" },
+          take: 4,
+          select: { malId: true },
+        });
+        for (const a of heal) {
+          await backfillEpisodeTitles(a.malId).catch(() => undefined);
+        }
+      } catch {
+        /* heal is best-effort */
+      }
     }
 
     await db.syncLog.update({
