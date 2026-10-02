@@ -274,6 +274,49 @@ export default function WatchView({
     };
   }, []);
 
+  /* -------- landscape beyond the fullscreen path (the PWA-reopen fix) --------
+     The lock above only runs when requestFullscreen RESOLVES — but a restored
+     player (PWA relaunch / process-death reload / lock-screen resume) has no
+     user gesture, fullscreen is DENIED, and the lock was never attempted, so
+     the player sat in portrait. Standalone PWAs are allowed to lock the
+     orientation WITHOUT fullscreen, so: attempt on mount, and re-assert every
+     time the app becomes visible again or playback (re)starts. Failed
+     attempts (browser tab without fullscreen, iOS) are silently ignored —
+     same posture as the fullscreen-gated attempt above. */
+  useEffect(() => {
+    const shell = shellRef.current;
+    if (!shell || shell.closest('[data-leaving="true"]')) return;
+    if (!window.matchMedia?.("(pointer: coarse)")?.matches) return; // phones/tablets only
+    type Orient = ScreenOrientation & { lock?: (o: "landscape") => Promise<void> };
+    let stopped = false;
+    let lastAt = 0;
+    const attempt = () => {
+      if (stopped) return;
+      const now = Date.now();
+      if (now - lastAt < 1_000) return; // throttle the resume/play churn
+      lastAt = now;
+      const so = screen.orientation as Orient | undefined;
+      try {
+        const p = so?.lock?.("landscape");
+        if (p && typeof p.catch === "function") p.catch(() => undefined);
+      } catch {
+        /* iOS Safari has no orientation lock — ignore */
+      }
+    };
+    attempt(); // mount: covers PWA reopen straight into a restored player
+    const onVis = () => {
+      if (document.visibilityState === "visible") attempt();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const video = videoRef.current;
+    video?.addEventListener("play", onVis);
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", onVis);
+      video?.removeEventListener("play", onVis);
+    };
+  }, []);
+
   /* -------- desktop: moving the mouse wakes / keeps the controls visible -------- */
   const lastMoveRef = useRef(0);
   const handlePointerMove = useCallback(

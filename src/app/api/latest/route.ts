@@ -14,17 +14,24 @@ export async function GET() {
     include: { anime: true },
   });
 
-  // group newest episode per anime
-  const perAnime = new Map<number, { anime: ReturnType<typeof lite>; latest: number; total: number; updatedAt: string }>();
+  // group newest episode per anime — carrying the newest episode's REAL title
+  // ("The Forbidden Continent") so the Latest row reads
+  // "Episode 1180: The Forbidden Continent available" instead of a bare
+  // "Episode 1180 available" (the grab-the-episode-name ask).
+  const perAnime = new Map<number, { anime: ReturnType<typeof lite>; latest: number; latestTitle: string | null; total: number; updatedAt: string }>();
   for (const ep of recentEpisodes) {
     if (!ep.anime.inCatalog) continue;
     const existing = perAnime.get(ep.anime.malId);
     if (existing) {
-      existing.latest = Math.max(existing.latest, ep.number);
+      if (ep.number > existing.latest) {
+        existing.latest = ep.number;
+        existing.latestTitle = ep.title ?? null;
+      }
     } else {
       perAnime.set(ep.anime.malId, {
         anime: lite(ep.anime),
         latest: ep.number,
+        latestTitle: ep.title ?? null,
         total: ep.anime.totalEpisodes,
         updatedAt: ep.addedAt.toISOString(),
       });

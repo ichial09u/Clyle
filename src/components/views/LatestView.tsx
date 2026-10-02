@@ -93,8 +93,9 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
                         <span className="shrink-0 text-[9px] font-bold bg-[#d32f2f] px-1.5 py-[2px] rounded">AIRING</span>
                       ) : null}
                     </div>
-                    <p className="text-[12px] text-gray-400 mt-1">
-                      Episode {u.latest} available
+                    <p className="text-[12px] text-gray-400 mt-1 truncate">
+                      Episode {u.latest}
+                      {u.latestTitle ? `: ${u.latestTitle}` : ""} available
                       {hasNew ? <span className="text-[#ff8a80] font-bold"> • NEW</span> : null}
                     </p>
                     <p className="text-[11px] text-gray-600 mt-0.5">imported {timeAgo(u.updatedAt)}</p>

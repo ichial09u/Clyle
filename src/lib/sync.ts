@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { jikan, posterUrl, bannerUrl, durationToMinutes, shortRating, type JikanAnime } from "@/lib/jikan";
 import { anilistToJikan, freshMediaByMal, seasonNow, airedEpisodeCount, streamingEpisodeTitlesByMal, type AniListMedia } from "@/lib/anilist";
+import { tvmazeEpisodeTitles } from "@/lib/tvmaze";
 
 /**
  * Catalog sync — keeps the Zoko catalog up to date:
@@ -290,6 +291,53 @@ export async function backfillEpisodeTitles(malId: number): Promise<number> {
         orderBy: { number: "asc" },
       });
       if (missing.length === 0) return filled; // AniList covered everything
+    }
+  }
+
+  // ---- source 1.5: TVmaze (the current-season lifeline) -------------------
+  // AniList's streamingEpisodes simply DO NOT EXIST for most non-Crunchyroll
+  // seasonal shows (Mushoku Tensei III / Clevatess II / LIAR GAME …) and for
+  // One Piece they stop at ep 130 — but MAL's episode list lags days or is
+  // never filled for those same shows. TVmaze (TheTVDB) carries real names
+  // for airing shows within ~a day; the join key is the broadcast date
+  // derived from AniList's schedule, since TVmaze numbers episodes per
+  // year-season, not absolutely.
+  {
+    const missingNums = missing.map((e) => e.number);
+    // only the newest window matters in practice (what Latest/Continue
+    // Watching show); cap the work for pathological all-untitled catalogs
+    const wanted = missingNums.slice(-24);
+    const anime = await db.anime.findUnique({
+      where: { malId },
+      select: { title: true, titleEnglish: true, year: true, nextEpisodeNum: true, nextEpisodeAt: true },
+    });
+    if (anime) {
+      const titles = await tvmazeEpisodeTitles({
+        malId,
+        titleEnglish: anime.titleEnglish,
+        title: anime.title,
+        year: anime.year,
+        wanted,
+        nextEpisodeNum: anime.nextEpisodeNum,
+        nextEpisodeAtSec: anime.nextEpisodeAt,
+      }).catch(() => new Map<number, string>());
+      for (const [ep, name] of titles) {
+        const title = cleanEpisodeTitle(name);
+        if (!title) continue;
+        const r = await db.episode.updateMany({
+          where: { animeId: malId, number: ep, lang: "sub", title: null },
+          data: { title },
+        });
+        filled += r.count;
+      }
+      if (filled > 0) {
+        missing = await db.episode.findMany({
+          where: { animeId: malId, lang: "sub", title: null },
+          select: { number: true },
+          orderBy: { number: "asc" },
+        });
+        if (missing.length === 0) return filled;
+      }
     }
   }
 

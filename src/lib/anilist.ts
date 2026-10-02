@@ -428,6 +428,65 @@ export async function freshMediaByMal(malId: number): Promise<AniListMedia | nul
 }
 
 /**
+ * EXACT air times of the most recently AIRED episodes, from AniList's
+ * airingSchedule (its nextAiringEpisode lies across announced hiatuses —
+ * One Piece's says Jan 2027 while weekly episodes aired through Oct 2026 —
+ * but the past schedule entries are exact). Powers the TVmaze episode-title
+ * match (broadcast-date join). Returns [] on any failure — callers treat it
+ * as best-effort.
+ */
+export async function recentAiringScheduleByMal(
+  malId: number,
+  take = 25,
+): Promise<Array<{ episode: number; airingAt: number }>> {
+  try {
+  const QUERY = `
+    query AirTail($idMal: Int, $page: Int, $perPage: Int) {
+      Media(idMal: $idMal, type: ANIME) {
+        airingSchedule(page: $page, perPage: $perPage) {
+          pageInfo { lastPage }
+          nodes { episode airingAt }
+        }
+      }
+    }`;
+  // airingSchedule quirks (measured): perPage is CAPPED at 25, and for
+  // long-runners early pages report a capped total/lastPage (500/20) before
+  // the true tail page reveals the real numbers (67/3). The parallel walk
+  // over the first AIR_TAIL_PAGES pages sidesteps both: merge every page's
+  // nodes and dedupe. Empty pages past the end answer instantly and cheaply.
+  // 3 pages = 75 schedule entries ≈ 17 months of weekly episodes — the whole
+  // stored window for long-runners (AniList keeps only ~67 for One Piece).
+  const AIR_TAIL_PAGES = 3;
+  const pages = await Promise.all(
+    Array.from({ length: AIR_TAIL_PAGES }, (_, i) =>
+      anilist<{
+        Media?: {
+          airingSchedule?: {
+            pageInfo?: { lastPage?: number } | null;
+            nodes?: Array<{ episode: number; airingAt: number } | null> | null;
+          } | null;
+        } | null;
+      }>(QUERY, { idMal: malId, page: i + 1, perPage: 25 }, { retries: 1 }).catch(() => null),
+    ),
+  );
+  const byEp = new Map<number, number>();
+  for (const res of pages) {
+    for (const n of res?.Media?.airingSchedule?.nodes ?? []) {
+      if (!n || !Number.isFinite(n.episode) || !Number.isFinite(n.airingAt)) continue;
+      if (!byEp.has(n.episode) || n.airingAt > byEp.get(n.episode)!) byEp.set(n.episode, n.airingAt);
+    }
+  }
+  // newest tail only — the caller matches by episode number
+  return [...byEp.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, Math.max(take, 50))
+    .map(([episode, airingAt]) => ({ episode, airingAt }));
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Streaming episode titles for an anime ("Episode 1 - Ryomen Sukuna"), used
  * by the episode-title backfill. Coverage follows AniList's streaming data:
  * complete for normal-length shows, a recent window for long-runners.

@@ -121,6 +121,8 @@ export interface SearchResult {
 export interface LatestUpdate {
   anime: AnimeLite;
   latest: number;
+  /** real title of the newest episode ("The Forbidden Continent"), null until the backfill lands one */
+  latestTitle?: string | null;
   total: number;
   updatedAt: string;
 }
