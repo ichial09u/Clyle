@@ -428,3 +428,20 @@ model PushLog {
   key       String   @id
   createdAt DateTime @default(now())
 }
+
+// Per-anime episode watches ("notify me about THIS anime's next episode").
+// One row per (device endpoint, anime) — created from the bell on the anime's
+// details page, managed from Settings -> Notifications. Episode pushes and
+// the daily airing-soon reminder go ONLY to these rows (opt-in per anime),
+// while catalog-level pushes (new series added, Top 10 moves) stay broadcast.
+model AnimeNotify {
+  id        Int      @id @default(autoincrement())
+  endpoint  String // the PushSub endpoint this device receives pushes through
+  malId     Int
+  title     String? // denormalized for the Settings list
+  image     String? // denormalized for the Settings list
+  createdAt DateTime @default(now())
+
+  @@unique([endpoint, malId])
+  @@index([malId])
+}

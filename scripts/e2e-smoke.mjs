@@ -315,6 +315,35 @@ async function expectJson(name, path, init, validate) {
       ),
   );
 
+  // ---- 5g) per-anime drop watches (details-page bell roundtrip) ----
+  {
+    const ep = "https://fcm.googleapis.com/fcm/send/smoke-anime-notify";
+    await expectJson(
+      "POST /api/anime-notify (subscribe anime)",
+      "/api/anime-notify",
+      { method: "POST", body: JSON.stringify({ endpoint: ep, malId: 21, title: "One Piece", on: true }) },
+      (r, b) => r.ok && b?.ok === true && b?.on === true,
+    );
+    await expectJson(
+      "GET /api/anime-notify (list watches)",
+      `/api/anime-notify?endpoint=${encodeURIComponent(ep)}`,
+      {},
+      (r, b) => r.ok && Array.isArray(b?.malIds) && b.malIds.includes(21),
+    );
+    await expectJson(
+      "POST /api/anime-notify (unsubscribe)",
+      "/api/anime-notify",
+      { method: "POST", body: JSON.stringify({ endpoint: ep, malId: 21, on: false }) },
+      (r, b) => r.ok && b?.ok === true && b?.on === false,
+    );
+    await expectJson(
+      "POST /api/anime-notify rejects bad endpoint",
+      "/api/anime-notify",
+      { method: "POST", body: JSON.stringify({ endpoint: "http://insecure", malId: 21, on: true }) },
+      (r, b) => r.status === 400 && b?.ok === false,
+    );
+  }
+
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);
 

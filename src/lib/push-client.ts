@@ -50,6 +50,23 @@ export function pushPermission(): "granted" | "denied" | "default" | "unsupporte
   return Notification.permission as "granted" | "denied" | "default";
 }
 
+/**
+ * This device's push endpoint (the URL that identifies the subscription
+ * server-side) — WITHOUT prompting or creating anything. Null when push is
+ * off/unsupported. Powers per-anime notify state lookups on the details page
+ * and the Settings -> Notifications list.
+ */
+export async function getPushEndpoint(): Promise<string | null> {
+  if (!pushSupported()) return null;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("/");
+    const sub = await reg?.pushManager.getSubscription();
+    return sub?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
+
 async function swRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!pushSupported()) return null;
   // RegisterSW registers in production; ensurePushRegistration covers dev/tests

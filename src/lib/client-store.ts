@@ -821,12 +821,16 @@ function readLangPref(): LangPrefStore {
  * What this viewer last watched (per anime, falling back to their global
  * last choice) — the episode-list server sheet leads with it so pressing
  * back and picking the next episode keeps you in DUB when you were in DUB.
+ * Fresh anime (no stored preference) follow the Settings "Prefer DUB" flag.
  */
 export function getLangPref(malId?: number): LangPref {
   try {
     const store = readLangPref();
     const perAnime = malId != null ? store.byAnime?.[String(malId)] : undefined;
-    return perAnime ?? store.global ?? { lang: "sub", server: "zoko" };
+    if (perAnime) return perAnime;
+    if (store.global) return store.global;
+    const s = readAppSettings();
+    return { lang: s.preferDub ? "dub" : "sub", server: "zoko" };
   } catch {
     return { lang: "sub", server: "zoko" };
   }
@@ -918,4 +922,182 @@ export function timeAgo(iso: string | number): string {
   const day = Math.floor(hr / 24);
   if (day < 30) return `${day}d ago`;
   return new Date(t).toLocaleDateString();
+}
+
+/* ---------------- App settings (the Settings screen) ---------------- */
+
+/**
+ * Viewer-owned app preferences, all local to this device: playback defaults,
+ * subtitle look, app theme (accent) and the custom app icon. The Settings
+ * screen edits them; WatchView / the details page / the document head read
+ * them. Ships with sensible defaults so first-run needs nothing.
+ */
+
+export type SubSize = "sm" | "md" | "lg" | "xl";
+export type SubOutline = "shadow" | "outline" | "none";
+
+export interface AppSettings {
+  // playback
+  preferDub: boolean; // new anime default to DUB when a real one exists
+  autoSkipIntro: boolean; // auto-jump the opening when its skip window is known
+  autoSkipOutro: boolean; // same for the ending
+  autoNext: boolean; // roll straight into the next episode on end
+  // subtitles
+  subSize: SubSize;
+  subColor: string;
+  subBg: number; // caption backdrop darkness, 0-100
+  subOutline: SubOutline;
+  // appearance
+  accent: string; // ACCENTS id — drives --accent / --accent-deep everywhere
+  iconDataUrl: string | null; // custom home-screen icon (square image, data URL)
+}
+
+export const SUB_SIZES: Array<{ id: SubSize; name: string; px: number }> = [
+  { id: "sm", name: "Small", px: 14 },
+  { id: "md", name: "Normal", px: 19 },
+  { id: "lg", name: "Large", px: 26 },
+  { id: "xl", name: "Huge", px: 34 },
+];
+
+export const SUB_COLORS = ["#ffffff", "#ffe08a", "#7fe9de", "#ff9ad5", "#a5f0a0"];
+
+export const ACCENTS: Array<{ id: string; name: string; color: string; deep: string }> = [
+  { id: "crimson", name: "Crimson", color: "#d32f2f", deep: "#8e1a1a" },
+  { id: "sakura", name: "Sakura", color: "#ff6f9c", deep: "#b23a63" },
+  { id: "midnight", name: "Midnight", color: "#8b5cf6", deep: "#5b3bb8" },
+  { id: "ocean", name: "Ocean", color: "#38bdf8", deep: "#1d7fb8" },
+  { id: "emerald", name: "Emerald", color: "#34d399", deep: "#1d8f68" },
+  { id: "gold", name: "Gold", color: "#e9b949", deep: "#a8740f" },
+];
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  preferDub: false,
+  autoSkipIntro: false,
+  autoSkipOutro: false,
+  autoNext: false,
+  subSize: "md",
+  subColor: "#ffffff",
+  subBg: 35,
+  subOutline: "shadow",
+  accent: "crimson",
+  iconDataUrl: null,
+};
+
+const SETTINGS_KEY = "animetest123.settings";
+const SETTINGS_EVENT = "appsettings-changed";
+
+export function readAppSettings(): AppSettings {
+  return { ...DEFAULT_SETTINGS, ...readJson<Partial<AppSettings>>(SETTINGS_KEY, {}) };
+}
+
+function subscribeSettings(onChange: () => void) {
+  window.addEventListener(SETTINGS_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+  return () => {
+    window.removeEventListener(SETTINGS_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
+
+function getSettingsSnapshot(): string {
+  return window.localStorage.getItem(SETTINGS_KEY) ?? "{}";
+}
+
+function getSettingsServerSnapshot(): string {
+  return "{}";
+}
+
+/** Reactive settings for components (re-renders on every change). */
+export function useAppSettings(): AppSettings {
+  const raw = useSyncExternalStore(subscribeSettings, getSettingsSnapshot, getSettingsServerSnapshot);
+  return { ...DEFAULT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<AppSettings>) : {}) };
+}
+
+export function updateAppSettings(patch: Partial<AppSettings>): AppSettings {
+  const next = { ...readAppSettings(), ...patch };
+  writeJson(SETTINGS_KEY, next);
+  window.dispatchEvent(new Event(SETTINGS_EVENT));
+  applySettingsToDocument(next);
+  return next;
+}
+
+/** One-time read for non-reactive callers (boot, lang default). */
+export function accentColorOf(id: string): { color: string; deep: string } {
+  const a = ACCENTS.find((x) => x.id === id) ?? ACCENTS[0];
+  return { color: a.color, deep: a.deep };
+}
+
+/**
+ * Push the current settings into the document so EVERYTHING not explicitly
+ * styled by a component follows along:
+ *   - accent  -> CSS custom props --accent / --accent-deep (nav, buttons,
+ *                switches, the settings screen itself)
+ *   - subtitle look -> a `video::cue` rule (size / color / backdrop /
+ *                outline) that native subtitle tracks pick up
+ *   - app icon -> favicon + apple-touch-icon + a blob manifest so a fresh
+ *                "Add to Home Screen" carries the custom icon (iOS applies
+ *                the icon at add time; Android at install time — best effort
+ *                by platform design)
+ */
+export function applySettingsToDocument(s: AppSettings): void {
+  if (typeof document === "undefined") return;
+
+  const { color, deep } = accentColorOf(s.accent);
+  document.documentElement.style.setProperty("--app-accent", color);
+  document.documentElement.style.setProperty("--app-accent-deep", deep);
+
+  const px = (SUB_SIZES.find((x) => x.id === s.subSize) ?? SUB_SIZES[1]).px;
+  const bg = Math.max(0, Math.min(100, s.subBg)) / 100;
+  const shadows =
+    s.subOutline === "none"
+      ? "none"
+      : s.subOutline === "outline"
+        ? `-1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000, 1px 1px 0 #000, 0 2px 3px rgba(0,0,0,.9)`
+        : `0 1px 4px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.55)`;
+  const css = `video::cue { color: ${s.subColor}; background: rgba(0, 0, 0, ${bg}); text-shadow: ${shadows}; font-size: ${px}px; }`;
+  let tag = document.getElementById("sub-cue-style") as HTMLStyleElement | null;
+  if (!tag) {
+    tag = document.createElement("style");
+    tag.id = "sub-cue-style";
+    document.head.appendChild(tag);
+  }
+  tag.textContent = css;
+
+  // custom app icon — swap every icon-ish link head tag
+  try {
+    if (s.iconDataUrl) {
+      for (const [rel, sizes] of [
+        ["icon", "32x32"],
+        ["apple-touch-icon", "180x180"],
+      ] as const) {
+        let link = document.head.querySelector<HTMLLinkElement>(`link[rel="${rel}"]`);
+        if (!link) {
+          link = document.createElement("link");
+          link.rel = rel;
+          link.sizes = sizes;
+          document.head.appendChild(link);
+        }
+        link.href = s.iconDataUrl;
+      }
+      // Android reads icons from the manifest at install time — build a
+      // one-off blob manifest carrying the custom image at both sizes
+      const manifest = {
+        name: "Clyle",
+        short_name: "Clyle",
+        start_url: "/",
+        display: "standalone",
+        background_color: "#0a0a0a",
+        theme_color: "#0a0a0a",
+        icons: [
+          { src: s.iconDataUrl, sizes: "192x192", type: "image/png" },
+          { src: s.iconDataUrl, sizes: "512x512", type: "image/png" },
+        ],
+      };
+      const url = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/manifest+json" }));
+      const manLink = document.head.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+      if (manLink) manLink.href = url;
+    }
+  } catch {
+    /* icon theming is cosmetic — never break the app over it */
+  }
 }

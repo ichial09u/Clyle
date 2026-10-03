@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, Check, Download, Pencil, Trash2, Tv } from "lucide-react";
+import { Camera, Check, Download, Pencil, Settings as SettingsIcon, Trash2, Tv } from "lucide-react";
 import type { ContinueItem } from "@/lib/types";
 import { loadContinueItems, removeProgress, timeAgo, useProgressVersion } from "@/lib/client-store";
 import { fileToAvatarDataUrl, useProfile, useSaveProfile } from "@/lib/profile-store";
@@ -9,8 +9,10 @@ import { fileToAvatarDataUrl, useProfile, useSaveProfile } from "@/lib/profile-s
 /** Themed profile page: avatar from your own photos, nickname, watch stats. */
 export default function ProfileView({
   onResume,
+  onSettings,
 }: {
   onResume: (item: ContinueItem) => void;
+  onSettings: () => void;
 }) {
   const { profile } = useProfile();
   const save = useSaveProfile();
@@ -94,9 +96,19 @@ export default function ProfileView({
 
   return (
     <div className="pb-24 min-h-screen lg:max-w-[860px] lg:mx-auto">
-      <header className="px-4 pt-5 pb-2">
-        <h1 className="font-slab text-[24px] font-bold">Profile</h1>
-        <p className="text-[12px] text-gray-400">Your nickname, photo and watch history on this device</p>
+      <header className="px-4 pt-5 pb-2 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="font-slab text-[24px] font-bold">Profile</h1>
+          <p className="text-[12px] text-gray-400">Your nickname, photo and watch history on this device</p>
+        </div>
+        <button
+          onClick={onSettings}
+          aria-label="Open settings"
+          className="shrink-0 flex items-center gap-1.5 rounded-full bg-[#1d1d1d] border border-white/10 pl-3 pr-3.5 py-2 text-[12.5px] font-semibold text-gray-200 hover:bg-[#282828] active:scale-95 transition"
+        >
+          <SettingsIcon className="w-4 h-4" />
+          Settings
+        </button>
       </header>
 
       {/* identity card */}

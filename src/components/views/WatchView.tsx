@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupProviderOf } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
@@ -347,6 +347,13 @@ export default function WatchView({
   }, []);
 
   const total = anime.totalEpisodes || episode;
+  // Settings screen preferences — read reactively where the render needs them
+  // (subtitle cues are native tracks styled via the document ::cue rule), and
+  // through a ref inside long-lived event listeners (ended -> autoplay next)
+  // so flipping a switch never has to re-bind the player's media handlers.
+  const appSettings = useAppSettings();
+  const appSettingsRef = useRef(appSettings);
+  appSettingsRef.current = appSettings;
   const downloadUrl = zokoDownloadUrl(anime.malId, episode, lang);
 
   /* -------- Chromecast: load the CAF sender SDK + track session state -------- */
@@ -783,6 +790,10 @@ export default function WatchView({
       setPlaying(false);
       lastActiveRef.current = Date.now();
       saveNow({ completed: true });
+      // Settings -> "Autoplay next episode": roll straight into the next one.
+      // episode/lang/stream all move together (each change re-fetches the
+      // stream, which re-runs this effect), so the closure is fresh here.
+      if (appSettingsRef.current.autoNext && episode < total) onEpisodeChange(episode + 1, lang, server);
     };
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("progress", onTime);
@@ -953,6 +964,30 @@ export default function WatchView({
   // granularity so the button is already on screen as the OP appears
   const showSkipIntro = introSkip && currentTime >= introSkip.start - 1 && currentTime <= introSkip.end && !locked;
   const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
+
+  // Settings -> "Auto-skip intro / ending": same REAL skip data the buttons
+  // use — no data, no auto-jump (a blind guess would skip dialogue). Fires
+  // once per region appearance (keyed by episode + region + start) so a seek
+  // back into the OP doesn't yo-yo the viewer forward again. Cast state is
+  // read through the ref (declared with the player hooks, well above) so the
+  // effect can sit beside the skip-window derivations.
+  const autoSkipKeyRef = useRef("");
+  useEffect(() => {
+    if (castStateRef.current === "casting" || iframeFallback) return;
+    if (appSettings.autoSkipIntro && showSkipIntro && introSkip) {
+      const key = `i:${episode}:${introSkip.start}`;
+      if (autoSkipKeyRef.current !== key) {
+        autoSkipKeyRef.current = key;
+        seekTo(Math.max(introSkip.start, introSkip.end - 3));
+      }
+    } else if (appSettings.autoSkipOutro && showSkipOutro && outroSkip) {
+      const key = `o:${episode}:${outroSkip.start}`;
+      if (autoSkipKeyRef.current !== key) {
+        autoSkipKeyRef.current = key;
+        seekTo(outroSkip.end);
+      }
+    }
+  }, [appSettings.autoSkipIntro, appSettings.autoSkipOutro, showSkipIntro, showSkipOutro, introSkip, outroSkip, episode, iframeFallback]);
   // Zoko tags EVERY subtitle track lang:"en" and often lists English NOT first
   // (FMA:B ep1: Arabic, Chinese, Chinese, Danish, Dutch, English, ...) — pick
   // the real English track instead of blindly playing subtitles[0].

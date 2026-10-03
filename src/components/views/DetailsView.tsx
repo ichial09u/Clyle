@@ -5,6 +5,7 @@ import type { AnimeLite, DetailsPayload, RelatedCard } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import PosterCard from "@/components/anime/PosterCard";
 import CommentsSection from "@/components/anime/CommentsSection";
+import NotifyNextToggle from "@/components/anime/NotifyNextToggle";
 import { useMyList, minimalLite } from "@/lib/client-store";
 
 export default function DetailsView({
@@ -124,6 +125,9 @@ export default function DetailsView({
       />
 
       <div className="px-4 lg:max-w-[1100px] lg:mx-auto">
+        {/* per-anime drop watch — "next episode of THIS anime only" */}
+        {inCatalog ? <NotifyNextToggle anime={anime} /> : null}
+
         {/* synopsis */}
         {anime.synopsis ? (
           <p className={`mt-4 text-[13.5px] leading-relaxed text-gray-200 ${expanded ? "" : "line-clamp-4"}`}>

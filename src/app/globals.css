@@ -76,6 +76,10 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #232323;
   --sidebar-ring: #3f3f3f;
+  /* app accent — Settings -> Theme rewrites these on documentElement at
+     runtime (nav, buttons, switches, bell). NOT shadcn's --accent above. */
+  --app-accent: #d32f2f;
+  --app-accent-deep: #8e1a1a;
 }
 
 .dark {

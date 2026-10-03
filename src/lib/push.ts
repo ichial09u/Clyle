@@ -57,10 +57,11 @@ const MAX_SUBS_PER_SEND = 300;
 const PER_SEND_TIMEOUT_MS = 8_000;
 
 /**
- * Fire `payload` at every stored subscription. Never throws — push is
- * best-effort by design and must not break the sync/cron paths calling it.
+ * Fire `payload` at every stored subscription (or only at `onlyEndpoints`
+ * when given). Never throws — push is best-effort by design and must not
+ * break the sync/cron paths calling it.
  */
-async function sendPushAll(payload: PushPayload): Promise<{ sent: number; pruned: number }> {
+async function sendPushFiltered(payload: PushPayload, onlyEndpoints?: Set<string>): Promise<{ sent: number; pruned: number }> {
   if (!ensureVapid()) return { sent: 0, pruned: 0 };
   let sent = 0;
   let pruned = 0;
@@ -77,6 +78,7 @@ async function sendPushAll(payload: PushPayload): Promise<{ sent: number; pruned
   }
   const json = JSON.stringify(payload);
   for (const s of subs) {
+    if (onlyEndpoints && !onlyEndpoints.has(s.endpoint)) continue;
     try {
       await webpush.sendNotification(
         { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -89,27 +91,58 @@ async function sendPushAll(payload: PushPayload): Promise<{ sent: number; pruned
       if (status === 404 || status === 410) {
         // subscription gone (browser uninstalled / permission revoked) — prune
         await db.pushSub.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
+        await db.animeNotify.deleteMany({ where: { endpoint: s.endpoint } }).catch(() => undefined);
         pruned++;
       } else {
         console.error(`[push] send failed (${status ?? "no-status"}):`, err instanceof Error ? err.message.slice(0, 120) : err);
       }
     }
   }
-  if (subs.length) console.log(`[push] "${payload.t}" -> ${sent} sent, ${pruned} pruned, of ${subs.length}`);
+  if (subs.length) console.log(`[push] "${payload.t}" -> ${sent} sent, ${pruned} pruned, of ${subs.length}${onlyEndpoints ? ` (${onlyEndpoints.size} targeted)` : " broadcast"}`);
   return { sent, pruned };
+}
+
+async function sendPushAll(payload: PushPayload): Promise<{ sent: number; pruned: number }> {
+  return sendPushFiltered(payload);
 }
 
 /**
  * Send at most once per `key` (PushLog claim-first). Returns true when the
  * send actually happened (first caller wins; everyone else free-rides).
+ *
+ * `onlyAnimeSubsOf`: send ONLY to devices that subscribed to that anime's
+ * next-episode notifications (the details-page bell / "that anime only")
+ * instead of broadcasting. When nobody subscribed, nothing is sent and false
+ * is returned without claiming the log key — a subscriber who joins before
+ * the drop still gets it on a later sweep.
  */
-export async function pushOnce(key: string, payload: PushPayload): Promise<boolean> {
+export async function pushOnce(key: string, payload: PushPayload, opts: { onlyAnimeSubsOf?: number } = {}): Promise<boolean> {
+  let targets: Set<string> | undefined;
+  if (opts.onlyAnimeSubsOf != null) {
+    try {
+      const rows = await db.animeNotify.findMany({
+        where: { malId: opts.onlyAnimeSubsOf },
+        select: { endpoint: true },
+        take: MAX_SUBS_PER_SEND,
+      });
+      if (!rows.length) return false; // nobody asked for this anime
+      const live = await db.pushSub.findMany({
+        where: { endpoint: { in: rows.map((r) => r.endpoint) } },
+        select: { endpoint: true },
+      });
+      targets = new Set(live.map((r) => r.endpoint));
+      if (!targets.size) return false;
+    } catch (err) {
+      console.error("[push] anime-sub lookup failed:", err instanceof Error ? err.message : err);
+      return false;
+    }
+  }
   try {
     await db.pushLog.create({ data: { key } });
   } catch {
     return false; // already claimed — another sweep/cron is on it
   }
-  await sendPushAll(payload);
+  await sendPushFiltered(payload, targets);
   return true;
 }
 
@@ -165,13 +198,15 @@ export async function notifySyncResult(result: { episodesAdded: number; animeAdd
         const a = cat.get(malId);
         const title = a?.titleEnglish?.trim() || a?.title || `Anime ${malId}`;
         const isMovie = (a?.type ?? "").toLowerCase() === "movie";
+        // per-anime opt-in: only devices that rang the bell on THIS anime's
+        // details page get its episode drops ("that anime only")
         await pushOnce(`ep:${malId}:${ep}`, {
           t: isMovie ? `🎬 ${title} is out now` : `📺 ${title} — Episode ${ep} is out now`,
           b: `Fresh ${episodeLabel(a?.type ?? "TV")} just landed on Clyle. Tap to watch.`,
           tag: `new-ep-${malId}`,
           url: `/?open=${malId}`,
           img: a?.image ?? null,
-        });
+        }, { onlyAnimeSubsOf: malId });
       }
     }
 
@@ -247,6 +282,11 @@ export async function notifyAiringSoon(): Promise<void> {
     });
     for (const a of rows) {
       if (!a.nextEpisodeAt || !a.nextEpisodeNum) continue;
+      // per-anime opt-in — same rule as episode drops: only devices that
+      // subscribed to THIS anime get its reminder (checked BEFORE claiming
+      // the PushLog key, so subscribing between crons still gets the ping)
+      const watchers = await db.animeNotify.count({ where: { malId: a.malId } }).catch(() => 0);
+      if (!watchers) continue;
       const title = a.titleEnglish?.trim() || a.title;
       const isMovie = (a.type ?? "").toLowerCase() === "movie";
       const when = hoursFromNow(a.nextEpisodeAt);
@@ -258,7 +298,7 @@ export async function notifyAiringSoon(): Promise<void> {
         tag: `soon-${a.malId}`,
         url: `/?open=${a.malId}`,
         img: a.image ?? null,
-      });
+      }, { onlyAnimeSubsOf: a.malId });
     }
     if (rows.length) console.log(`[push] airing-soon reminders for ${rows.length} anime`);
   } catch (err) {

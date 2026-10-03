@@ -13,10 +13,11 @@ import SearchView from "@/components/views/SearchView";
 import MyListView from "@/components/views/MyListView";
 import LatestView from "@/components/views/LatestView";
 import ProfileView from "@/components/views/ProfileView";
+import SettingsView from "@/components/views/SettingsView";
 import Top50View from "@/components/views/Top50View";
 import type { Lang, ServerId } from "@/lib/zoko";
 import { isBackupServer } from "@/lib/zoko";
-import { animeFromContinue, minimalLite } from "@/lib/client-store";
+import { animeFromContinue, minimalLite, readAppSettings, applySettingsToDocument } from "@/lib/client-store";
 
 type View =
   | { name: "home" }
@@ -29,6 +30,7 @@ type View =
   | { name: "search" }
   | { name: "mylist" }
   | { name: "profile" }
+  | { name: "settings" }
   | { name: "top50" };
 
 type NavDir = "push" | "pop" | "fade";
@@ -75,6 +77,13 @@ export default function Page() {
       }
       return [next];
     });
+  }, []);
+
+  // Settings -> the document, on every boot: accent variables, the subtitle
+  // ::cue rule and the custom app icon all live in <head>, which resets on
+  // every full load — re-apply before the first paint of the player.
+  useEffect(() => {
+    applySettingsToDocument(readAppSettings());
   }, []);
 
   /* Derive the transition (direction + leaving pane) whenever the stack top changes. */
@@ -216,7 +225,9 @@ export default function Page() {
       case "mylist":
         return <MyListView onSelect={openAnime} />;
       case "profile":
-        return <ProfileView onResume={resumeWatching} />;
+        return <ProfileView onResume={resumeWatching} onSettings={() => push({ name: "settings" })} />;
+      case "settings":
+        return <SettingsView onBack={pop} />;
       case "top50":
         return <Top50View onBack={pop} onSelect={openAnime} />;
     }
