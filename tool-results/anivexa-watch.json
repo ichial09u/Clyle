@@ -1,0 +1,4 @@
+{
+  "error": "Episode not found",
+  "stack": "Error: Episode not found\n    at handleWatch2 (file:///var/task/providers/allmanga.mjs:603:22)\n    at process.processTicksAndRejections (node:internal/process/task_queues:104:5)\n    at async Object.fetch (file:///var/task/providers/allmanga.mjs:706:47)\n    at async file:///var/task/index.mjs:44:20\n    at async cachedWatch (file:///var/task/index.mjs:52:10)"
+}

@@ -448,15 +448,34 @@ async function playlistAlive(url: string, referer: string | null): Promise<boole
   }
 }
 
+/**
+ * Is a progressive (mp4) source alive? HEAD first, then a ranged GET.
+ *
+ * The HEAD alone proved fragile in the wild: AnimeGG's /play/.../video.mp4
+ * 302-redirects twice (to vidcache.net:8161) and the hop chain regularly
+ * needs 4s+ warm — well past half of any sane timeout — and plenty of CDNs
+ * flat-out reject HEAD with 403/405 while serving ranged GETs fine. The
+ * ranged GET is also the more truthful probe: it is exactly what the player
+ * itself will do, and it costs ~1.8 KB.
+ */
 async function urlAlive(url: string, referer: string | null): Promise<boolean> {
+  const head = (method: "HEAD" | "GET"): RequestInit => ({
+    method,
+    headers: { ...UA_HEADERS(referer), ...(method === "GET" ? { Range: "bytes=0-1880" } : {}) },
+    redirect: "follow",
+    signal: AbortSignal.timeout(9_000),
+  });
   try {
-    const res = await fetch(url, {
-      method: "HEAD",
-      headers: UA_HEADERS(referer),
-      redirect: "follow",
-      signal: AbortSignal.timeout(6_000),
-    });
-    return res.ok;
+    const res = await fetch(url, head("HEAD"));
+    if (res.ok) return true;
+  } catch {
+    /* fall through to the ranged GET */
+  }
+  try {
+    const res = await fetch(url, head("GET"));
+    if (!res.ok && res.status !== 206) return false;
+    const buf = await res.arrayBuffer();
+    return buf.byteLength > 0;
   } catch {
     return false;
   }

@@ -137,8 +137,18 @@ query GenreAnime($genre: String) {
 
 const SEASON_NOW_QUERY = `
 query SeasonNow($season: MediaSeason, $year: Int) {
-  Page(page: 1, perPage: 25) {
+  Page(page: 1, perPage: 50) {
     media(type: ANIME, season: $season, seasonYear: $year, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_CORE} }
+  }
+}`;
+
+// Previous season, STILL AIRING only — the safety net for premieres the
+// current-season sweep missed (a show that started right after a season
+// boundary, or sat outside the popularity window when it premiered).
+const SEASON_STILL_AIRING_QUERY = `
+query SeasonStillAiring($season: MediaSeason, $year: Int) {
+  Page(page: 1, perPage: 50) {
+    media(type: ANIME, season: $season, seasonYear: $year, status: RELEASING, sort: POPULARITY_DESC, isAdult: false) { ${MEDIA_CORE} }
   }
 }`;
 
@@ -530,6 +540,26 @@ export async function animeByGenre(genre: string): Promise<AniListMedia[]> {
 export async function seasonNow(): Promise<AniListMedia[]> {
   const { season, year } = currentMediaSeason();
   const data = await anilist<PageResponse>(SEASON_NOW_QUERY, { season, year }, { disk: true, retries: 1 });
+  return pageMedia(data);
+}
+
+function previousMediaSeason(): { season: "WINTER" | "SPRING" | "SUMMER" | "FALL"; year: number } {
+  const { season, year } = currentMediaSeason();
+  if (season === "WINTER") return { season: "FALL", year: year - 1 };
+  if (season === "SPRING") return { season: "WINTER", year };
+  if (season === "SUMMER") return { season: "SPRING", year };
+  return { season: "SUMMER", year };
+}
+
+/**
+ * PREVIOUS season's shows that are STILL RELEASING — cour splits mean a
+ * fall show can premiere in October and run into the next calendar year,
+ * and its premiere may have missed the sweep that ran when the season
+ * flipped. Kept RELEASING-only so finished shows never get bulk-imported.
+ */
+export async function seasonStillAiring(): Promise<AniListMedia[]> {
+  const { season, year } = previousMediaSeason();
+  const data = await anilist<PageResponse>(SEASON_STILL_AIRING_QUERY, { season, year }, { disk: true, retries: 1 });
   return pageMedia(data);
 }
 

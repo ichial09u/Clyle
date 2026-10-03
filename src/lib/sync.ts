@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 import { jikan, posterUrl, bannerUrl, durationToMinutes, shortRating, type JikanAnime } from "@/lib/jikan";
-import { anilistToJikan, freshMediaByMal, seasonNow, airedEpisodeCount, streamingEpisodeTitlesByMal, type AniListMedia } from "@/lib/anilist";
+import { anilistToJikan, freshMediaByMal, seasonNow, seasonStillAiring, airedEpisodeCount, streamingEpisodeTitlesByMal, type AniListMedia } from "@/lib/anilist";
 import { tvmazeEpisodeTitles } from "@/lib/tvmaze";
 
 /**
@@ -9,8 +9,10 @@ import { tvmazeEpisodeTitles } from "@/lib/tvmaze";
  *  1. Episode import: every airing anime in the catalog is checked against
  *     MAL; any episode number we do not have yet is inserted immediately,
  *     so newly-aired episodes appear in the app the moment sync runs.
- *  2. New anime import: the current TV season is pulled from MAL and any
- *     anime we do not carry yet is added to the catalog automatically.
+ *  2. New anime import: the current season's episodic shows (TV, TV_SHORT
+ *     and ONA) plus the previous season's still-airing shows are pulled
+ *     from AniList and anything we do not carry yet is added to the
+ *     catalog automatically.
  *
  * Sync is triggered three ways:
  *  - automatically by the client when the app opens (if stale > 30 min)
@@ -441,21 +443,39 @@ async function runSync(_force = false): Promise<SyncResult> {
     }
 
     // ---------------------------------------------------------------
-    // 2) New anime import — current season TV shows we do not carry yet
+    // 2) New anime import — episodic shows of the current season we do
+    //    not carry yet. TV, TV_SHORT and ONA all qualify: web-first
+    //    exclusives like Overgeared (MAL 64340, the #13 most-popular
+    //    show of its season) air as ONA, and the old TV-only filter
+    //    silently dropped every one of them. Movies / specials / OVAs
+    //    stay out — one-offs the episodic catalog can't represent.
+    //
+    //    The previous season's still-RELEASING shows are swept too, so
+    //    a premiere that straddled the season boundary can't be missed.
+    //
+    //    Already-carried rows are refreshed ONLY when AniList now says
+    //    RELEASING while our row still says not-airing — that is the
+    //    pre-premiere import whose show has finally started; the
+    //    refresh flips airing=true (so step 1 checks it from now on)
+    //    and pulls the episodes that aired since. Without this the row
+    //    sat in the catalog with zero episodes forever.
     // ---------------------------------------------------------------
-    const season = await seasonNow();
+    const season = [...(await seasonNow()), ...(await seasonStillAiring())];
+    const seenIds = new Set<number>();
     for (const media of season) {
-      if (media.format && media.format !== "TV") continue;
+      if (seenIds.has(media.id)) continue;
+      seenIds.add(media.id);
       if (media.isAdult) continue; // skip hentai
+      if (media.format && media.format !== "TV" && media.format !== "TV_SHORT" && media.format !== "ONA") continue;
       const malId = media.idMal ?? null;
       if (!malId) continue; // no MAL mapping -> no Zoko player
-      const known = await db.anime.findUnique({ where: { malId }, select: { inCatalog: true } });
-      if (known?.inCatalog) continue;
+      const known = await db.anime.findUnique({ where: { malId }, select: { inCatalog: true, airing: true } });
+      if (known?.inCatalog && (known.airing || media.status !== "RELEASING")) continue;
       await upsertAniListMedia(media, { inCatalog: true, source: "season-import" });
       const added = await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
       const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
       newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
-      animeAdded++;
+      if (!known?.inCatalog) animeAdded++;
     }
 
     // ---------------------------------------------------------------
