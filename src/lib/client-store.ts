@@ -665,6 +665,33 @@ export async function fetchTop10Month(fresh = false): Promise<Top10MonthEntry[]>
   }
 }
 
+/** One row of the "Arriving" rail — a scheduled drop with its Netflix tag. */
+export type ArrivingEntry = AnimeLite & {
+  /** "series" = NEW SERIES premiere, "movie" = NEW MOVIE, "episode" = EP n */
+  kind: "series" | "movie" | "episode";
+  /** episode number for kind="episode"; null for premieres */
+  episode: number | null;
+  /** unix SECONDS (UTC) of the drop; null = date unknown (TBA) */
+  airingAt: number | null;
+};
+
+/**
+ * The server's Arriving list (next 3 weeks of scheduled drops, air-time
+ * order). Same fresh-on-open discipline as fetchTop10Month: the server
+ * answers from its snapshot instantly and schedules a forced re-check via
+ * after(); the plain variant (60s poll) stays TTL-gated and free.
+ */
+export async function fetchArriving(fresh = false): Promise<ArrivingEntry[]> {
+  try {
+    const res = await fetch("/api/arriving" + (fresh ? "?fresh=1" : ""));
+    if (!res.ok) return [];
+    const data = (await res.json()) as { items?: ArrivingEntry[] };
+    return (data.items ?? []).filter((it) => Number.isFinite(it?.malId));
+  } catch {
+    return [];
+  }
+}
+
 /** Minimal stand-in when only a server event/snapshot knows this anime. */
 export function minimalLite(malId: number, title: string, image: string | null): AnimeLite {
   return {

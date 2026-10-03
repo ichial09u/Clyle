@@ -296,6 +296,25 @@ async function expectJson(name, path, init, validate) {
     }
   }
 
+  // ---- 5f) Arriving rail (Netflix-style coming-soon: tags + air times) ----
+  await expectJson(
+    "GET /api/arriving (Netflix-style coming-soon rail)",
+    "/api/arriving",
+    {},
+    (r, b) =>
+      r.ok &&
+      Array.isArray(b?.items) &&
+      b.items.length > 0 &&
+      b.items.length <= 40 &&
+      b.items.every(
+        (it) =>
+          Number.isFinite(it?.malId) &&
+          ["series", "movie", "episode"].includes(it?.kind) &&
+          (it?.airingAt === null || Number.isFinite(it?.airingAt)) &&
+          (it?.kind !== "episode" || Number.isFinite(it?.episode)),
+      ),
+  );
+
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);
 

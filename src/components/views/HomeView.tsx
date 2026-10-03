@@ -7,9 +7,11 @@ import Row from "@/components/anime/Row";
 import PosterCard from "@/components/anime/PosterCard";
 import ContinueRow from "@/components/anime/ContinueRow";
 import Top10Bell from "@/components/anime/Top10Bell";
+import ArrivingRail from "@/components/anime/ArrivingRail";
 import {
   loadContinueItems, removeProgress, sweepRemovedProgress, timeAgo, useProgressVersion,
   fetchTop10Month, animeFromContinue, type Top10MonthEntry,
+  fetchArriving, type ArrivingEntry,
 } from "@/lib/client-store";
 import { getUserId } from "@/lib/profile-store";
 
@@ -48,6 +50,7 @@ export default function HomeView({
   const [suggestions, setSuggestions] = useState<AnimeLite[]>([]);
   const [suggestAnchor, setSuggestAnchor] = useState<string | null>(null);
   const [top10, setTop10] = useState<Top10MonthEntry[]>([]);
+  const [arriving, setArriving] = useState<ArrivingEntry[]>([]);
   const progressVersion = useProgressVersion();
   const lastTop10Fetch = useRef(0);
 
@@ -120,6 +123,38 @@ export default function HomeView({
     };
   }, [refreshTop10]);
 
+  // Arriving — the Netflix-style coming-soon rail. Same live discipline as
+  // the Top 10 rail: fresh on every open / PWA foreground return, a +5s
+  // follow-up, and a 60s poll; the server TTL-gates the real work.
+  const refreshArriving = useCallback((fresh = false) => {
+    fetchArriving(fresh).then(setArriving).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    let followUp: ReturnType<typeof setTimeout> | null = null;
+    const open = () => {
+      refreshArriving(true);
+      if (followUp) clearTimeout(followUp);
+      followUp = setTimeout(() => {
+        followUp = null;
+        if (document.visibilityState === "visible") refreshArriving();
+      }, 5_000);
+    };
+    open();
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshArriving(true);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") refreshArriving();
+    }, 60_000);
+    return () => {
+      if (followUp) clearTimeout(followUp);
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(poll);
+    };
+  }, [refreshArriving]);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -185,6 +220,10 @@ export default function HomeView({
           onSelect={onSelect}
         />
       ) : null}
+
+      {/* Arriving — Netflix-style coming-soon rail (premieres + episode drops
+          with tags and live countdowns), right under the personal rows */}
+      <ArrivingRail items={arriving} onSelect={onSelect} />
 
       {error ? (
         <p className="px-4 mt-8 text-center text-gray-400 text-sm">

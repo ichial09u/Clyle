@@ -41,7 +41,11 @@ function subscribe(cb: () => void): () => void {
 
 /** Milliseconds since epoch, re-rendering the caller every 30s. */
 export function useAiringNow(): number {
-  return useSyncExternalStore(subscribe, () => now);
+  // getServerSnapshot: SSR (and the first client render of restored sessions)
+  // must answer the SAME store shape client-side does — without it React 500s
+  // with "Missing getServerSnapshot" the moment a subscriber renders during
+  // server rendering (the Arriving rail does; PosterCard never did).
+  return useSyncExternalStore(subscribe, () => now, () => now);
 }
 
 /** "New episode soon" shows when the next episode airs within this window. */

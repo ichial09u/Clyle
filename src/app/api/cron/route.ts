@@ -4,6 +4,7 @@ import { syncCatalog, lastSync } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { runSkipAudit } from "@/lib/skip-audit";
 import { refreshTop10Month } from "@/lib/top10-month";
+import { refreshArriving } from "@/lib/arriving";
 import { notifyAiringSoon } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
@@ -97,14 +98,17 @@ export async function GET(req: Request) {
     }
 
     // 3c) Top 10 rank notifications (bell + push data path) — TTL-gated
-    //     inside refreshTop10Month
+    //     inside refreshTop10Month; plus the Arriving rail snapshot (same
+    //     discipline: the route after()s the refresh too, cron keeps it warm
+    //     even when nobody has the app open)
     try {
       await refreshTop10Month();
+      await refreshArriving();
     } catch (err) {
-      console.error("[cron] top10 refresh failed:", String(err).slice(0, 200));
+      console.error("[cron] top10/arriving refresh failed:", String(err).slice(0, 200));
     }
   });
-  checks.push({ name: "catalog-sync", ok: true, detail: "background heal scheduled (sync + skip prefetch + airing-soon pushes + audit + top10 refresh)" });
+  checks.push({ name: "catalog-sync", ok: true, detail: "background heal scheduled (sync + skip prefetch + airing-soon pushes + audit + top10/arriving refresh)" });
 
   // ---- 4) orphaned comment replies -> remove (heal, DB-only) ----
   try {
