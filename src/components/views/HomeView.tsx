@@ -81,22 +81,38 @@ export default function HomeView({
   // Top 10 This Month — ranked by Anime Trending's live chart (server-side,
   // active: titles swap ranks as the community vote shifts; the bell carries
   // the changes). The rail is always populated once the first pass lands.
-  const refreshTop10 = useCallback(() => {
+  //
+  // "Updated every time you open the site/app": every open (cold mount or
+  // PWA foreground return) sends ?fresh=1 — the server answers from its
+  // snapshot instantly but schedules a FORCED live re-check via after(); the
+  // +5s follow-up below pulls that fresh ranking into the rail right away
+  // instead of waiting for the next 60s poll. The 60s poll itself stays
+  // plain (server-side TTL-gated) so background tab time stays free.
+  const refreshTop10 = useCallback((fresh = false) => {
     lastTop10Fetch.current = Date.now();
-    fetchTop10Month().then(setTop10).catch(() => undefined);
+    fetchTop10Month(fresh).then(setTop10).catch(() => undefined);
   }, []);
 
   useEffect(() => {
-    refreshTop10();
+    let followUp: ReturnType<typeof setTimeout> | null = null;
+    const open = () => {
+      refreshTop10(true);
+      if (followUp) clearTimeout(followUp);
+      followUp = setTimeout(() => {
+        followUp = null;
+        if (document.visibilityState === "visible") refreshTop10();
+      }, 5_000);
+    };
+    open();
     const onVis = () => {
-      if (document.visibilityState === "visible" && Date.now() - lastTop10Fetch.current > 15_000) refreshTop10();
+      if (document.visibilityState === "visible" && Date.now() - lastTop10Fetch.current > 15_000) open();
     };
     document.addEventListener("visibilitychange", onVis);
-    // the ranking updates a few times a day server-side — poll gently
     const poll = setInterval(() => {
       if (document.visibilityState === "visible") refreshTop10();
     }, 60_000);
     return () => {
+      if (followUp) clearTimeout(followUp);
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(poll);
     };

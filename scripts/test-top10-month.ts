@@ -12,7 +12,7 @@ async function main() {
   console.log("== refreshing (forced) ==");
   await refreshTop10Month(true);
   console.log("== current Top 10 This Month ==");
-  const items = await getTop10Month();
+  const { items } = await getTop10Month();
   for (const it of items) {
     console.log(`#${it.rank}${it.prevRank != null && it.prevRank !== it.rank ? ` (was #${it.prevRank})` : ""} ${it.malId} — ${it.title}`);
   }

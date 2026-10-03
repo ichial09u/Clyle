@@ -36,13 +36,29 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
   }, []);
 
   useEffect(() => {
+    // On open the home rail's ?fresh=1 kick forces a server-side chart pass
+    // (after()); new rank events land a few seconds later, so one +5s
+    // follow-up keeps the unread badge honest without extra polling.
+    let followUp: ReturnType<typeof setTimeout> | null = null;
+    const scheduleFollowUp = () => {
+      if (followUp) clearTimeout(followUp);
+      followUp = setTimeout(() => {
+        followUp = null;
+        refresh();
+      }, 5_000);
+    };
     refresh();
+    scheduleFollowUp();
     const onVis = () => {
-      if (document.visibilityState === "visible") refresh();
+      if (document.visibilityState === "visible") {
+        refresh();
+        scheduleFollowUp();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
     const t = setInterval(refresh, 60_000);
     return () => {
+      if (followUp) clearTimeout(followUp);
       document.removeEventListener("visibilitychange", onVis);
       clearInterval(t);
     };

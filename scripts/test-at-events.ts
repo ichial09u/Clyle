@@ -27,7 +27,7 @@ async function main() {
 
   await refreshTop10Month(true);
 
-  const items = await getTop10Month();
+  const { items } = await getTop10Month();
   console.log("== restored Top 10 ==");
   for (const it of items.slice(0, 3)) {
     console.log(`#${it.rank}${it.prevRank != null && it.prevRank !== it.rank ? ` (was #${it.prevRank})` : ""} ${it.title}`);

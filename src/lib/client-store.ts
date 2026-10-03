@@ -645,10 +645,18 @@ export type Top10MonthEntry = AnimeLite & {
   prevRank: number | null;
 };
 
-/** The server's active Top 10 This Month (TMDB popularity order). */
-export async function fetchTop10Month(): Promise<Top10MonthEntry[]> {
+/**
+ * The server's active Top 10 This Month (Anime Trending ranking order).
+ *
+ * `fresh` marks an APP OPEN (mount / PWA foreground return): the server
+ * answers from its snapshot instantly but schedules a forced live re-check
+ * of the Anime Trending chart past its 2h TTL (floored server-side), so the
+ * rail re-grounds itself on every open. The plain variant (60s poll) stays
+ * TTL-gated and free.
+ */
+export async function fetchTop10Month(fresh = false): Promise<Top10MonthEntry[]> {
   try {
-    const res = await fetch("/api/top10");
+    const res = await fetch("/api/top10" + (fresh ? "?fresh=1" : ""));
     if (!res.ok) return [];
     const data = (await res.json()) as { items?: Top10MonthEntry[] };
     return (data.items ?? []).filter((it) => Number.isFinite(it?.malId));

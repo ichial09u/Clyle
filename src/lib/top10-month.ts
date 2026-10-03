@@ -25,6 +25,8 @@ import { top10UtcToday } from "@/lib/top10";
 const SNAPSHOT_KEY = "top10month.snapshot";
 const REFRESHED_KEY = "top10month.refreshedAt";
 const REFRESH_TTL_MS = 2 * 3600 * 1000;
+/** Minimum gap between FORCED (open-kick) refreshes — rapid reopens stay cheap. */
+const FORCE_REFRESH_FLOOR_MS = 60_000;
 
 const AT_BASE = "https://www.anitrendz.com/charts/top-anime";
 const AT_UA =
@@ -327,16 +329,20 @@ async function insertRankEvents(day: string, events: RankEvent[]): Promise<void>
 
 let refreshing: Promise<void> | null = null;
 
-/** Re-read Anime Trending's chart, re-rank, emit change events. */
+/**
+ * Re-read Anime Trending's chart, re-rank, emit change events.
+ *
+ * `force` (the client's "?fresh=1" open kick) bypasses the 2h TTL but is
+ * floored to one live pass per minute, so PWA foreground/refresh loops and
+ * quick home round-trips never hammer anitrendz.
+ */
 export async function refreshTop10Month(force = false): Promise<void> {
   if (refreshing) return refreshing;
   refreshing = (async () => {
     try {
-      if (!force) {
-        const meta = await db.top10Meta.findUnique({ where: { key: REFRESHED_KEY } });
-        const at = meta?.value ? Date.parse(meta.value) : 0;
-        if (Number.isFinite(at) && Date.now() - at < REFRESH_TTL_MS) return;
-      }
+      const meta = await db.top10Meta.findUnique({ where: { key: REFRESHED_KEY } });
+      const at = meta?.value ? Date.parse(meta.value) : 0;
+      if (Number.isFinite(at) && Date.now() - at < (force ? FORCE_REFRESH_FLOOR_MS : REFRESH_TTL_MS)) return;
       const chart = await fetchAnimeTrendingChart();
 
       const catalog = await db.anime.findMany({
@@ -405,27 +411,38 @@ export async function refreshTop10Month(force = false): Promise<void> {
 
 /**
  * The current Top 10 This Month (catalog titles in Anime Trending's chart
- * order). Serves the last known list instantly; refreshes in the background
- * when stale. Falls back to a fresh fetch when no snapshot exists yet.
+ * order), plus the scheduling state the route needs to keep it live.
  */
-export async function getTop10Month(): Promise<Top10MonthItem[]> {
+export interface Top10MonthResult {
+  items: Top10MonthItem[];
+  /** true when the last live pass is older than the refresh TTL (or missing) */
+  stale: boolean;
+  /** false only before the first successful chart pass ever (refreshed inline) */
+  hasSnapshot: boolean;
+}
+
+/**
+ * The current Top 10 This Month (catalog titles in Anime Trending's chart
+ * order). Pure read + instant serve: the last known list always answers, and
+ * refresh scheduling belongs to the route via after() — a bare floating
+ * promise here got frozen on Vercel once the response was sent, which is
+ * exactly why the rail went stale between daily crons. Falls back to an
+ * inline forced pass when no snapshot exists at all (cold start).
+ */
+export async function getTop10Month(): Promise<Top10MonthResult> {
   let snap = await readSnapshot();
   const meta = await db.top10Meta.findUnique({ where: { key: REFRESHED_KEY } });
   const at = meta?.value ? Date.parse(meta.value) : 0;
   const stale = !Number.isFinite(at) || Date.now() - at >= REFRESH_TTL_MS;
 
-  if (!snap || stale) {
-    if (!snap) {
-      // cold start: nothing to serve — refresh inline once
-      await refreshTop10Month(true);
-      snap = await readSnapshot();
-    } else {
-      // stale but servable — respond now, refresh in the background
-      void refreshTop10Month().catch(() => undefined);
-    }
+  if (!snap) {
+    // cold start: nothing to serve — refresh inline once
+    await refreshTop10Month(true);
+    snap = await readSnapshot();
   }
 
-  if (!snap) return [];
+  if (!snap) return { items: [], stale: true, hasSnapshot: false };
+
   // enrich with current catalog art (posters re-render on MAL's side);
   // prevRank comes straight from the snapshot (rank before the last change)
   try {
@@ -434,7 +451,7 @@ export async function getTop10Month(): Promise<Top10MonthItem[]> {
       select: { malId: true, image: true, title: true, titleEnglish: true },
     });
     const catMap = new Map(cat.map((a) => [a.malId, a]));
-    return snap.items.map((i) => {
+    const items = snap.items.map((i) => {
       const a = catMap.get(i.malId);
       return {
         malId: i.malId,
@@ -444,7 +461,12 @@ export async function getTop10Month(): Promise<Top10MonthItem[]> {
         image: (a?.image ?? null) ?? i.image,
       };
     });
+    return { items, stale, hasSnapshot: true };
   } catch {
-    return snap.items.map((i) => ({ malId: i.malId, rank: i.rank, prevRank: i.prevRank ?? null, title: i.title, image: i.image }));
+    return {
+      items: snap.items.map((i) => ({ malId: i.malId, rank: i.rank, prevRank: i.prevRank ?? null, title: i.title, image: i.image })),
+      stale,
+      hasSnapshot: true,
+    };
   }
 }

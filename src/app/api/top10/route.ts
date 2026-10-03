@@ -1,5 +1,5 @@
-import { NextResponse } from "next/server";
-import { getTop10Month } from "@/lib/top10-month";
+import { NextResponse, after } from "next/server";
+import { getTop10Month, refreshTop10Month } from "@/lib/top10-month";
 import { lite } from "@/lib/serialize";
 import { db } from "@/lib/db";
 
@@ -15,12 +15,28 @@ export const maxDuration = 60; // cold start = one live Anime Trending pass
  * it, the two swap ranks; each swap / drop / new entry also records a bell
  * notification.
  *
+ * The last known list answers instantly; the live re-check is scheduled with
+ * after() so it keeps running after this response is sent — a bare floating
+ * promise gets frozen on Vercel serverless, which is why the rail used to go
+ * stale between daily crons:
+ *   - "?fresh=1" (sent by the client on EVERY app open / PWA foreground
+ *     return) forces a live pass past the 2h TTL — floored to one per minute
+ *     inside refreshTop10Month, so rapid reopens stay cheap.
+ *   - otherwise a stale snapshot schedules a TTL-gated pass.
+ *
  * Response: { day, items: [{ ...AnimeLite, rank, prevRank }] }
  *   prevRank = the rank before the most recent change (null = new entry),
  *   powering the up / down / NEW badges on the rail.
  */
-export async function GET() {
-  const items = await getTop10Month();
+export async function GET(req: Request) {
+  const fresh = new URL(req.url).searchParams.get("fresh") === "1";
+  const { items, stale, hasSnapshot } = await getTop10Month();
+
+  if (hasSnapshot) {
+    if (fresh) after(() => refreshTop10Month(true).catch(() => undefined));
+    else if (stale) after(() => refreshTop10Month().catch(() => undefined));
+  }
+
   const ids = items.map((i) => i.malId);
   let rows: Awaited<ReturnType<typeof db.anime.findMany>> = [];
   try {
