@@ -13,9 +13,10 @@ import SearchView from "@/components/views/SearchView";
 import MyListView from "@/components/views/MyListView";
 import LatestView from "@/components/views/LatestView";
 import ProfileView from "@/components/views/ProfileView";
+import Top50View from "@/components/views/Top50View";
 import type { Lang, ServerId } from "@/lib/zoko";
 import { isBackupServer } from "@/lib/zoko";
-import { animeFromContinue } from "@/lib/client-store";
+import { animeFromContinue, minimalLite } from "@/lib/client-store";
 
 type View =
   | { name: "home" }
@@ -27,7 +28,8 @@ type View =
   | { name: "latest" }
   | { name: "search" }
   | { name: "mylist" }
-  | { name: "profile" };
+  | { name: "profile" }
+  | { name: "top50" };
 
 type NavDir = "push" | "pop" | "fade";
 
@@ -124,6 +126,18 @@ export default function Page() {
     [push],
   );
 
+  // Web Push deep link — notifications carry /?open={malId}; landing on it
+  // opens that anime directly (DetailsView re-enriches by malId) and the
+  // query is cleaned so Back / reload doesn't re-open it.
+  useEffect(() => {
+    const raw = new URLSearchParams(window.location.search).get("open");
+    const id = Number(raw);
+    if (raw && Number.isFinite(id) && id > 0) {
+      openAnime(minimalLite(id, `Anime ${id}`, null));
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [openAnime]);
+
   /** Continue Watching tap — straight into the episode at the saved second.
    *  The episode list is pushed UNDER the player so Back (arrow, top-left)
    *  lands on that anime's episode grid instead of dumping you home. */
@@ -154,6 +168,7 @@ export default function Page() {
             onDetails={openAnime}
             onWatch={(a) => push({ name: "episodes", anime: a })}
             onResume={resumeWatching}
+            onTop50={() => push({ name: "top50" })}
           />
         );
       case "details":
@@ -202,6 +217,8 @@ export default function Page() {
         return <MyListView onSelect={openAnime} />;
       case "profile":
         return <ProfileView onResume={resumeWatching} />;
+      case "top50":
+        return <Top50View onBack={pop} onSelect={openAnime} />;
     }
   };
 

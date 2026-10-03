@@ -258,6 +258,20 @@ for (const d of data.dubProbe ?? []) {
   }
 }
 
+// Web Push subscriptions — endpoint-keyed, straight upsert (the client also
+// re-upserts on every app open; this makes the BAKED db notify-ready so cron
+// pushes work even before any browser revisits)
+let pushSubs = 0;
+for (const s of data.pushSubs ?? []) {
+  if (!s?.endpoint || !s?.p256dh || !s?.auth) continue;
+  await db.pushSub.upsert({
+    where: { endpoint: s.endpoint },
+    update: { p256dh: s.p256dh, auth: s.auth, userId: s.userId ?? null },
+    create: { endpoint: s.endpoint, p256dh: s.p256dh, auth: s.auth, userId: s.userId ?? null },
+  }).catch(() => undefined);
+  pushSubs++;
+}
+
 try { unlinkSync(file); } catch { /* keep on failure */ }
-console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, anime +${stats.anime}, episodes +${stats.episodes}, progress +${stats.progress}, dubProbes ${dubProbes}, lastSealed=${lastSealed ?? "n/a"}`);
+console.log(`merged: ${stats.users} users, ${stats.comments} comments (${stats.tombstones} tombstoned deletion(s) applied), ${stats.watchStats} watchStat rows, ${stats.top10Events} events, anime +${stats.anime}, episodes +${stats.episodes}, progress +${stats.progress}, dubProbes ${dubProbes}, pushSubs ${pushSubs}, lastSealed=${lastSealed ?? "n/a"}`);
 process.exit(0);

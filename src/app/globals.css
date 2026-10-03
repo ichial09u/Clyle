@@ -264,3 +264,67 @@
 .player-layer {
   transition: opacity 200ms ease;
 }
+
+/* ---------- OG genre tile — the high-detail gold glow ---------- */
+/* The "OG" tile (classic pre-2010 anime, faked genre) is a treasure-chest
+   button: polished gold gradient, a slow breathing glow halo, a sheen that
+   sweeps across on loop, and a bright flash on press. Deliberately louder
+   than every other genre tile — it should look like the cool one to hit. */
+
+@keyframes ogGoldBreathe {
+  0%, 100% {
+    box-shadow:
+      0 0 6px 1px rgba(245, 196, 81, 0.35),
+      0 0 18px 4px rgba(245, 196, 81, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.55),
+      inset 0 -2px 4px rgba(120, 78, 0, 0.45);
+  }
+  50% {
+    box-shadow:
+      0 0 10px 2px rgba(245, 196, 81, 0.6),
+      0 0 30px 8px rgba(245, 196, 81, 0.3),
+      inset 0 1px 0 rgba(255, 255, 255, 0.65),
+      inset 0 -2px 4px rgba(120, 78, 0, 0.45);
+  }
+}
+
+@keyframes ogGoldSheen {
+  0% { transform: translateX(-130%) skewX(-18deg); }
+  55%, 100% { transform: translateX(240%) skewX(-18deg); }
+}
+
+.og-tile {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid #c9a227;
+  background:
+    linear-gradient(160deg, #ffefb8 0%, #f7d879 28%, #e9b949 55%, #c98f1d 82%, #a8740f 100%);
+  color: #241a00;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  animation: ogGoldBreathe 2.8s ease-in-out infinite;
+  transition: transform 120ms ease, filter 120ms ease;
+}
+.og-tile::before {
+  /* soft inner top gleam */
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 70% at 30% 0%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 55%);
+  pointer-events: none;
+}
+.og-tile::after {
+  /* the sweeping sheen */
+  content: "";
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  left: 0;
+  width: 34%;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.75) 50%, rgba(255, 255, 255, 0) 100%);
+  animation: ogGoldSheen 3.4s ease-in-out infinite;
+  pointer-events: none;
+}
+.og-tile:active {
+  transform: scale(0.95);
+  filter: brightness(1.25) saturate(1.1);
+}

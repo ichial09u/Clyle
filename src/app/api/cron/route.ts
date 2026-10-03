@@ -4,6 +4,7 @@ import { syncCatalog, lastSync } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { runSkipAudit } from "@/lib/skip-audit";
 import { refreshTop10Month } from "@/lib/top10-month";
+import { notifyAiringSoon } from "@/lib/push";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -11,11 +12,20 @@ export const maxDuration = 60;
 /**
  * GET /api/cron — scheduled self-test + self-heal entry point.
  *
- * Vercel Cron hits this on a schedule (see vercel.json). Each run:
- *   1. checks the database and catalog integrity,
- *   2. heals what is healable automatically (catalog drift -> re-sync,
- *      orphaned comment replies -> removed),
- *   3. returns a structured report (also printed to Vercel logs).
+ * Vercel Cron hits this on a schedule (see vercel.json). The SHAPE of the
+ * run is split by latency:
+ *
+ *   - INLINE (fast, DB-only): reachability, catalog counts, comment-tree
+ *     sanity, user-data counts, fleet status — these answer instantly and
+ *     the report returns well inside the 60s lambda cap.
+ *
+ *   - BACKGROUND (after(), network-heavy): the catalog sync sweep (+ skip
+ *     prefetch + "airing soon" pushes), the skip-intro audit's live probes,
+ *     and the Anime Trending chart refresh. A previous layout awaited all of
+ *     that inline and the lambda began to bust its 60s budget on cold starts
+ *     (FUNCTION_INVOCATION_TIMEOUT) — the heals are idempotent, so running
+ *     them after the response is strictly better: cron gets its 200, the
+ *     work still happens, and the next run reports the results (SyncLog).
  *
  * This is the server half of the "bot that play-tests everything": the client
  * half is `scripts/e2e-smoke.mjs` (`npm run smoke`), which exercises the real
@@ -52,23 +62,51 @@ export async function GET(req: Request) {
     checks.push({ name: "catalog", ok: true, detail: `${animeCount} in-catalog anime` });
   }
 
-  // ---- 3) catalog drift -> auto re-sync (heal) ----
-  try {
-    const syncResult = await syncCatalog();
-    const sync = await lastSync();
-    if (syncResult.episodesAdded > 0 || syncResult.animeAdded > 0) {
-      fixes.push(`catalog sync imported ${syncResult.episodesAdded} episodes / ${syncResult.animeAdded} anime`);
+  // ---- 3) background heals — network-heavy, run AFTER the response ----
+  after(async () => {
+    // 3a) catalog drift -> auto re-sync (heal): new episodes + new anime,
+    //     skip-time prefetch for imports, and "drops in ~N hours" reminders
+    try {
+      const syncResult = await syncCatalog();
+      if (syncResult.episodesAdded > 0 || syncResult.animeAdded > 0) {
+        fixes.push(`catalog sync imported ${syncResult.episodesAdded} episodes / ${syncResult.animeAdded} anime`);
+        console.log("[cron] heal: sync imported", syncResult.episodesAdded, "episodes /", syncResult.animeAdded, "anime");
+      }
+      if (syncResult.newEpisodes.length) await prefetchSkipTimes(syncResult.newEpisodes).catch(() => undefined);
+      await notifyAiringSoon().catch(() => undefined);
+    } catch (err) {
+      // upstream (Jikan/AniList) failures are not fatal for the app
+      console.error("[cron] catalog-sync heal failed:", String(err).slice(0, 200));
     }
-    // import skip intro/ending for every newly imported episode (background,
-    // rate-limited) — new episodes arrive with their skip data already cached
-    if (syncResult.newEpisodes.length) after(() => prefetchSkipTimes(syncResult.newEpisodes));
-    checks.push({ name: "catalog-sync", ok: syncResult.ok !== false, detail: `checked ${syncResult.animeChecked} anime · last run ${sync.at ?? "n/a"}` });
-  } catch (err) {
-    // upstream (Jikan) failures are not fatal for the app — record and move on
-    checks.push({ name: "catalog-sync", ok: false, detail: String(err).slice(0, 200) });
-  }
 
-  // ---- 4) orphaned comment replies -> remove (heal) ----
+    // 3b) skip intro audit — verifies a Skip Intro button will appear
+    //     (scout / exact / consensus / live tiers); `probe` asks AniSkip
+    //     live and heals gaps in place
+    try {
+      const audit = await runSkipAudit(true, 5);
+      const t = audit.totals;
+      console.log(
+        `[cron] skip-intro audit: ${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.scout} scout / ${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
+      );
+      if (!audit.ok) {
+        const bad = audit.anime.filter((a) => !a.ok).slice(0, 5).map((a) => `${a.title} (${a.episodes.filter((e) => e.source === "uncovered").map((e) => `ep${e.ep}`).join(",")})`);
+        console.error("[cron] skip intro still uncovered after probing:", bad.join("; "));
+      }
+    } catch (err) {
+      console.error("[cron] skip-intro-audit failed:", String(err).slice(0, 200));
+    }
+
+    // 3c) Top 10 rank notifications (bell + push data path) — TTL-gated
+    //     inside refreshTop10Month
+    try {
+      await refreshTop10Month();
+    } catch (err) {
+      console.error("[cron] top10 refresh failed:", String(err).slice(0, 200));
+    }
+  });
+  checks.push({ name: "catalog-sync", ok: true, detail: "background heal scheduled (sync + skip prefetch + airing-soon pushes + audit + top10 refresh)" });
+
+  // ---- 4) orphaned comment replies -> remove (heal, DB-only) ----
   try {
     const orphans = await db.comment.findMany({
       where: { parentId: { not: null } },
@@ -104,7 +142,7 @@ export async function GET(req: Request) {
     });
     if (suspicious.length > 0) {
       await db.comment.updateMany({
-        where: { id: { in: suspicious.map((s) => s.id) } },
+        where: { id: { in: suspicious.map((c) => c.id) } },
         data: { likedBy: "[]" },
       });
       fixes.push(`reset malformed like counters on ${suspicious.length} comment(s)`);
@@ -120,49 +158,13 @@ export async function GET(req: Request) {
     const commentCount = await db.comment.count();
     checks.push({ name: "user-data", ok: true, detail: `${progressCount} progress rows / ${commentCount} comments` });
   } catch (err) {
+    healthy = false;
     checks.push({ name: "user-data", ok: false, detail: String(err).slice(0, 200) });
   }
 
-  // ---- 7) skip intro audit — the bot walks EVERY anime and verifies a
-  // Skip Intro button will appear (scout measurement / exact dataset row /
-  // consensus / live tier / crowd medians — no guessing). `probe` asks
-  // AniSkip live for gaps and caches the answers, which heals them in place.
+  // ---- 7) top 10 events feed (bell data path — pure read; the chart
+  //     refresh itself is part of the background heal above) ----
   try {
-    const audit = await runSkipAudit(true, 5);
-    const t = audit.totals;
-    checks.push({
-      name: "skip-intro-audit",
-      ok: audit.ok,
-      detail: `${t.coveragePct}% of ${t.sampled} sampled episodes show Skip Intro (${t.scout} scout / ${t.exact} exact / ${t.consensus} consensus / ${t.live} live / ${t.crowd} crowd / ${t.na} na / ${t.uncovered} uncovered, probed ${t.probed})`,
-    });
-    if (!audit.ok) {
-      const bad = audit.anime.filter((a) => !a.ok).slice(0, 5).map((a) => `${a.title} (${a.episodes.filter((e) => e.source === "uncovered").map((e) => `ep${e.ep}`).join(",")})`);
-      fixes.push(`skip intro still uncovered after probing: ${bad.join("; ")}`);
-    }
-  } catch (err) {
-    checks.push({ name: "skip-intro-audit", ok: false, detail: String(err).slice(0, 200) });
-  }
-
-  // ---- 8) watch-time table (Top 10 Today data path) ----
-  try {
-    const day = new Date().toISOString().slice(0, 10);
-    const rows = await db.watchStat.findMany({ where: { day }, orderBy: { seconds: "desc" }, take: 3 });
-    const tracked = await db.watchStat.count({ where: { day } });
-    checks.push({
-      name: "watchtime-today",
-      ok: true,
-      detail: tracked
-        ? `${tracked} anime watched today; leader at ${Math.round(rows[0].seconds / 60)}min`
-        : "no watch time recorded today yet (Top 10 Today is empty until someone watches)",
-    });
-  } catch (err) {
-    healthy = false;
-    checks.push({ name: "watchtime-today", ok: false, detail: String(err).slice(0, 200) });
-  }
-
-  // ---- 9) top 10 rank notifications (bell data path) + Anime Trending refresh ----
-  try {
-    await refreshTop10Month(); // rate-limited inside (2h TTL)
     const total = await db.top10Event.count();
     const latest = await db.top10Event.findFirst({
       orderBy: { id: "desc" },
@@ -188,7 +190,7 @@ export async function GET(req: Request) {
     checks.push({ name: "top10-events", ok: false, detail: String(err).slice(0, 200) });
   }
 
-  // ---- 10) intro-scout fleet status (the 24/7 bots that measure openings;
+  // ---- 8) intro-scout fleet status (the 24/7 bots that measure openings;
   // report-only — the fleet runs off-site and reports via its own API) ----
   try {
     const [measured, refs, latest] = await Promise.all([
@@ -213,6 +215,7 @@ export async function GET(req: Request) {
     origin: new URL(req.url).origin,
     checks,
     fixes,
+    note: "heavy heals (sync / audit / top10 refresh) run in background via after()",
   };
   // visible in Vercel logs so failures surface without anyone opening the app
   console.log("[cron] self-test report:", JSON.stringify(report));

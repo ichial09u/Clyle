@@ -29,6 +29,21 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
         {(genres ?? Array.from({ length: 36 }).map((_, i) => ({ name: `slot-${i}`, count: -1 }))).map((g) =>
           g.count === -1 ? (
             <div key={g.name} className="h-[48px] rounded-md bg-[#161616] animate-pulse" />
+          ) : g.name === "OG" ? (
+            // OG — the faked classic-anime genre. Styled like a treasure
+            // button: polished gold, breathing glow halo, looping sheen sweep
+            // (see .og-tile in globals.css) — deliberately the coolest tile
+            // on the grid to hit.
+            <button
+              key={g.name}
+              onClick={() => onSelect(g.name)}
+              aria-label="OG — classic anime (pre-2010)"
+              className="og-tile h-[48px] rounded-md px-1 text-[13px] font-extrabold tracking-wide leading-tight flex items-center justify-center gap-1"
+            >
+              <span aria-hidden className="text-[12px] drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]">👑</span>
+              OG
+              <span className="text-[10px] font-bold opacity-70">{g.count}</span>
+            </button>
           ) : (
             <button
               key={g.name}

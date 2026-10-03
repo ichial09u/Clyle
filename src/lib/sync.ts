@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { jikan, posterUrl, bannerUrl, durationToMinutes, shortRating, type JikanAnime } from "@/lib/jikan";
 import { anilistToJikan, freshMediaByMal, seasonNow, seasonStillAiring, airedEpisodeCount, streamingEpisodeTitlesByMal, type AniListMedia } from "@/lib/anilist";
 import { tvmazeEpisodeTitles } from "@/lib/tvmaze";
+import { notifySyncResult } from "@/lib/push";
 
 /**
  * Catalog sync — keeps the Zoko catalog up to date:
@@ -30,6 +31,8 @@ export interface SyncResult {
   error?: string;
   /** the (malId, ep) pairs this sync imported — used to prefetch skip times */
   newEpisodes: Array<{ malId: number; ep: number; lenMin?: number | null }>;
+  /** malIds of brand-new catalog rows this sweep added — powers "new anime" pushes */
+  newAnimeIds: number[];
 }
 
 /**
@@ -380,6 +383,7 @@ async function runSync(_force = false): Promise<SyncResult> {
   let animeChecked = 0;
   let error: string | undefined;
   const newEpisodes: Array<{ malId: number; ep: number; lenMin?: number | null }> = [];
+  const newAnimeIds: number[] = [];
 
   try {
     // ---------------------------------------------------------------
@@ -475,7 +479,10 @@ async function runSync(_force = false): Promise<SyncResult> {
       const added = await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
       const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
       newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
-      if (!known?.inCatalog) animeAdded++;
+      if (!known?.inCatalog) {
+        animeAdded++;
+        newAnimeIds.push(malId);
+      }
     }
 
     // ---------------------------------------------------------------
@@ -542,6 +549,9 @@ async function runSync(_force = false): Promise<SyncResult> {
   }
 
   const finishedAt = new Date();
+  // lock-screen delivery for everything this sweep just made live — best
+  // effort, never blocks the sync result
+  void notifySyncResult({ episodesAdded, animeAdded, newEpisodes, newAnimeIds }).catch(() => undefined);
   return {
     ok: !error,
     episodesAdded,
@@ -550,6 +560,7 @@ async function runSync(_force = false): Promise<SyncResult> {
     durationMs: finishedAt.getTime() - startedAt.getTime(),
     error,
     newEpisodes,
+    newAnimeIds,
   };
 }
 

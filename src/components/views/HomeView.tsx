@@ -34,11 +34,13 @@ export default function HomeView({
   onDetails,
   onWatch,
   onResume,
+  onTop50,
 }: {
   onSelect: (a: AnimeLite) => void;
   onDetails: (a: AnimeLite) => void;
   onWatch: (a: AnimeLite) => void;
   onResume: (item: ContinueItem) => void;
+  onTop50: () => void;
 }) {
   const [data, setData] = useState<HomePayload | null>(null);
   const [error, setError] = useState(false);
@@ -209,12 +211,25 @@ export default function HomeView({
         </>
       ) : null}
 
-      {/* Top 10 This Month — Anime Trending chart ranking, active (ranks swap) */}
+      {/* Top 10 This Month — Anime Trending chart ranking, active (ranks swap).
+          The rail shows the first 10; "See More" opens the live Top 50 screen. */}
       {top10.length ? (
         <section className="mt-6">
-          <h2 className="font-slab text-[21px] font-bold px-4 mb-3">Top 10 This Month</h2>
+          <div className="flex items-end justify-between px-4 mb-3">
+            <h2 className="font-slab text-[21px] font-bold">Top 10 This Month</h2>
+            <button
+              onClick={onTop50}
+              aria-label="See the full Top 50"
+              className="flex items-center gap-0.5 text-[12px] font-semibold text-gray-400 hover:text-white active:scale-95 transition pb-0.5"
+            >
+              See More
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="m9 18 6-6-6-6" />
+              </svg>
+            </button>
+          </div>
           <div className="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-1">
-            {top10.map((a, i) => {
+            {top10.slice(0, 10).map((a, i) => {
               const prev = a.prevRank;
               const movedUp = prev != null && a.rank < prev;
               const movedDown = prev != null && a.rank > prev;

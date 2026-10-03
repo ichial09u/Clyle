@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { top10UtcToday } from "@/lib/top10";
+import { notifyTop10Changes } from "@/lib/push";
 
 /**
  * Top 10 This Month — Anime Trending-driven active ranking.
@@ -28,6 +29,10 @@ const REFRESH_TTL_MS = 2 * 3600 * 1000;
 /** Minimum gap between FORCED (open-kick) refreshes — rapid reopens stay cheap. */
 const FORCE_REFRESH_FLOOR_MS = 60_000;
 
+/** How deep the published ranking goes: the home rail shows the first 10,
+ *  the "See More" screen shows all 50 (Anime Trending's chart ranks 58). */
+export const TOP_MONTH_SIZE = 50;
+
 const AT_BASE = "https://www.anitrendz.com/charts/top-anime";
 const AT_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -52,6 +57,8 @@ interface Snapshot {
   day: string;
   source: string;
   items: Array<{ malId: number; rank: number; prevRank: number | null; title: string; image: string | null }>;
+  /** ranks > this are popularity-fill (not Anime Trending chart positions) */
+  mappedCount?: number;
 }
 
 /* ---------------- Anime Trending chart fetch ---------------- */
@@ -360,9 +367,31 @@ export async function refreshTop10Month(force = false): Promise<void> {
         if (malId == null || used.has(malId)) continue;
         used.add(malId);
         ranked.push({ malId, title: "", image: null });
-        if (ranked.length >= 30) break; // headroom above the 10 we show
       }
       if (!ranked.length) throw new Error("no catalog matches in anitrendz chart");
+
+      // Top 50 depth guarantee: the chart's tail often carries titles the
+      // catalog doesn't carry ("catalog-only by design"), so ranks beyond the
+      // mapped chart positions are filled with the catalog's most-popular
+      // anime (MAL popularity rank, the same ordering the Latest tab uses).
+      // Filler is marked via snapshot.mappedCount: a filler item's first
+      // appearance self-baselines (prevRank = current rank) so the bell
+      // never floods with fake "entered the Top 50" events — but once in, it
+      // participates in real up/down movement like everyone else.
+      const mappedCount = ranked.length;
+      if (ranked.length < TOP_MONTH_SIZE) {
+        const filler = await db.anime.findMany({
+          where: { inCatalog: true, malId: { notIn: [...used] }, popularity: { not: null } },
+          orderBy: { popularity: "asc" },
+          take: TOP_MONTH_SIZE - ranked.length,
+          select: { malId: true },
+        });
+        for (const f of filler) {
+          if (used.has(f.malId)) continue;
+          used.add(f.malId);
+          ranked.push({ malId: f.malId, title: "", image: null });
+        }
+      }
 
       // hydrate titles/posters (logos come from the catalog at render time)
       const cat = await db.anime.findMany({
@@ -378,22 +407,37 @@ export async function refreshTop10Month(force = false): Promise<void> {
         }
       }
 
-      // where the previous snapshot's ranks become prevRank; the FIRST run
-      // self-baselines (prevRank = current rank) so nothing is flagged NEW
-      // — the bell/badges only wake up when something MOVES later
+      // Where the previous snapshot's ranks become prevRank.
+      //  - known title        -> its previous rank (up / down events)
+      //  - below the depth the previous snapshot tracked (the 10 -> 50
+      //    widening, or a chart that mapped fewer titles last time) ->
+      //    SELF-BASELINE (prevRank = current rank): a rank we simply never
+      //    tracked before must not flood the bell as 40 "NEW" entries
+      //  - known-depth newcomer -> null (a real "entered" event)
+      //  - FIRST run ever      -> everything self-baselines
       const prev = await readSnapshot();
-      const nextItems = ranked.slice(0, 10).map((r, i) => ({
-        ...r,
-        rank: i + 1,
-        prevRank: prev ? (prev.items.find((p) => p.malId === r.malId)?.rank ?? null) : (i + 1),
-      }));
+      const prevDepth = prev?.items.length ?? 0;
+      const prevMapped = prev?.mappedCount ?? Number.MAX_SAFE_INTEGER; // old snapshots: everything was "mapped"
+      const nextItems = ranked.slice(0, TOP_MONTH_SIZE).map((r, i) => {
+        const isFiller = i >= mappedCount;
+        return {
+          ...r,
+          rank: i + 1,
+          prevRank: prev
+            ? (prev.items.find((p) => p.malId === r.malId)?.rank ?? (i >= prevDepth || isFiller || i >= prevMapped ? i + 1 : null))
+            : (i + 1),
+        };
+      });
 
       const events = diffRanks(prev, nextItems);
       await insertRankEvents(day, events);
+      // lock-screen reminder (one summary per day, Top 10 window only)
+      if (events.length) void notifyTop10Changes(day, events).catch(() => undefined);
       await writeSnapshot({
         day,
         source: "anitrendz:top-anime",
         items: nextItems,
+        mappedCount,
       });
       await db.top10Meta.upsert({
         where: { key: REFRESHED_KEY },

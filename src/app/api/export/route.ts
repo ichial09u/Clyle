@@ -8,13 +8,16 @@ export const dynamic = "force-dynamic";
  *   users + comments (the point of this endpoint: the deploy script fetches
  *   this BEFORE building a new deployment and merges it into the bundled
  *   SQLite file, so comments survive site updates), plus the Top 10 Today
- *   history (watchStats), its notification events, and the seal cursor.
+ *   history (watchStats), its notification events, the seal cursor, and the
+ *   Web Push subscriptions (without carrying those forward, every deploy
+ *   would silently unsubscribe the lock-screen notifications until each
+ *   browser happened to reopen the app).
  *
  * Everything here is already public through the app (no progress/identity
  * secrets). Used by scripts/merge-comments.mjs via scripts/deploy-vercel.mjs.
  */
 export async function GET() {
-  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, introScout, scoutRef, dubProbe] =
+  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, introScout, scoutRef, dubProbe, pushSubs] =
     await Promise.all([
       db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),
       db.comment.findMany(),
@@ -39,6 +42,8 @@ export async function GET() {
       db.scoutRef.findMany(),
       // per-episode dub probes (ground truth behind the DUB button gating)
       db.dubProbe.findMany(),
+      // Web Push subscriptions — lock-screen delivery must survive deploys
+      db.pushSub.findMany(),
     ]);
   return NextResponse.json(
     {
@@ -55,6 +60,7 @@ export async function GET() {
       introScout,
       scoutRef,
       dubProbe,
+      pushSubs,
     },
     { headers: { "Cache-Control": "no-store" } },
   );

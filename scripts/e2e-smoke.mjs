@@ -257,13 +257,44 @@ async function expectJson(name, path, init, validate) {
     (r, b) => r.ok && Array.isArray(b?.events) && b.events.every((e) => (["enter", "leave", "up", "down"].includes(e.type)) && !!e.title && !!e.day),
   );
 
-  // ---- 5d) Top 10 This Month (TMDB popularity ranking) ----
+  // ---- 5d) Top 10 This Month (Anime Trending ranking, Top 50 depth) ----
   await expectJson(
-    "GET /api/top10 (Anime Trending rank rail)",
+    "GET /api/top10 (Anime Trending rank rail, up to 50 deep)",
     "/api/top10",
     {},
-    (r, b) => r.ok && Array.isArray(b?.items) && b.items.length > 0 && b.items.every((it) => Number.isFinite(it?.rank) && Number.isFinite(it?.malId)),
+    (r, b) =>
+      r.ok &&
+      Array.isArray(b?.items) &&
+      b.items.length > 0 &&
+      b.items.length <= 50 &&
+      b.items.every((it) => Number.isFinite(it?.rank) && Number.isFinite(it?.malId) && (it?.prevRank === null || Number.isFinite(it?.prevRank))),
   );
+
+  // ---- 5e) Web Push plumbing (key exchange + subscribe roundtrip) ----
+  {
+    const key = await expectJson(
+      "GET /api/push/key (VAPID public key)",
+      "/api/push/key",
+      {},
+      (r, b) => r.ok && typeof b?.publicKey === "string" && b.publicKey.startsWith("B") && b.publicKey.length > 60,
+    );
+    // roundtrip a scratch subscription (fake endpoint never sent to; deleted below)
+    if (key?.publicKey) {
+      const endpoint = "https://fcm.googleapis.com/fcm/send/smoke-push-scratch";
+      await expectJson(
+        "POST /api/push/subscribe (upsert)",
+        "/api/push/subscribe",
+        { method: "POST", body: JSON.stringify({ endpoint, keys: { p256dh: "B" + "x".repeat(86), auth: "smoke-auth" }, userId: BOT }) },
+        (r, b) => r.ok && b?.ok === true,
+      );
+      await expectJson(
+        "DELETE /api/push/subscribe (cleanup)",
+        "/api/push/subscribe",
+        { method: "DELETE", body: JSON.stringify({ endpoint }) },
+        (r, b) => r.ok && b?.ok === true,
+      );
+    }
+  }
 
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);

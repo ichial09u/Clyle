@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDownRight, ArrowUpRight, Bell, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bell, BellRing, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
+import { Switch } from "@/components/ui/switch";
 import {
   fetchTop10Events,
   markTop10Read,
@@ -12,13 +13,28 @@ import {
   useTop10ReadId,
   type Top10EventItem,
 } from "@/lib/client-store";
+import {
+  disablePush,
+  enablePush,
+  pushEnabledFlag,
+  pushPermission,
+  pushSupported,
+  pushSelfHeal,
+} from "@/lib/push-client";
 import { artUrl } from "@/lib/art";
 
 /**
  * Netflix-style Top 10 notifications: a floating bell on Home (unread badge)
- * that opens a panel listing every "entered / left the Top 10 Today" event.
- * The feed is server-side (same for all viewers); the read watermark is
- * per-device (localStorage). Tapping a notification opens that anime.
+ * that opens a panel listing every "entered / left / climbed / fell" event —
+ * now across the full Top 50 the See More screen shows (Top 10 changes stay
+ * the headline copy). The feed is server-side (same for all viewers); the
+ * read watermark is per-device (localStorage). Tapping a notification opens
+ * that anime.
+ *
+ * The panel also carries the Web Push opt-in: one toggle that asks for OS
+ * permission, subscribes this browser, and from then on lets the app ping
+ * the lock screen even while it is closed (new episode / new anime / Top 10
+ * / airing-soon reminders).
  */
 export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => void }) {
   const [events, setEvents] = useState<Top10EventItem[]>([]);
@@ -28,6 +44,56 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  // ---- push opt-in state ----
+  const supported = useRef(false);
+  const [pushOn, setPushOn] = useState(false);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushNote, setPushNote] = useState<string | null>(null);
+  useEffect(() => {
+    supported.current = pushSupported();
+    setPushOn(pushEnabledFlag() && pushPermission() === "granted");
+    // deploy self-heal: re-upsert the stored subscription while enabled
+    pushSelfHeal();
+  }, []);
+
+  const togglePush = useCallback(async (on: boolean) => {
+    setPushBusy(true);
+    setPushNote(null);
+    try {
+      if (!on) {
+        await disablePush();
+        setPushOn(false);
+        return;
+      }
+      const r = await enablePush();
+      if (r.ok) {
+        setPushOn(true);
+        // instant proof the pipe is alive (also trains iOS that the PWA can notify)
+        try {
+          const reg = await navigator.serviceWorker.getRegistration("/");
+          await reg?.showNotification("🔔 Clyle notifications on", {
+            body: "You'll get a ping the moment a new anime or episode drops.",
+            icon: "/icon-192.png",
+            tag: "clyle-welcome",
+          });
+        } catch {
+          /* permission was granted but the local show failed — the toggle is still on */
+        }
+      } else {
+        setPushOn(false);
+        setPushNote(
+          r.reason === "denied"
+            ? "Blocked in browser settings — allow notifications for this site, then flip this on again."
+            : r.reason === "unsupported"
+              ? "This browser can't do push notifications (on iPhone, install the app first: Share → Add to Home Screen)."
+              : "Couldn't turn notifications on — try again in a moment.",
+        );
+      }
+    } finally {
+      setPushBusy(false);
+    }
+  }, []);
 
   const refresh = useCallback(() => {
     fetchTop10Events()
@@ -107,18 +173,39 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                 className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-[560px] md:max-w-[720px] lg:max-w-[920px] max-h-[85dvh] overflow-y-auto overscroll-contain rounded-b-2xl border-x border-b border-[#222] bg-[#0b0b0b] shadow-2xl"
                 style={{ paddingTop: "env(safe-area-inset-top)" }}
               >
-                <div className="sticky top-0 bg-[#0b0b0b]/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-[#1c1c1c] flex items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-slab text-[18px] font-bold text-white leading-tight">Top 10 Notifications</h2>
-                    <p className="text-[12px] text-gray-500 mt-0.5">When an anime climbs, falls, or enters the Top 10 This Month</p>
+                <div className="sticky top-0 bg-[#0b0b0b]/95 backdrop-blur-sm px-4 pt-4 pb-3 border-b border-[#1c1c1c]">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h2 className="font-slab text-[18px] font-bold text-white leading-tight">Top 10 Notifications</h2>
+                      <p className="text-[12px] text-gray-500 mt-0.5">When an anime climbs, falls, or enters the Top 50 This Month</p>
+                    </div>
+                    <button
+                      onClick={closePanel}
+                      aria-label="Close notifications"
+                      className="shrink-0 w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center active:scale-95 transition"
+                    >
+                      <X className="w-4 h-4 text-gray-300" />
+                    </button>
                   </div>
-                  <button
-                    onClick={closePanel}
-                    aria-label="Close notifications"
-                    className="shrink-0 w-8 h-8 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center active:scale-95 transition"
-                  >
-                    <X className="w-4 h-4 text-gray-300" />
-                  </button>
+
+                  {supported.current ? (
+                    <div className="mt-3 rounded-xl border border-[#1f1f1f] bg-[#101010] px-3 py-2.5 flex items-center gap-3">
+                      <BellRing className={`w-4.5 h-4.5 shrink-0 ${pushOn ? "text-red-500" : "text-gray-500"}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-semibold text-white leading-tight">Push notifications</p>
+                        <p className="text-[11px] text-gray-500 leading-snug mt-0.5">
+                          {pushOn ? "On — new episodes & anime pop up even with the app closed" : "Get pinged when a new anime or episode drops — even outside the app"}
+                        </p>
+                      </div>
+                      <Switch
+                        checked={pushOn}
+                        disabled={pushBusy}
+                        onCheckedChange={(v) => void togglePush(v)}
+                        aria-label="Toggle push notifications"
+                      />
+                    </div>
+                  ) : null}
+                  {pushNote ? <p className="mt-2 text-[11px] text-amber-400/90 leading-snug">{pushNote}</p> : null}
                 </div>
 
                 {events.length === 0 ? (
@@ -175,11 +262,12 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                                   </span>
                                 ) : enter ? (
                                   <span>
-                                    entered the Top 10{e.rank && e.rank > 0 ? <> at <span className="text-white font-semibold">#{e.rank}</span></> : null}
+                                    entered the {e.rank != null && e.rank > 10 ? "Top 50" : "Top 10"}
+                                    {e.rank && e.rank > 0 ? <> at <span className="text-white font-semibold">#{e.rank}</span></> : null}
                                   </span>
                                 ) : (
                                   <span>
-                                    left the Top 10
+                                    left the {typeof e.prevRank === "number" && e.prevRank > 10 ? "Top 50" : "Top 10"}
                                     {typeof e.prevRank === "number" ? <> (was #{e.prevRank})</> : null}
                                   </span>
                                 )}

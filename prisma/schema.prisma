@@ -404,3 +404,27 @@ model SkipDbFill {
   @@unique([malId, ep, kind])
   @@index([malId])
 }
+
+// A Web Push subscription (browser opt-in — "actual notifications that pop up
+// when you're not in the app"). One row per browser endpoint; the client
+// re-upserts its subscription on every app open, so a deploy that resets the
+// SQLite file self-heals on the next visit without asking again.
+model PushSub {
+  endpoint  String   @id // the push service URL — unique per browser+install
+  p256dh    String // client public key (payload encryption)
+  auth      String // auth secret (payload encryption)
+  userId    String? // viewer profile that opted in (for future per-user filtering)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+// Idempotency ledger for pushes — one row per logical notification so cron
+// overlap / arrival-kick storms can never double-ping ("ep:21:1123",
+// "anime:64340", "top10:2026-10-04", "soon:21:1124:1791050000").
+// Rows are cheap and wiped on deploy; a lost row at worst means one repeat.
+model PushLog {
+  key       String   @id
+  createdAt DateTime @default(now())
+}

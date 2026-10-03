@@ -46,3 +46,71 @@ self.addEventListener("fetch", (event) => {
     }),
   );
 });
+
+/*
+ * Web Push — "actual notifications that pop up when you're not in the app".
+ *
+ * The server signs payloads with VAPID and fires them at the browser's push
+ * service when a new anime lands in the catalog, a new episode drops, the
+ * Top 10 moves (one summary/day), or an episode is about to air. This
+ * handler is what the OS wakes to display them — it runs with the app fully
+ * closed, which is the entire point.
+ *
+ * Payload shape (src/lib/push.ts): { t: title, b: body, tag?, url?, img? }.
+ * Text-only fallback if a payload ever fails to parse (a showNotification()
+ * is mandatory on push — Chrome kills the SW otherwise).
+ */
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { t: event.data ? event.data.text() : "Clyle", b: "" };
+  }
+  const title = (data.t || "Clyle").slice(0, 120);
+  const options = {
+    body: (data.b || "").slice(0, 200) || undefined,
+    tag: data.tag || "clyle", // same tag replaces — no notification pileups
+    icon: "/icon-192.png",
+    badge: "/icon-192.png",
+    image: data.img || undefined, // poster (large picture where supported)
+    data: { url: data.url || "/" },
+    // keep Android from stacking duplicates between wakeups
+    renotify: !!data.tag,
+    requireInteraction: false,
+    silent: false,
+  };
+  event.waitUntil(
+    self.registration.showNotification(title, options).catch(() => undefined),
+  );
+});
+
+/*
+ * Tapping a notification opens (or focuses) the app at the payload URL —
+ * /?open={malId} lands straight on that anime's details.
+ */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = (event.notification.data && event.notification.data.url) || "/";
+  const abs = new URL(target, self.location.origin).href;
+
+  event.waitUntil(
+    (async () => {
+      const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      // already open? focus it and navigate in place
+      for (const client of clientList) {
+        if (new URL(client.url).origin === self.location.origin) {
+          await client.focus();
+          try {
+            if ("navigate" in client) await client.navigate(abs);
+          } catch {
+            /* older browsers: focusing the open app is enough */
+          }
+          return;
+        }
+      }
+      // nothing open — launch fresh
+      await self.clients.openWindow(abs);
+    })(),
+  );
+});
