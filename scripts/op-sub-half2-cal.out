@@ -1,0 +1,29 @@
+[cal] targets: 16 eps -> 825,827,846,847,848,849,850,855,857,858,860,867,1126,1128,1129,1161
+[cal] targets: 16 eps -> 825,827,846,847,848,849,850,855,857,858,860,867,1126,1128,1129,1161
+[cal] targets: 16 eps (0 already fixed in a prior run) -> 825,827,846,847,848,849,850,855,857,858,860,867,1126,1128,1129,1161
+[cal] targets: 16 eps (0 already fixed in a prior run) -> 825,827,846,847,848,849,850,855,857,858,860,867,1126,1128,1129,1161
+[cal] done: 0 fixed, 16 still failing
+  - ep 825: stream unresolved
+  - ep 827: stream unresolved
+  - ep 846: stream unresolved
+  - ep 847: stream unresolved
+  - ep 848: stream unresolved
+  - ep 849: stream unresolved
+  - ep 850: stream unresolved
+  - ep 855: stream unresolved
+  - ep 857: stream unresolved
+  - ep 858: stream unresolved
+  - ep 860: stream unresolved
+  - ep 867: stream unresolved
+  - ep 1126: stream unresolved
+  - ep 1128: stream unresolved
+  - ep 1129: stream unresolved
+  - ep 1161: stream unresolved
+[cal] targets: 16 eps (0 already fixed in a prior run) -> 825,827,846,847,848,849,850,855,857,858,860,867,1126,1128,1129,1161
+[cal] ep 846 FIXED: 72-119 (67% loud at click 115.5s)
+[cal] ep 847 FIXED: 72-119 (67% loud at click 115.5s)
+[cal] ep 857 FIXED: 18-107 (100% sustained at click 103.5s (fade tail))
+[cal] ep 858 FIXED: 18-107 (100% sustained at click 103.5s (fade tail))
+[cal] ep 860 FIXED: 18-107 (100% sustained at click 103.5s (fade tail))
+[cal] done: 15 fixed, 1 still failing
+  - ep 827: no loud region >= 20s (p95 5210.31)

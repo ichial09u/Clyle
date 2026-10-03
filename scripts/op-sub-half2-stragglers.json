@@ -1,0 +1,96 @@
+{
+  "at": "2026-09-06T19:28:36.793Z",
+  "fixed": [
+    {
+      "ep": 825,
+      "start": 5.3,
+      "end": 95.3,
+      "note": "already good: 100% sustained at click 92.3s (fade tail)"
+    },
+    {
+      "ep": 846,
+      "start": 72,
+      "end": 118.5
+    },
+    {
+      "ep": 847,
+      "start": 72,
+      "end": 118.5
+    },
+    {
+      "ep": 848,
+      "start": 72,
+      "end": 118.5,
+      "note": "already good: 67% loud at click 115.5s"
+    },
+    {
+      "ep": 849,
+      "start": 72,
+      "end": 118.5,
+      "note": "already good: 67% loud at click 115.5s"
+    },
+    {
+      "ep": 850,
+      "start": 72,
+      "end": 118.5,
+      "note": "already good: 67% loud at click 115.5s"
+    },
+    {
+      "ep": 855,
+      "start": 72,
+      "end": 118.5,
+      "note": "already good: 67% loud at click 115.5s"
+    },
+    {
+      "ep": 857,
+      "start": 18,
+      "end": 106.5
+    },
+    {
+      "ep": 858,
+      "start": 18,
+      "end": 106.5
+    },
+    {
+      "ep": 860,
+      "start": 17.5,
+      "end": 106.5
+    },
+    {
+      "ep": 867,
+      "start": 18,
+      "end": 106.5,
+      "note": "already good: 89% loud at click 103.5s"
+    },
+    {
+      "ep": 1126,
+      "start": 0,
+      "end": 100,
+      "note": "already good: 100% loud at click 97.0s"
+    },
+    {
+      "ep": 1128,
+      "start": 0,
+      "end": 100,
+      "note": "already good: 100% loud at click 97.0s"
+    },
+    {
+      "ep": 1129,
+      "start": 0,
+      "end": 99,
+      "note": "already good: 100% loud at click 96.0s"
+    },
+    {
+      "ep": 1161,
+      "start": 13.7,
+      "end": 99.8,
+      "note": "already good: 67% sustained at click 96.8s (fade tail)"
+    }
+  ],
+  "still": [
+    {
+      "ep": 827,
+      "why": "no loud region >= 20s (p95 5210.31)"
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+{"at":"2026-09-07T16:33:53.566Z","verdict":"CAMPAIGN-START","total":16567,"repair":0,"gap":13105,"weak":3462,"lanes":8,"roster":1000}
+{"at":"2026-09-07T16:34:08.765Z","verdict":"PAIR-FAIL","bot":"tsa-0006","malId":21,"ep":396,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:19.852Z","verdict":"PAIR-FAIL","bot":"tsa-0001","malId":1,"ep":26,"why":"no cross-alignment (pair)","title":"Cowboy Bebop"}
+{"at":"2026-09-07T16:34:21.632Z","verdict":"PAIR-FAIL","bot":"tsa-0007","malId":21,"ep":397,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:22.057Z","verdict":"PAIR-FAIL","bot":"tsa-0004","malId":21,"ep":390,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:22.930Z","verdict":"PAIR-FAIL","bot":"tsa-0008","malId":21,"ep":399,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:23.511Z","verdict":"PAIR-FAIL","bot":"tsa-0003","malId":21,"ep":386,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:24.782Z","verdict":"PAIR-FAIL","bot":"tsa-0005","malId":21,"ep":391,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:25.222Z","verdict":"PAIR-FAIL","bot":"tsa-0002","malId":21,"ep":382,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:37.324Z","verdict":"PAIR-FAIL","bot":"tsa-0009","malId":21,"ep":406,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:50.068Z","verdict":"PAIR-FAIL","bot":"tsa-0010","malId":21,"ep":407,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:34:55.100Z","verdict":"PASS","bot":"tsa-0014","malId":235,"ep":10,"start":0.5,"end":138,"quality":0.96,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:04.643Z","verdict":"PASS","bot":"tsa-0012","malId":235,"ep":8,"start":0.5,"end":115,"quality":0.97,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:05.971Z","verdict":"PASS","bot":"tsa-0015","malId":235,"ep":11,"start":0.5,"end":110.5,"quality":0.99,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:08.236Z","verdict":"PASS","bot":"tsa-0013","malId":235,"ep":9,"start":1,"end":110.5,"quality":0.91,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:21.332Z","verdict":"PASS","bot":"tsa-0011","malId":235,"ep":6,"start":2,"end":141.5,"quality":0.96,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:22.724Z","verdict":"PASS","bot":"tsa-0017","malId":235,"ep":14,"start":1.5,"end":104,"quality":0.98,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:25.718Z","verdict":"PAIR-FAIL","bot":"tsa-0016","malId":235,"ep":12,"why":"no cross-alignment (pair)","title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:30.813Z","verdict":"PASS","bot":"tsa-0018","malId":235,"ep":15,"start":0.5,"end":113.5,"quality":0.99,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:36.555Z","verdict":"PASS","bot":"tsa-0019","malId":235,"ep":16,"start":0.5,"end":123.5,"quality":0.92,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:39.959Z","verdict":"PASS","bot":"tsa-0021","malId":235,"ep":18,"start":0.5,"end":105,"quality":0.99,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:45.626Z","verdict":"PASS","bot":"tsa-0020","malId":235,"ep":17,"start":0.5,"end":146.5,"quality":0.87,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:50.137Z","verdict":"PASS","bot":"tsa-0022","malId":235,"ep":19,"start":0.5,"end":130,"quality":0.85,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:35:53.773Z","verdict":"PAIR-FAIL","bot":"tsa-0024","malId":235,"ep":21,"why":"no cross-alignment (pair)","title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:03.742Z","verdict":"PASS","bot":"tsa-0023","malId":235,"ep":20,"start":0.5,"end":111.5,"quality":0.99,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:03.888Z","verdict":"PASS","bot":"tsa-0025","malId":235,"ep":22,"start":0.5,"end":148,"quality":0.73,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:07.047Z","verdict":"PASS","bot":"tsa-0026","malId":235,"ep":23,"start":0.5,"end":110.5,"quality":0.97,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:21.774Z","verdict":"PAIR-FAIL","bot":"tsa-0027","malId":235,"ep":24,"why":"no cross-alignment (pair)","title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:24.875Z","verdict":"PASS","bot":"tsa-0028","malId":235,"ep":25,"start":0.5,"end":119.5,"quality":0.93,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:25.283Z","verdict":"PASS","bot":"tsa-0029","malId":235,"ep":26,"start":0.5,"end":150,"quality":0.95,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:39.141Z","verdict":"PAIR-FAIL","bot":"tsa-0030","malId":235,"ep":27,"why":"no cross-alignment (pair)","title":"Meitantei Conan"}
+{"at":"2026-09-07T16:36:39.292Z","verdict":"CAMPAIGN-COMPLETE","campaign":"timestamp-army-1000","startedAt":"2026-09-07T16:33:53.261Z","finishedAt":"2026-09-07T16:36:39.291Z","queue":{"repair":0,"gap":13105,"weak":3462},"total":16567,"done":103,"ok":32,"noop":73,"resolveFail":0,"fail":14,"showsStruck":8,"botsEmployed":30,"okRate":31.1}
+{"at":"2026-09-07T16:37:53.656Z","verdict":"CAMPAIGN-START","total":16567,"repair":0,"gap":13085,"weak":3482,"lanes":48,"roster":1000}
+{"at":"2026-09-07T16:38:44.419Z","verdict":"PAIR-FAIL","bot":"tsa-0036","malId":21,"ep":552,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:38:45.080Z","verdict":"PAIR-FAIL","bot":"tsa-0042","malId":21,"ep":559,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:38:46.432Z","verdict":"PAIR-FAIL","bot":"tsa-0041","malId":21,"ep":558,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:38:48.128Z","verdict":"PAIR-FAIL","bot":"tsa-0023","malId":21,"ep":514,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:03.157Z","verdict":"PAIR-FAIL","bot":"tsa-0028","malId":21,"ep":541,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:03.749Z","verdict":"PAIR-FAIL","bot":"tsa-0019","malId":21,"ep":499,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:06.537Z","verdict":"PAIR-FAIL","bot":"tsa-0035","malId":21,"ep":551,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:10.355Z","verdict":"PAIR-FAIL","bot":"tsa-0030","malId":21,"ep":543,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:10.537Z","verdict":"PAIR-FAIL","bot":"tsa-0045","malId":21,"ep":562,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:12.523Z","verdict":"PAIR-FAIL","bot":"tsa-0039","malId":21,"ep":556,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:13.376Z","verdict":"PAIR-FAIL","bot":"tsa-0001","malId":1,"ep":26,"why":"no cross-alignment (pair)","title":"Cowboy Bebop"}
+{"at":"2026-09-07T16:39:23.915Z","verdict":"PAIR-FAIL","bot":"tsa-0004","malId":21,"ep":390,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:38.154Z","verdict":"PAIR-FAIL","bot":"tsa-0037","malId":21,"ep":553,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:40.670Z","verdict":"PAIR-FAIL","bot":"tsa-0021","malId":21,"ep":505,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:40.975Z","verdict":"PASS","bot":"tsa-0043","malId":21,"ep":560,"start":1,"end":84,"quality":1,"title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:42.629Z","verdict":"PAIR-FAIL","bot":"tsa-0024","malId":21,"ep":515,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:46.933Z","verdict":"PAIR-FAIL","bot":"tsa-0034","malId":21,"ep":550,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:48.167Z","verdict":"PAIR-FAIL","bot":"tsa-0022","malId":21,"ep":507,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:50.761Z","verdict":"PAIR-FAIL","bot":"tsa-0018","malId":21,"ep":495,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:50.855Z","verdict":"PAIR-FAIL","bot":"tsa-0029","malId":21,"ep":542,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:52.174Z","verdict":"PAIR-FAIL","bot":"tsa-0025","malId":21,"ep":521,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:52.538Z","verdict":"PAIR-FAIL","bot":"tsa-0038","malId":21,"ep":555,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:53.276Z","verdict":"PAIR-FAIL","bot":"tsa-0012","malId":21,"ep":470,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:53.424Z","verdict":"PAIR-FAIL","bot":"tsa-0040","malId":21,"ep":557,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:55.468Z","verdict":"PAIR-FAIL","bot":"tsa-0031","malId":21,"ep":544,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:57.337Z","verdict":"PAIR-FAIL","bot":"tsa-0027","malId":21,"ep":531,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:57.735Z","verdict":"PAIR-FAIL","bot":"tsa-0032","malId":21,"ep":546,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:58.075Z","verdict":"PAIR-FAIL","bot":"tsa-0047","malId":21,"ep":567,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:39:58.459Z","verdict":"PAIR-FAIL","bot":"tsa-0016","malId":21,"ep":489,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:00.625Z","verdict":"PAIR-FAIL","bot":"tsa-0033","malId":21,"ep":548,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:02.753Z","verdict":"PAIR-FAIL","bot":"tsa-0044","malId":21,"ep":561,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:04.223Z","verdict":"PAIR-FAIL","bot":"tsa-0046","malId":21,"ep":563,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:04.823Z","verdict":"PAIR-FAIL","bot":"tsa-0051","malId":21,"ep":572,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:06.142Z","verdict":"PAIR-FAIL","bot":"tsa-0013","malId":21,"ep":482,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:07.763Z","verdict":"PAIR-FAIL","bot":"tsa-0014","malId":21,"ep":484,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:08.258Z","verdict":"PAIR-FAIL","bot":"tsa-0026","malId":21,"ep":522,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:08.746Z","verdict":"PAIR-FAIL","bot":"tsa-0020","malId":21,"ep":500,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:18.030Z","verdict":"PAIR-FAIL","bot":"tsa-0015","malId":21,"ep":486,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:22.041Z","verdict":"PAIR-FAIL","bot":"tsa-0017","malId":21,"ep":490,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:26.164Z","verdict":"PAIR-FAIL","bot":"tsa-0054","malId":21,"ep":576,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:26.340Z","verdict":"PAIR-FAIL","bot":"tsa-0008","malId":21,"ep":399,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:28.662Z","verdict":"PAIR-FAIL","bot":"tsa-0011","malId":21,"ep":416,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:33.448Z","verdict":"PAIR-FAIL","bot":"tsa-0048","malId":21,"ep":568,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:37.770Z","verdict":"PAIR-FAIL","bot":"tsa-0009","malId":21,"ep":406,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:42.560Z","verdict":"PAIR-FAIL","bot":"tsa-0061","malId":21,"ep":587,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:44.338Z","verdict":"PAIR-FAIL","bot":"tsa-0005","malId":21,"ep":391,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:45.141Z","verdict":"PAIR-FAIL","bot":"tsa-0049","malId":21,"ep":569,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:46.615Z","verdict":"PAIR-FAIL","bot":"tsa-0002","malId":21,"ep":382,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:50.936Z","verdict":"PAIR-FAIL","bot":"tsa-0003","malId":21,"ep":386,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:52.244Z","verdict":"PAIR-FAIL","bot":"tsa-0064","malId":21,"ep":592,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:53.848Z","verdict":"PAIR-FAIL","bot":"tsa-0050","malId":21,"ep":570,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:54.613Z","verdict":"PAIR-FAIL","bot":"tsa-0007","malId":21,"ep":397,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:55.555Z","verdict":"PAIR-FAIL","bot":"tsa-0010","malId":21,"ep":407,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:56.369Z","verdict":"PAIR-FAIL","bot":"tsa-0068","malId":21,"ep":606,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:58.862Z","verdict":"PAIR-FAIL","bot":"tsa-0052","malId":21,"ep":573,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:40:59.738Z","verdict":"PAIR-FAIL","bot":"tsa-0006","malId":21,"ep":396,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:03.927Z","verdict":"PAIR-FAIL","bot":"tsa-0082","malId":21,"ep":1156,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:09.132Z","verdict":"PAIR-FAIL","bot":"tsa-0081","malId":21,"ep":1137,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:09.152Z","verdict":"PAIR-FAIL","bot":"tsa-0055","malId":21,"ep":577,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:09.221Z","verdict":"PAIR-FAIL","bot":"tsa-0053","malId":21,"ep":575,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:16.313Z","verdict":"PAIR-FAIL","bot":"tsa-0056","malId":21,"ep":580,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:18.650Z","verdict":"PAIR-FAIL","bot":"tsa-0059","malId":21,"ep":585,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:18.837Z","verdict":"PAIR-FAIL","bot":"tsa-0058","malId":21,"ep":584,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:21.759Z","verdict":"PAIR-FAIL","bot":"tsa-0086","malId":235,"ep":30,"why":"no cross-alignment (pair)","title":"Meitantei Conan"}
+{"at":"2026-09-07T16:41:23.644Z","verdict":"PAIR-FAIL","bot":"tsa-0060","malId":21,"ep":586,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:23.725Z","verdict":"PAIR-FAIL","bot":"tsa-0057","malId":21,"ep":582,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:26.425Z","verdict":"PASS","bot":"tsa-0084","malId":235,"ep":28,"start":0.5,"end":148.5,"quality":0.96,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:41:26.477Z","verdict":"PASS","bot":"tsa-0085","malId":235,"ep":29,"start":0.5,"end":137,"quality":0.99,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:41:26.845Z","verdict":"PASS","bot":"tsa-0089","malId":235,"ep":33,"start":1.5,"end":126.5,"quality":0.85,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:41:28.571Z","verdict":"PAIR-FAIL","bot":"tsa-0065","malId":21,"ep":593,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:29.171Z","verdict":"PAIR-FAIL","bot":"tsa-0062","malId":21,"ep":588,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:29.533Z","verdict":"PAIR-FAIL","bot":"tsa-0069","malId":21,"ep":607,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:30.672Z","verdict":"PAIR-FAIL","bot":"tsa-0066","malId":21,"ep":596,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:31.033Z","verdict":"PAIR-FAIL","bot":"tsa-0063","malId":21,"ep":590,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:32.789Z","verdict":"PAIR-FAIL","bot":"tsa-0072","malId":21,"ep":615,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:33.279Z","verdict":"PAIR-FAIL","bot":"tsa-0067","malId":21,"ep":605,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:35.880Z","verdict":"PASS","bot":"tsa-0092","malId":235,"ep":36,"start":0.5,"end":112,"quality":0.88,"title":"Meitantei Conan"}
+{"at":"2026-09-07T16:41:36.648Z","verdict":"PAIR-FAIL","bot":"tsa-0071","malId":21,"ep":612,"why":"no cross-alignment (pair)","title":"ONE PIECE"}
+{"at":"2026-09-07T16:41:37.251Z","verdict":"PAIR-FAIL","bot":"tsa-0070","malId":21,"ep":608,"why":"no cross-alignment (pair)","title":"ONE PIECE"}

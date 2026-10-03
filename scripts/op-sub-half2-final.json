@@ -1,0 +1,30 @@
+{
+  "campaign": "One Piece sub Skip Intro \u2014 SECOND HALF (wave 3) FINAL",
+  "criterion": "button pops when the opening arrives (start-1); click (end-3) keeps the last 3s of the opening playing (encode-verified)",
+  "range": "eps 589-1176 (588 episodes)",
+  "wave3": {
+    "entered": 588,
+    "certified": 485,
+    "fixedByWave": 85,
+    "noOpConfirmed": 2,
+    "stragglers": 16
+  },
+  "calibration": {
+    "fixed": 15,
+    "handCertified": 1,
+    "note": "ep 827: late OP 142-192 after long recap, 89% loud at click 189 on a 211s watch"
+  },
+  "finalTally": {
+    "certified": 586,
+    "honestNoButton": 2,
+    "accounted": 588,
+    "pctCertified": "99.7%",
+    "pctAccounted": "100%"
+  },
+  "infraFixes": [
+    "scout API: nodetect can no longer clobber a verified ok row (quality >= 0.7) \u2014 failed re-scans were erasing real measurements",
+    "cron: catalog-sync freshness gate (20 min) \u2014 stops 504s from redundant sync sweeps on probe hits",
+    "calibration tooling: op-sub-half2-calibrate.mjs (resume-safe, fade-tail-aware) + cert sweep + probe"
+  ],
+  "finishedAt": "2026-09-06T19:55:00Z"
+}

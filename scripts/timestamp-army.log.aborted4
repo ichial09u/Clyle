@@ -1,0 +1,10 @@
+{"at":"2026-09-07T17:03:57.105Z","verdict":"CAMPAIGN-START","total":16330,"repair":0,"gap":12994,"weak":3336,"lanes":12,"roster":1000}
+{"at":"2026-09-07T17:04:23.569Z","verdict":"PAIR-FAIL","bot":"tsa-0001","malId":1,"ep":26,"why":"no cross-alignment (pair)","title":"Cowboy Bebop"}
+{"at":"2026-09-07T17:04:25.452Z","verdict":"PASS","bot":"tsa-0002","malId":235,"ep":31,"start":0.5,"end":148,"quality":0.93,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:28.015Z","verdict":"PASS","bot":"tsa-0003","malId":235,"ep":32,"start":1,"end":134.5,"quality":0.9,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:29.828Z","verdict":"PASS","bot":"tsa-0010","malId":235,"ep":43,"start":0.5,"end":134.5,"quality":0.91,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:31.169Z","verdict":"PASS","bot":"tsa-0005","malId":235,"ep":38,"start":0.5,"end":136,"quality":0.91,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:31.182Z","verdict":"PASS","bot":"tsa-0004","malId":235,"ep":35,"start":0.5,"end":132,"quality":0.88,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:33.887Z","verdict":"PASS","bot":"tsa-0006","malId":235,"ep":39,"start":20.5,"end":104.5,"quality":0.82,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:36.639Z","verdict":"PASS","bot":"tsa-0008","malId":235,"ep":41,"start":0.5,"end":124.5,"quality":0.92,"title":"Meitantei Conan"}
+{"at":"2026-09-07T17:04:36.841Z","verdict":"PASS","bot":"tsa-0007","malId":235,"ep":40,"start":7.5,"end":131.5,"quality":0.81,"title":"Meitantei Conan"}

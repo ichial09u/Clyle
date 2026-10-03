@@ -1,0 +1,42 @@
+{
+  "at": "2026-09-07T18:12:17.637Z",
+  "totalSubEps": 33481,
+  "covered": 17079,
+  "coveredDsOnly": 11872,
+  "coveredFillOnly": 1467,
+  "coveredBoth": 2385,
+  "noCoverage": 16402,
+  "repairQueueEps": 13303,
+  "repairQueueShows": 1036,
+  "untouchedShows": 676,
+  "untouchedEps": 3099,
+  "armyRowsSince": 99,
+  "poisonShows": 0,
+  "cleanShows": 7,
+  "poisonRows": 0,
+  "poisonExamples": [],
+  "repairTop": [
+    "1(1)",
+    "7(19)",
+    "24(19)",
+    "26(1)",
+    "50(22)",
+    "68(20)",
+    "71(1)",
+    "72(1)",
+    "77(11)",
+    "79(2)"
+  ],
+  "untouchedTop": [
+    "32(1)",
+    "44(4)",
+    "47(1)",
+    "88(1)",
+    "91(3)",
+    "137(8)",
+    "145(10)",
+    "156(19)",
+    "164(1)",
+    "165(25)"
+  ]
+}

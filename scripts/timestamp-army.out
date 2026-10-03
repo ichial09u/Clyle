@@ -1,0 +1,38 @@
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=13085  P2 weak=3482  (total 16567; staticCovered=19403, scoutRows=3922, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 48 (gov 24..96), queue 16567
+[tsa] 25/16567 (8.0% ok) lanes=48 ok=2 fail=24 struck=0 shows
+[tsa] governor: lanes -> 36 (rate 0%, fail 97%)
+[tsa] governor: lanes -> 27 (rate 0%, fail 98%)
+[tsa] 50/16567 (4.0% ok) lanes=27 ok=2 fail=49 struck=0 shows
+[tsa] governor: lanes -> 24 (rate 0%, fail 98%)
+[tsa] 75/16567 (10.7% ok) lanes=24 ok=8 fail=71 struck=0 shows
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=12996  P2 weak=3334  (total 16330; staticCovered=19403, scoutRows=3931, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 48 (gov 24..96), queue 16330
+[tsa] governor: lanes -> 36 (rate 0%, fail 94%)
+[tsa] governor: lanes -> 27 (rate 0%, fail 100%)
+[tsa] governor: lanes -> 24 (rate 0%, fail 100%)
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=12996  P2 weak=3334  (total 16330; staticCovered=19403, scoutRows=3931, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 32 (gov 16..64), queue 16330
+[tsa] governor: lanes -> 24 (rate 100%, fail 0%)
+[tsa] governor: lanes -> 18 (rate 100%, fail 0%)
+[tsa] governor: lanes -> 16 (rate 100%, fail 0%)
+[tsa] 25/16934 (8.0% ok) lanes=16 ok=2 fail=19 struck=0 shows
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=12994  P2 weak=3336  (total 16330; staticCovered=19403, scoutRows=3933, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 12 (gov 8..24), queue 16330
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=12984  P2 weak=3346  (total 16330; staticCovered=19403, scoutRows=3943, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 16 (gov 10..32), queue 16330
+[tsa] 25/16330 (168.0% ok) lanes=16 ok=42 fail=4 struck=0 shows
+[tsa] governor: lanes -> 20 (rate 0%, fail 11%)
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=12984  P2 weak=3346  (total 16330; staticCovered=19403, scoutRows=3943, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 16 (gov 10..32), queue 16330
+[tsa] building work queue from DB …
+[tsa] queue: P0 repair=0  P1 gap=12984  P2 weak=3346  (total 16330; staticCovered=19403, scoutRows=3943, fillRows=4627)
+[tsa] TIMESTAMP ARMY deployed: roster 1000 bots, lanes 16 (gov 10..32), queue 16330
+[tsa] 25/16330 (168.0% ok) lanes=16 ok=42 fail=4 struck=0 shows
+[tsa] governor: lanes -> 20 (rate 0%, fail 10%)
