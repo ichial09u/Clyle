@@ -93,11 +93,46 @@ export const POPULAR_GENRES: string[] = [
 ];
 
 /**
- * "OG" — a pseudo-genre tile on the Genres grid: every catalog anime that
- * started airing in OG_MAX_YEAR or earlier (the pre-2010 classics era —
- * Dragon Ball, One Piece, Sailor Moon, the 2000s golden run). It is not a
- * real MAL/AniList tag: /api/genres surfaces the tile and /api/genre/OG
- * swaps the genre-tag filter for a start-year filter.
+ * "OG" — a pseudo-genre tile on the Genres grid: the catalog's hidden
+ * pre-OG_MAX_YEAR vault (see OG_NICHE_* below). It is not a real MAL/AniList
+ * tag: /api/genres surfaces the tile and /api/genre/OG swaps the genre-tag
+ * filter for a start-year + fame filter.
  */
 export const OG_GENRE = "OG";
 export const OG_MAX_YEAR = 2009;
+
+/**
+ * The OG vault is NICHE-ONLY — "animes people haven't heard about in a while
+ * or at all", not the pre-2010 greatest hits. A title is too famous for the
+ * vault when EITHER fame signal says so:
+ *   - MAL popularity rank <= OG_NICHE_MAX_POPULARITY (lower = more famous;
+ *     anything inside MAL's top 800 is a household name — Death Note (#2),
+ *     Naruto (#9), Cowboy Bebop (#41), Cardcaptor Sakura (#713), Conan (#731))
+ *   - MAL members >= OG_NICHE_MAX_MEMBERS (safety net for titles with no
+ *     popularity data; ~100k members is already "most fans know this one")
+ * /api/genre/OG (the grid) and /api/genres (the tile count) share this gate
+ * so the number on the tile always matches what the vault actually holds.
+ */
+export const OG_NICHE_MAX_POPULARITY = 800;
+export const OG_NICHE_MAX_MEMBERS = 100_000;
+
+/**
+ * Famous titles whose MAL row carries NO fame data at all (popularity, members
+ * and rank all null) — the two fame gates above can't see them, so they are
+ * excluded by id. Verified against the vault: these were the only leaks.
+ * (Soul Hunter stays — it is genuinely niche, its data is just sparse.)
+ */
+const OG_FAMOUS_DATA_GAP_IDS = [136 /* Hunter x Hunter (1999) */, 2904 /* Code Geass R2 */];
+
+/** Prisma where-clause for the niche OG vault (shared by both OG endpoints). */
+export function ogNicheVaultWhere() {
+  return {
+    inCatalog: true,
+    year: { not: null, lte: OG_MAX_YEAR },
+    malId: { notIn: OG_FAMOUS_DATA_GAP_IDS },
+    AND: [
+      { OR: [{ popularity: null }, { popularity: { gt: OG_NICHE_MAX_POPULARITY } }] },
+      { OR: [{ members: null }, { members: { lt: OG_NICHE_MAX_MEMBERS } }] },
+    ],
+  };
+}

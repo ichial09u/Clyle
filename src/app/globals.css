@@ -289,8 +289,15 @@
 }
 
 @keyframes ogGoldSheen {
+  /* one full traverse per loop: enters fully left of the tile, exits fully
+     right of it. The old end (240% of the 34%-wide sheen = an 82% left edge,
+     pulled back further by the skew) LEFT THE BAND PARKED INSIDE the tile's
+     right corner for the rest of the cycle — visible as a shine that "stops
+     at the corner". 430% puts the left edge at ~146% of the tile width
+     (bottom-skew pulls it to ~127%) — fully offscreen before the hold.
+     The 45%->100% hold now happens offscreen: sweep, rest, sweep. */
   0% { transform: translateX(-130%) skewX(-18deg); }
-  55%, 100% { transform: translateX(240%) skewX(-18deg); }
+  45%, 100% { transform: translateX(430%) skewX(-18deg); }
 }
 
 .og-tile {
@@ -319,7 +326,7 @@
   top: -20%;
   bottom: -20%;
   left: 0;
-  width: 34%;
+  width: 38%;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.75) 50%, rgba(255, 255, 255, 0) 100%);
   animation: ogGoldSheen 3.4s ease-in-out infinite;
   pointer-events: none;
