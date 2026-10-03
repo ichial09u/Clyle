@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { POPULAR_GENRES } from "@/lib/catalog-seed";
+import { POPULAR_GENRES, OG_GENRE, OG_MAX_YEAR } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,10 @@ export const dynamic = "force-dynamic";
  * GET /api/genres — the POPULAR genres only (curated), filtered to genres the
  * catalog actually has, sorted most titles first. Niche tags never show up as
  * empty tiles.
+ *
+ * "OG" is appended as a pseudo-genre: the count is every in-catalog anime
+ * that started airing in OG_MAX_YEAR or earlier (year-based, not a tag), so
+ * the tile reflects the real size of the classics vault.
  */
 export async function GET() {
   const rows = await db.anime.findMany({ where: { inCatalog: true }, select: { genres: true } });
@@ -21,8 +25,13 @@ export async function GET() {
       /* ignore */
     }
   }
-  const genres = POPULAR_GENRES
-    .map((name) => ({ name, count: counts.get(name) ?? 0 }))
+  const ogCount = await db.anime.count({
+    where: { inCatalog: true, year: { not: null, lte: OG_MAX_YEAR } },
+  });
+  const genres = [
+    { name: OG_GENRE, count: ogCount },
+    ...POPULAR_GENRES.map((name) => ({ name, count: counts.get(name) ?? 0 })),
+  ]
     .filter((g) => g.count > 0)
     .sort((a, b) => b.count - a.count);
   return NextResponse.json({ genres });

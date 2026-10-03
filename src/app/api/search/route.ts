@@ -12,6 +12,11 @@ export const dynamic = "force-dynamic";
  * Catalog-only search (instant, zero upstream calls). The old "More from
  * MAL" wide-search section is gone — results outside the catalog no longer
  * show up while searching.
+ *
+ * Smart matching: the normalized pass folds accents ("pokemon" -> finds
+ * "Pokémon"), spacing ("onepiece" -> "One Piece", "dan da dan"), and
+ * punctuation ("re:zero" -> "Re:ZERO") — the user's typing never has to
+ * match the catalog's exact spelling to surface every title it belongs to.
  */
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
@@ -30,10 +35,18 @@ export async function GET(req: Request) {
 
   let catalog = rows.map(lite);
 
-  // de-spaced fallback: users type "dandadan" for "DAN DA DAN", "onepiece"
-  // for "One Piece". SQLite contains can't ignore spaces, so run a JS-side
-  // normalized pass over the catalog when the literal match is thin.
-  const norm = (s: string) => (s || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  // de-spaced + accent-folded fallback: users type "dandadan" for "DAN DA
+  // DAN", "onepiece" for "One Piece", and — the whole point — "pokemon" for
+  // "Pokémon". SQLite contains can't ignore spaces or accents, so run a
+  // JS-side normalized pass over the catalog whenever the literal match is
+  // thin. NFD decomposition splits é into e + combining mark, so folding is
+  // bidirectional (accented query matches ASCII titles too).
+  const norm = (s: string) =>
+    (s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
   const nq = norm(q);
   if (nq && catalog.length < 24) {
     const seen = new Set(catalog.map((c) => c.malId));

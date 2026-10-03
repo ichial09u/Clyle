@@ -2,13 +2,33 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { anilistToJikan, animeByGenre } from "@/lib/anilist";
 import { lite } from "@/lib/serialize";
+import { OG_GENRE, OG_MAX_YEAR } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/genre/{name} — catalog anime for a genre + import suggestions from AniList. */
+/**
+ * GET /api/genre/{name} — catalog anime for a genre + import suggestions from AniList.
+ *
+ * "OG" is the pseudo-genre (see catalog-seed.ts): instead of a genre-tag
+ * match it returns EVERY in-catalog anime that started airing in OG_MAX_YEAR
+ * or earlier — the full classics vault, most iconic first. AniList import
+ * suggestions are skipped (OG is not a tag AniList can suggest for).
+ */
 export async function GET(_req: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   const genre = decodeURIComponent(name);
+
+  if (genre.toUpperCase() === OG_GENRE) {
+    const rows = await db.anime.findMany({
+      where: { inCatalog: true, year: { not: null, lte: OG_MAX_YEAR } },
+      // iconic first; popularity-unknown rows sink to the bottom (SQLite
+      // would otherwise lead ASC with the nulls)
+      orderBy: [{ popularity: { sort: "asc", nulls: "last" } }, { members: "desc" }],
+      take: 500, // the whole vault today (~400) — headroom without an unbounded query
+    });
+    return NextResponse.json({ genre: OG_GENRE, catalog: rows.map(lite), suggestions: [] });
+  }
+
   const like = `%"${genre.replace(/[%_]/g, "")}"%`;
 
   const rows = await db.anime.findMany({

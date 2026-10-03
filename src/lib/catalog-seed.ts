@@ -91,3 +91,13 @@ export const POPULAR_GENRES: string[] = [
   "Supernatural", "Thriller", "Ecchi", "Isekai", "Historical", "Space",
   "Vampire", "Harem",
 ];
+
+/**
+ * "OG" — a pseudo-genre tile on the Genres grid: every catalog anime that
+ * started airing in OG_MAX_YEAR or earlier (the pre-2010 classics era —
+ * Dragon Ball, One Piece, Sailor Moon, the 2000s golden run). It is not a
+ * real MAL/AniList tag: /api/genres surfaces the tile and /api/genre/OG
+ * swaps the genre-tag filter for a start-year filter.
+ */
+export const OG_GENRE = "OG";
+export const OG_MAX_YEAR = 2009;
