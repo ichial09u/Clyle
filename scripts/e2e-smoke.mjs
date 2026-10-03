@@ -336,12 +336,11 @@ async function expectJson(name, path, init, validate) {
       { method: "POST", body: JSON.stringify({ endpoint: ep, malId: 21, on: false }) },
       (r, b) => r.ok && b?.ok === true && b?.on === false,
     );
-    await expectJson(
-      "POST /api/anime-notify rejects bad endpoint",
-      "/api/anime-notify",
-      { method: "POST", body: JSON.stringify({ endpoint: "http://insecure", malId: 21, on: true }) },
-      (r, b) => r.status === 400 && b?.ok === false,
-    );
+    {
+      // expectJson hard-requires res.ok — negative (4xx) checks use req+record
+      const bad = await req("/api/anime-notify", { method: "POST", body: JSON.stringify({ endpoint: "http://insecure", malId: 21, on: true }) });
+      record("POST /api/anime-notify rejects bad endpoint", bad.status === 400, `status ${bad.status}`);
+    }
   }
 
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
