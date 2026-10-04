@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { jikan, jikanOne, type JikanAnime } from "@/lib/jikan";
+import { isAdultAnime } from "@/lib/sync";
 import { lite } from "@/lib/serialize";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,8 @@ export async function POST(req: Request) {
     if (byId.has(id)) continue;
     const full = await jikanOne<JikanAnime>(`/anime/${id}/full`);
     if (!full) continue;
+    // hentai guard — adult titles never hydrate into the DB at all
+    if (isAdultAnime(full)) continue;
     const row = await db.anime.upsert({
       where: { malId: id },
       create: {

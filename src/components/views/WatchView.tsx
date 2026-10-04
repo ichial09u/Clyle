@@ -137,6 +137,10 @@ export default function WatchView({
   const [quality, setQuality] = useState<"auto" | number>("auto");
   const [speed, setSpeed] = useState(1);
   const [subsOn, setSubsOn] = useState(true);
+  // which caption language the user picked (index into stream.subtitles);
+  // null = auto (the real English track when the source has it, else the
+  // source's own default — see pickSubtitleTrack)
+  const [subIdx, setSubIdx] = useState<number | null>(null);
   const [panel, setPanel] = useState<Panel>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [locked, setLocked] = useState(false);
@@ -905,6 +909,17 @@ export default function WatchView({
     for (const t of Array.from(video.textTracks)) t.mode = on ? "showing" : "hidden";
   };
 
+  /** Pick a caption language from the subs panel (all tracks the source carries). */
+  const pickSubLang = (i: number) => {
+    setSubIdx(i);
+    setSubsOn(true);
+    const video = videoRef.current;
+    if (!video) return;
+    // the <track> element remounts with the new src (key=src); mark it showing
+    // right away so the swap is instant (the element also carries `default`)
+    for (const t of Array.from(video.textTracks)) t.mode = "showing";
+  };
+
   const fullscreen = () => {
     const el = shellRef.current;
     if (!el) return;
@@ -990,8 +1005,17 @@ export default function WatchView({
   }, [appSettings.autoSkipIntro, appSettings.autoSkipOutro, showSkipIntro, showSkipOutro, introSkip, outroSkip, episode, iframeFallback]);
   // Zoko tags EVERY subtitle track lang:"en" and often lists English NOT first
   // (FMA:B ep1: Arabic, Chinese, Chinese, Danish, Dutch, English, ...) — pick
-  // the real English track instead of blindly playing subtitles[0].
-  const subTrack = pickSubtitleTrack(stream?.subtitles);
+  // the real English track instead of blindly playing subtitles[0]. A manual
+  // pick from the subs panel (subIdx) wins over the auto choice.
+  const subTrack =
+    subIdx != null && stream?.subtitles?.[subIdx]
+      ? stream.subtitles[subIdx]
+      : pickSubtitleTrack(stream?.subtitles);
+  // a new source (episode/server switch) carries its own track list — drop
+  // the manual language pick so the English default re-applies
+  useEffect(() => {
+    setSubIdx(null);
+  }, [stream]);
 
   const pct = duration > 0 ? ((scrub ?? currentTime) / duration) * 100 : 0;
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
@@ -1094,30 +1118,30 @@ export default function WatchView({
                   <div className="flex items-center gap-9 md:gap-14">
                     <button
                       onClick={() => castSkip(-10)}
-                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      className="relative w-12 h-12 md:w-14 md:h-14 flex items-center justify-center active:scale-95 transition"
                       aria-label="Back 10 seconds"
                     >
-                      <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
-                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                      <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]" />
+                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] pointer-events-none">10</span>
                     </button>
                     <button
                       onClick={castToggle}
-                      className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition"
+                      className="w-16 h-16 md:w-20 md:h-20 flex items-center justify-center hover:scale-105 active:scale-95 transition"
                       aria-label={castUi.playing ? "Pause on TV" : "Play on TV"}
                     >
                       {castUi.playing ? (
-                        <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
+                        <Pause className="w-9 h-9 md:w-11 md:h-11 text-white fill-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" />
                       ) : (
-                        <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
+                        <Play className="w-9 h-9 md:w-11 md:h-11 text-white ml-0.5 fill-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" />
                       )}
                     </button>
                     <button
                       onClick={() => castSkip(10)}
-                      className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 border border-white/15 flex items-center justify-center hover:bg-black/65 active:scale-95 transition"
+                      className="relative w-12 h-12 md:w-14 md:h-14 flex items-center justify-center active:scale-95 transition"
                       aria-label="Forward 10 seconds"
                     >
-                      <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
-                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                      <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]" />
+                      <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] pointer-events-none">10</span>
                     </button>
                   </div>
 
@@ -1184,24 +1208,24 @@ export default function WatchView({
                     seekTo(Math.max(0, currentTime - 10));
                     showUi();
                   }}
-                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+                  className="relative w-12 h-12 md:w-14 md:h-14 flex items-center justify-center active:scale-95 transition pointer-events-auto"
                   aria-label="Back 10 seconds"
                 >
-                  <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white" />
-                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                  <RotateCcw className="w-7 h-7 md:w-8 md:h-8 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]" />
+                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] pointer-events-none">10</span>
                 </button>
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     togglePlay();
                   }}
-                  className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition pointer-events-auto"
+                  className="w-16 h-16 md:w-20 md:h-20 flex items-center justify-center hover:scale-105 active:scale-95 transition pointer-events-auto"
                   aria-label={playing ? "Pause" : "Play"}
                 >
                   {playing ? (
-                    <Pause className="w-7 h-7 md:w-9 md:h-9 text-black fill-black" />
+                    <Pause className="w-9 h-9 md:w-11 md:h-11 text-white fill-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" />
                   ) : (
-                    <Play className="w-7 h-7 md:w-9 md:h-9 text-black ml-0.5 fill-black" />
+                    <Play className="w-9 h-9 md:w-11 md:h-11 text-white ml-0.5 fill-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.9)]" />
                   )}
                 </button>
                 <button
@@ -1210,11 +1234,11 @@ export default function WatchView({
                     seekTo(Math.min(duration || 0, currentTime + 10));
                     showUi();
                   }}
-                  className="relative w-12 h-12 md:w-14 md:h-14 rounded-full bg-black/45 backdrop-blur-sm flex items-center justify-center hover:bg-black/65 active:scale-95 transition pointer-events-auto"
+                  className="relative w-12 h-12 md:w-14 md:h-14 flex items-center justify-center active:scale-95 transition pointer-events-auto"
                   aria-label="Forward 10 seconds"
                 >
-                  <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white" />
-                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 pointer-events-none">10</span>
+                  <RotateCw className="w-7 h-7 md:w-8 md:h-8 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.9)]" />
+                  <span className="absolute inset-0 flex items-center justify-center text-[8.5px] font-bold text-white pt-1 drop-shadow-[0_1px_3px_rgba(0,0,0,0.9)] pointer-events-none">10</span>
                 </button>
               </div>
             ) : null}
@@ -1516,17 +1540,29 @@ export default function WatchView({
                 <h4 className="font-slab font-bold text-[14px] mb-2">Subtitles</h4>
                 <ul className="space-y-2 text-[13px]">
                   <li>
-                    <button onClick={() => toggleSubs(true)} className={`flex items-center gap-2 ${subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
-                      {subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
-                      {subTrack?.label || "English"}
-                    </button>
-                  </li>
-                  <li>
                     <button onClick={() => toggleSubs(false)} className={`flex items-center gap-2 ${!subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
                       {!subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
                       Off
                     </button>
                   </li>
+                  {/* EVERY caption language the stream carries — Zoko sources
+                      expose 10-20 (Arabic, Chinese, English, Spanish, ...).
+                      The chosen track remounts the <track> element (key=src)
+                      and rides along to Chromecast sessions too. */}
+                  {(stream?.subtitles ?? []).map((t, i) => {
+                    const active = subsOn && subTrack?.src === t.src;
+                    return (
+                      <li key={`${t.src}-${i}`}>
+                        <button onClick={() => pickSubLang(i)} className={`flex items-center gap-2 ${active ? "text-[#ff5252]" : "text-gray-300"}`}>
+                          {active ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                          {t.label || `Track ${i + 1}`}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {(stream?.subtitles ?? []).length === 0 ? (
+                    <li className="text-[11.5px] text-gray-500">No captions for this episode</li>
+                  ) : null}
                 </ul>
               </div>
             </div>

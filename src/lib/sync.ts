@@ -90,6 +90,20 @@ function toRow(a: JikanAnime) {
 }
 
 /**
+ * Adult-content gate — hentai never enters the catalog, no matter which
+ * pipeline carries it (season imports, unknown-title hydration, My List
+ * lookups all funnel through upsertAnime). A title is adult when MAL's own
+ * markers say so: the "Hentai" genre or an "Rx - Hentai" age rating.
+ * (Ecchi stays — suggestive, not explicit. AniList fetches additionally run
+ * with isAdult:false at the query level, this catches the Jikan/MAL paths.)
+ */
+export function isAdultAnime(a: JikanAnime): boolean {
+  if (a.rating && /^Rx/i.test(a.rating)) return true;
+  const genres = Array.isArray(a.genres) ? a.genres : [];
+  return genres.some((g) => /hentai/i.test(g?.name ?? ""));
+}
+
+/**
  * Insert or update an anime row from a Jikan-shaped payload. Returns the malId.
  *
  * AniList does not carry MAL's age-rating string, MAL rank, members count or
@@ -97,6 +111,12 @@ function toRow(a: JikanAnime) {
  * simply omit them instead of wiping good data that earlier MAL fetches stored.
  */
 export async function upsertAnime(a: JikanAnime, opts: { inCatalog: boolean; source: string }): Promise<number> {
+  if (isAdultAnime(a)) {
+    // never let hentai into the catalog: if a stale row already exists keep
+    // it out of browse, otherwise drop the payload entirely
+    await db.anime.updateMany({ where: { malId: a.mal_id }, data: { inCatalog: false } });
+    return a.mal_id;
+  }
   const row = toRow(a);
   await db.anime.upsert({
     where: { malId: a.mal_id },
