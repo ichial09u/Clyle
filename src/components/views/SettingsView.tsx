@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Bell, BellOff, BellRing, Check, ImagePlus, RotateCcw, Trash2, Tv } from "lucide-react";
+import { ArrowLeft, Bell, BellOff, BellRing, Check, Download, ImagePlus, RotateCcw, Trash2, Tv } from "lucide-react";
 import {
   ACCENTS, SUB_COLORS, SUB_SIZES, updateAppSettings, useAppSettings,
   loadContinueItems, removeProgress, type AppSettings, type SubOutline, type SubSize,
@@ -17,6 +17,7 @@ import { disablePush, enablePush, getPushEndpoint, pushPermission, pushSupported
  *   Subtitles      size / color / backdrop / outline with a live preview
  *   Theme          six accent palettes driving --accent app-wide
  *   App icon       upload your own home-screen icon (or reset)
+ *   Install app    PWA home-screen install (moved off the profile page)
  *   Storage        clear continue-watching / watch history
  *
  * Everything is device-local (localStorage) and applied to the document
@@ -409,6 +410,9 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
         {iconFlash ? <p className="px-4 pb-3 -mt-1 text-[11.5px] text-emerald-400">Icon applied to this device.</p> : null}
       </Section>
 
+      {/* ---- Install app ---- */}
+      <InstallAppSection />
+
       {/* ---- Storage ---- */}
       <Section title="Storage">
         <ToggleRow
@@ -427,5 +431,122 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
 
       <p className="mt-6 text-center text-[10.5px] text-gray-600">Clyle · built for the binge</p>
     </div>
+  );
+}
+
+/**
+ * "Install app" — turns the site into a home-screen app (standalone window,
+ * its own icon, no browser bars). Moved here from the profile page so the
+ * profile stays minimal. Android/Chrome get a real one-tap install via
+ * beforeinstallprompt; iOS Safari has no programmatic install, so we show
+ * the exact manual steps instead.
+ */
+interface InstallPromptEvent extends Event {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+}
+
+function InstallAppSection() {
+  const [deferred, setDeferred] = useState<InstallPromptEvent | null>(null);
+  const [installed, setInstalled] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
+
+  useEffect(() => {
+    // window-only detection (SSR has no navigator/matchMedia) — setState in an
+    // effect is intentional and safe here; it runs once after mount.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    const ios = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
+    setIsIOS(ios);
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (standalone) setInstalled(true);
+    /* eslint-enable react-hooks/set-state-in-effect */
+
+    const onPrompt = (e: Event) => {
+      e.preventDefault(); // Chrome requires us to decide later
+      setDeferred(e as InstallPromptEvent);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setDeferred(null);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  if (installed) {
+    return (
+      <Section title="Install app">
+        <div className="px-4 py-3.5 flex items-center gap-2.5">
+          <Check className="w-[18px] h-[18px] text-[#4caf50] shrink-0" />
+          <p className="text-[12.5px] text-gray-300">
+            <span className="font-bold text-white">Installed</span> — you&apos;re running the home-screen app.
+          </p>
+        </div>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Install app">
+      <div className="px-4 py-3.5 flex items-start gap-2.5">
+        <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "var(--app-accent)" }}>
+          <Download className="w-[18px] h-[18px] text-white" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold text-gray-100">Add Clyle to your home screen</p>
+          <p className="text-[11.5px] text-gray-400 mt-0.5 leading-relaxed">
+            Full-screen playback, its own icon — like a real app.
+          </p>
+
+          {deferred ? (
+            <button
+              onClick={async () => {
+                try {
+                  await deferred.prompt();
+                  const choice = await deferred.userChoice;
+                  if (choice.outcome === "accepted") setInstalled(true);
+                  setDeferred(null);
+                } catch {
+                  /* user dismissed the native dialog */
+                }
+              }}
+              className="mt-2.5 text-white text-[12px] font-bold rounded-full px-4 py-2 transition active:scale-95"
+              style={{ background: "var(--app-accent)" }}
+            >
+              Install now
+            </button>
+          ) : (
+            <ol className="mt-2 text-[11px] text-gray-400 leading-relaxed list-decimal ml-4 space-y-0.5">
+              {isIOS ? (
+                <>
+                  <li>
+                    Tap the <span className="text-gray-200 font-bold">Share</span> button in Safari&apos;s toolbar
+                  </li>
+                  <li>
+                    Choose <span className="text-gray-200 font-bold">&ldquo;Add to Home Screen&rdquo;</span>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    Open the browser menu <span className="text-gray-200 font-bold">(⋮)</span>
+                  </li>
+                  <li>
+                    Choose <span className="text-gray-200 font-bold">&ldquo;Add to Home screen&rdquo;</span> / &ldquo;Install
+                    app&rdquo;
+                  </li>
+                </>
+              )}
+            </ol>
+          )}
+        </div>
+      </div>
+    </Section>
   );
 }

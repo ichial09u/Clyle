@@ -225,7 +225,7 @@ export default function Page() {
       case "mylist":
         return <MyListView onSelect={openAnime} />;
       case "profile":
-        return <ProfileView onResume={resumeWatching} onSettings={() => push({ name: "settings" })} />;
+        return <ProfileView onSettings={() => push({ name: "settings" })} />;
       case "settings":
         return <SettingsView onBack={pop} />;
       case "top50":
