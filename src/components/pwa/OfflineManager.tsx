@@ -2,7 +2,54 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Wifi, WifiOff, X } from "lucide-react";
-import { flushOutbox } from "@/lib/client-store";
+import { flushOutbox, localDayKey } from "@/lib/client-store";
+import { getUserId } from "@/lib/profile-store";
+
+/* ---- cache warming ----
+ * The SW precaches the shell at install, but the catalog DATA for tabs the
+ * user never opened would still be cold on the first offline launch. So the
+ * page sends the SW its real parameterized URLs (userId/day embedded) and
+ * the SW fetches+stashes them. Throttled to once every 6h per device.
+ */
+const WARM_AT_KEY = "animetest123.warmat";
+const WARM_INTERVAL = 6 * 3600_000;
+
+function warmUrlList(): string[] {
+  const userId = getUserId();
+  return [
+    "/api/home",
+    `/api/suggestions?userId=${encodeURIComponent(userId)}`,
+    `/api/continue?userId=${encodeURIComponent(userId)}`,
+    "/api/genres",
+    "/api/arriving",
+    "/api/top10",
+    "/api/top10-events",
+    `/api/watchtime?day=${encodeURIComponent(localDayKey())}&limit=10`,
+    "/api/latest",
+  ];
+}
+
+function warmServiceWorker() {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  if (navigator.onLine === false) return;
+  try {
+    const last = Number(window.localStorage.getItem(WARM_AT_KEY) || 0);
+    if (Date.now() - last < WARM_INTERVAL) return;
+    window.localStorage.setItem(WARM_AT_KEY, String(Date.now()));
+  } catch {
+    /* ignore */
+  }
+  const urls = warmUrlList();
+  const post = (sw: ServiceWorker | null) => sw?.postMessage({ type: "clyle:warm", urls });
+  if (navigator.serviceWorker.controller) {
+    post(navigator.serviceWorker.controller);
+  } else {
+    // first load after an SW update — the controller appears once it claims
+    navigator.serviceWorker.ready
+      .then((reg) => post(navigator.serviceWorker.controller || reg.active || null))
+      .catch(() => undefined);
+  }
+}
 
 /**
  * Offline mode — the visible half of offline viewing.
@@ -51,6 +98,7 @@ export default function OfflineManager() {
     }
     const queued = await flushOutbox();
     showToast(queued > 0 ? `Back online — ${queued} update${queued === 1 ? "" : "s"} synced` : "Back online");
+    warmServiceWorker();
   }, [showToast]);
 
   const goOffline = useCallback(() => {
@@ -70,9 +118,14 @@ export default function OfflineManager() {
       // don't fight the app's first paint
       window.setTimeout(() => setPopup(true), 1_200);
     } else {
-      // catch-up: replay anything queued by a previous offline session
-      const t = window.setTimeout(() => void flushOutbox(), 3_000);
-      return () => window.clearTimeout(t);
+      // catch-up: replay anything queued by a previous offline session, then
+      // (throttled) re-warm the offline caches while we have wifi
+      const flushT = window.setTimeout(() => void flushOutbox(), 3_000);
+      const warmT = window.setTimeout(warmServiceWorker, 8_000);
+      return () => {
+        window.clearTimeout(flushT);
+        window.clearTimeout(warmT);
+      };
     }
   }, []);
 

@@ -38,7 +38,34 @@ const OWNED = [SHELL, STATIC, API, MEDIA, IMG];
 const CAPS = { [MEDIA]: 1200, [IMG]: 600 };
 let trimTick = 0;
 
-self.addEventListener("install", () => {
+self.addEventListener("install", (event) => {
+  // Precache the essentials so even the FIRST offline launch (before any
+  // online navigation has run through this SW) gets the real app instead of
+  // the fallback page: the SPA shell for home-screen launches, the manifest,
+  // and the icons. Each add() is individually fail-safe — install never
+  // rejects, worst case a file warms later.
+  event.waitUntil(
+    (async () => {
+      try {
+        const shell = await caches.open(SHELL);
+        await shell.add("/").catch(() => undefined);
+      } catch { /* ignore */ }
+      try {
+        const staticCache = await caches.open(STATIC);
+        await staticCache.add("/manifest.webmanifest").catch(() => undefined);
+      } catch { /* ignore */ }
+      try {
+        const img = await caches.open(IMG);
+        await Promise.allSettled([
+          img.add("/icon-192.png"),
+          img.add("/icon-512.png"),
+          img.add("/icon-512-maskable.png"),
+          img.add("/apple-touch-icon.png"),
+          img.add("/logo.svg"),
+        ]);
+      } catch { /* ignore */ }
+    })(),
+  );
   self.skipWaiting();
 });
 
@@ -54,8 +81,38 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/**
+ * Page-driven cache warming. The page sends its real parameterized URLs
+ * (userId/day embedded) right after load; we fetch them once and stash the
+ * answers, so every main tab has data even if the user never actually
+ * opened that tab before going offline. Re-fetches refresh stale entries.
+ */
+async function warmUrls(urls) {
+  for (const raw of urls.slice(0, 40)) {
+    try {
+      const url = new URL(raw, self.location.origin);
+      if (url.origin !== self.location.origin) continue;
+      const cacheName = url.pathname.startsWith("/api/") ? API : STATIC;
+      const cache = await caches.open(cacheName);
+      const res = await fetchTimeout(url.href, 9_000);
+      if (res && res.ok) {
+        await cache.put(url.href, res);
+        fifoTrim(cacheName, true);
+      }
+    } catch {
+      /* network dropped mid-warm — keep whatever landed */
+    }
+  }
+}
+
 self.addEventListener("message", (event) => {
-  if (event.data === "SKIP_WAITING") self.skipWaiting();
+  if (event.data === "SKIP_WAITING") {
+    self.skipWaiting();
+    return;
+  }
+  if (event.data && event.data.type === "clyle:warm" && Array.isArray(event.data.urls)) {
+    event.waitUntil(warmUrls(event.data.urls));
+  }
 });
 
 /* ---------------- helpers ---------------- */
