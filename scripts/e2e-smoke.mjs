@@ -109,6 +109,42 @@ async function expectJson(name, path, init, validate) {
     (r, b) => b?.skip?.intro && Number.isFinite(b.skip.intro.end) && b.skip.intro.end > b.skip.intro.start,
   );
 
+  // ---- 3b-3) FlixCloud DUB (Ranma ½ 2024 S1) -------------------------------
+  // The whole Zoko/Kiwi chain has no real dub for this title — /api/stream
+  // must land on the FlixCloud dual-audio resolver and hand back OUR-player
+  // material: a stored-master proxy URL (fkey=), the XOR key for the child
+  // playlists, and skip/subtitle data. The master playlist itself must serve
+  // plaintext through the proxy (this also warms the resolver cache).
+  {
+    let flixSrc = "";
+    await expectJson(
+      "GET /api/stream (Ranma 2024 S1 DUB via FlixCloud)",
+      "/api/stream?malId=59145&ep=1&lang=dub&server=zoko",
+      {},
+      (r, b) => {
+        const ok = r.ok && b?.provider === "flix" && typeof b?.src === "string" && b.src.includes("fkey=") && typeof b?.pk === "string";
+        flixSrc = typeof b?.src === "string" ? b.src : "";
+        return ok;
+      },
+    );
+    if (flixSrc) {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+        const res = await fetch(`${BASE}${flixSrc}`, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+        const text = await res.text();
+        const ok = res.ok && text.startsWith("#EXTM3U") && text.includes("/api/stream/proxy?");
+        record(
+          "GET /api/stream/proxy (FlixCloud stored master serves plaintext)",
+          ok,
+          ok ? "master is plaintext #EXTM3U with proxied children" : `status ${res.status} head=${text.slice(0, 60)}`,
+        );
+      } catch (err) {
+        record("GET /api/stream/proxy (FlixCloud stored master serves plaintext)", false, String(err).slice(0, 160));
+      }
+    }
+  }
+
   // ---- 3b) BACKUP DUB servers (the Anivexa network) ------------------------
   // The episodes payload must always carry the backupDub key (null = still
   // probing is fine) and an explicit backup-server dub request must resolve

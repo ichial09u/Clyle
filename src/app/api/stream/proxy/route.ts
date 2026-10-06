@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { execFile } from "node:child_process";
 import { resolveStream } from "@/lib/zoko-stream";
 import {
   allowHostWithReferer,
@@ -7,6 +8,7 @@ import {
   PROXY_SUFFIXES,
   ZOKO_REFERER,
 } from "@/lib/stream-proxy-registry";
+import { flixStoredMaster, FLIX_REFERER } from "@/lib/flixcloud";
 
 export const dynamic = "force-dynamic";
 
@@ -75,11 +77,52 @@ async function primeAllowlist(malId: number, ep: number, lang: string, server: s
   for (const h of hosts) allowHost(h);
 }
 
-function proxied(abs: URL, type: "m3u8" | "seg" | "vtt", referer?: string): string {
+function proxied(abs: URL, type: "m3u8" | "seg" | "vtt", referer?: string | null, pk?: string | null): string {
   // `rf` rides along on every child URL so any later lambda serving it uses
   // the exact upstream headers the issuing playlist was fetched with
   const rf = referer != null ? `&rf=${encodeURIComponent(referer)}` : "";
-  return `/api/stream/proxy?type=${type}&u=${encodeURIComponent(abs.toString())}${rf}`;
+  // `pk` likewise: FlixCloud child playlists need the same XOR key the master
+  // used (it is static per video, but propagating keeps the flow stateless)
+  const p = pk ? `&pk=${encodeURIComponent(pk)}` : "";
+  return `/api/stream/proxy?type=${type}&u=${encodeURIComponent(abs.toString())}${rf}${p}`;
+}
+
+/**
+ * FlixCloud serves every playlist base64(XOR(bytes, __pk)) — the 32-byte key
+ * their patched hls.js derives from a per-video WASM mixing step. We resolved
+ * that key at stream time (flixcloud.ts); peel the layer here so OUR stock
+ * hls.js sees plaintext playlists. Segments are standard HLS and pass through.
+ */
+function flixDecrypt(text: string, pkHex: string | null): string {
+  if (!pkHex || text.startsWith("#EXTM3U")) return text;
+  const trimmed = text.trim();
+  if (!/^[A-Za-z0-9+\/=]+$/.test(trimmed)) return text; // not a base64 blob
+  try {
+    const bin = Buffer.from(trimmed, "base64");
+    const pk = Buffer.from(pkHex, "hex");
+    if (pk.length < 16) return text;
+    const out = Buffer.from(bin);
+    for (let i = 0; i < out.length; i++) out[i] ^= pk[i % pk.length];
+    const dec = out.toString("utf8");
+    return dec.startsWith("#EXTM3U") ? dec : text;
+  } catch {
+    return text;
+  }
+}
+
+/**
+ * SRT → WebVTT (FlixCloud ships English SDH/dubtitle SRTs). The changes are
+ * tiny: a WEBVTT header, and commas in the timecodes become dots.
+ */
+function srtToVtt(srt: string): string {
+  const body = srt
+    .replace(/\r+/g, "")
+    .replace(/^\uFEFF/, "")
+    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
+    .replace(/^\d+\s*$/gm, "") // SRT sequence numbers are invalid VTT cues
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return `WEBVTT\n\n${body}\n`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -230,7 +273,7 @@ async function fetchSegmentRanges(
   return Buffer.concat(parts);
 }
 
-function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string): string {
+function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string, pk?: string | null): string {
   const out: string[] = [];
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -244,7 +287,7 @@ function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string):
         try {
           const abs = new URL(uri, baseUrl);
           const isPlaylist = /\.m3u8($|\?)/i.test(abs.pathname);
-          return `URI="${proxied(abs, isPlaylist ? "m3u8" : "seg", inheritedReferer)}"`;
+          return `URI="${proxied(abs, isPlaylist ? "m3u8" : "seg", inheritedReferer, pk)}"`;
         } catch {
           return _m;
         }
@@ -256,7 +299,7 @@ function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string):
       const abs = new URL(line, baseUrl);
       const isPlaylist = /\.m3u8($|\?)/i.test(abs.pathname);
       const isVtt = /\.vtt($|\?)/i.test(abs.pathname);
-      out.push(proxied(abs, isVtt ? "vtt" : isPlaylist ? "m3u8" : "seg", inheritedReferer));
+      out.push(proxied(abs, isVtt ? "vtt" : isPlaylist ? "m3u8" : "seg", inheritedReferer, pk));
     } catch {
       out.push(line);
     }
@@ -264,8 +307,62 @@ function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string):
   return out.join("\n");
 }
 
+/** curl transport (Cloudflare 403-challenges undici on some FlixCloud paths —
+ *  the AES-128 key files — while curl's TLS fingerprint passes). Returns the
+ *  raw body on HTTP 200, else null. */
+function curlBuffer(url: string, referer: string, timeoutMs = 25_000): Promise<Buffer | null> {
+  return new Promise((resolve) => {
+    execFile(
+      "curl",
+      ["-sS", "--max-time", String(Math.ceil(timeoutMs / 1000)), "-A", UA, "-H", `Referer: ${referer}`, "-H", "Accept: */*", "-w", "\n__STATUS__%{http_code}", url],
+      { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs + 5_000, encoding: "buffer" },
+      (err, stdout) => {
+        try {
+          const out = stdout as Buffer;
+          const marker = Buffer.from("\n__STATUS__");
+          const idx = out.lastIndexOf(marker);
+          if (idx < 0) return resolve(null);
+          const code = parseInt(out.subarray(idx + marker.length).toString("utf8"), 10);
+          resolve(code === 200 ? out.subarray(0, idx) : null);
+        } catch {
+          resolve(null);
+        }
+      },
+    );
+  });
+}
+
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
+
+  // ---- FlixCloud stored master: served from the resolver's cache ----------
+  // The stream route already fetched + decrypted + absolutized the master
+  // (in the same invocation that burned the one-time token, so the JWT's
+  // client-IP binding was satisfied). We just hand the stored text out and
+  // let the normal rewrite pass proxy its JWT-less children.
+  const fkey = sp.get("fkey");
+  if (fkey) {
+    const malId = parseInt(sp.get("malId") ?? "", 10);
+    const ep = parseInt(sp.get("ep") ?? "", 10);
+    if (Number.isFinite(malId) && Number.isFinite(ep)) {
+      const stored = await flixStoredMaster(malId, ep).catch(() => null);
+      if (stored) {
+        const pk = sp.get("pk") ?? undefined;
+        const rf = sp.get("rf") ?? undefined;
+        const target = sp.get("u");
+        const base = target ? new URL(target) : new URL("https://fetch9.flixcloud.cc/master.m3u8");
+        return new NextResponse(rewritePlaylist(stored, base, rf, pk), {
+          headers: {
+            "Content-Type": "application/vnd.apple.mpegurl",
+            "Cache-Control": "public, max-age=30",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+      // fall through to the u fallback below when the store went cold
+    }
+  }
+
   const raw = sp.get("u");
   if (!raw) return new NextResponse("missing u", { status: 400 });
 
@@ -274,6 +371,8 @@ export async function GET(req: Request) {
   // Vercel lambdas share no memory — the URL itself is the source of truth)
   const hasRf = sp.has("rf");
   const rfParam = sp.get("rf") ?? "";
+  // FlixCloud playlist XOR key (hex) — present only on flix-backed streams
+  const pkParam = sp.get("pk");
 
   let target: URL;
   try {
@@ -293,6 +392,33 @@ export async function GET(req: Request) {
     signal: AbortSignal.timeout(25_000),
   }).catch(() => null);
 
+  // FlixCloud-backed session and undici got challenged (403 challenge page on
+  // the AES-128 key files) — retry with curl's transport before giving up
+  if (pkParam && (!upstream || upstream.status === 403)) {
+    const buf = await curlBuffer(target.toString(), hasRf && rfParam ? rfParam : FLIX_REFERER);
+    if (buf && buf.length > 0) {
+      const isM3u8Path = /\.m3u8($|\?)/i.test(target.pathname);
+      if (isM3u8Path) {
+        const text = flixDecrypt(buf.toString("utf8"), pkParam);
+        const inheritedReferer = hasRf ? rfParam : refererForHost(target.hostname);
+        return new NextResponse(rewritePlaylist(text, target, inheritedReferer, pkParam), {
+          headers: {
+            "Content-Type": "application/vnd.apple.mpegurl",
+            "Cache-Control": "public, max-age=30",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+      return new NextResponse(new Uint8Array(buf), {
+        headers: {
+          "Cache-Control": "public, max-age=86400, immutable",
+          "Access-Control-Allow-Origin": "*",
+          "Content-Type": "application/octet-stream",
+        },
+      });
+    }
+  }
+
   if (!upstream || !upstream.ok) {
     return new NextResponse(`upstream ${upstream ? upstream.status : "unreachable"}`, { status: 502 });
   }
@@ -301,7 +427,9 @@ export async function GET(req: Request) {
   const isM3u8 = /\.m3u8($|\?)/i.test(target.pathname) || contentType.includes("mpegurl");
 
   if (isM3u8) {
-    const text = await upstream.text();
+    const rawText = await upstream.text();
+    // FlixCloud: peel the XOR layer before any rewriting happens
+    const text = flixDecrypt(rawText, pkParam);
     // this playlist's own referer is what all of its children expect
     const inheritedReferer = hasRf ? rfParam : refererForHost(target.hostname);
     allowHostWithReferer(target.hostname, inheritedReferer);
@@ -313,7 +441,7 @@ export async function GET(req: Request) {
     }
     // single-variant master? add the CDN's hidden quality siblings (360/480/720/1080)
     const enriched = await enrichMaster(text, target, inheritedReferer).catch(() => null);
-    return new NextResponse(rewritePlaylist(enriched ?? text, target, inheritedReferer), {
+    return new NextResponse(rewritePlaylist(enriched ?? text, target, inheritedReferer, pkParam), {
       headers: {
         "Content-Type": "application/vnd.apple.mpegurl",
         // playlists: 30s edge/browser cache — tokens rotate, but 30s is well
@@ -331,7 +459,11 @@ export async function GET(req: Request) {
   };
   if (type === "vtt" || contentType.includes("vtt")) {
     const text = await upstream.text();
-    return new NextResponse(text, { headers: { ...headers, "Content-Type": "text/vtt; charset=utf-8" } });
+    // FlixCloud subtitles are SRT — browsers only render WebVTT tracks
+    const isSrt = /\.srt($|\?)/i.test(target.pathname) || contentType.includes("subrip");
+    return new NextResponse(isSrt ? srtToVtt(text) : text, {
+      headers: { ...headers, "Content-Type": "text/vtt; charset=utf-8" },
+    });
   }
 
   // segments: stream the body straight through — unless it is a big one, in

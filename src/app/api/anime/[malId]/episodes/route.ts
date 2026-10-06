@@ -8,6 +8,7 @@ import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
 import { jikanHealthy } from "@/lib/jikan";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
 import { cachedBackupDubSummary, warmBackupDubSummary } from "@/lib/anivexa";
+import { flixDubThrough } from "@/lib/flixcloud";
 import { backupServerId, type BackupServerId } from "@/lib/backup-servers";
 import { getDubAudioVerdict } from "@/lib/dub-audio";
 
@@ -190,8 +191,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   if (hasDubKiwi !== false) dubServers.push("kiwi");
   // no Zoko/Kiwi dub but a backfill source can serve one — still offer both
   // DUB buttons; /api/stream transparently lands them on the backfill source
-  // (flikhub megaplay, or the megaplay-embed network when the anime is mapped)
-  const backfillPossible = hasDubMega === true || anime.anikotoSeriesId != null;
+  // (flikhub megaplay, the megaplay-embed network when the anime is mapped,
+  // or the FlixCloud dual-audio embeds when the title carries one)
+  const flixThru = flixDubThrough(malId);
+  const backfillPossible = hasDubMega === true || anime.anikotoSeriesId != null || flixThru != null;
   if (!dubServers.length && backfillPossible) dubServers.push("zoko", "kiwi");
 
   // ---- per-EPISODE dub boundaries (the Elbaph fix) ------------------------
@@ -211,7 +214,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     anime.hasDubKiwi !== false ||
     anime.hasDubMega !== false ||
     anime.anikotoSeriesId != null ||
-    !!anime.supaplayPath?.trim();
+    !!anime.supaplayPath?.trim() ||
+    flixThru != null;
   // a chain's search is CLOSED only when its boundary converged (thru = hi-1,
   // thru = total, or thru = 0 proven-none); anything else keeps probing
   const chainClosed = (thru: number | null, hi: number | null) => {
@@ -328,11 +332,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     total,
     hasDub: dubServers.length > 0,
     dubServers,
-    dubThrough: { s1: anime.dubThruS1 ?? null, s2: anime.dubThruS2 ?? null },
+    dubThrough: {
+      s1: maxThru(anime.dubThruS1, flixThru),
+      s2: maxThru(anime.dubThruS2, flixThru),
+    },
     dubMissing,
     backupDub,
     episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
     newlyAdded,
     freshnessPending,
   });
+}
+
+/** boundary pick: the highest proven dub episode across a chain and the flix map (null-aware) */
+function maxThru(a: number | null | undefined, b: number | null): number | null {
+  if (b == null) return a ?? null;
+  if (a == null) return b;
+  return Math.max(a, b);
 }

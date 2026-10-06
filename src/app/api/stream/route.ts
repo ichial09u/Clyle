@@ -4,6 +4,7 @@ import { megaplayDub, verifyRealMegaplayDub } from "@/lib/megaplay";
 import { anikotoDub, verifyRealAnikotoDub } from "@/lib/anikoto";
 import { supaplayDub } from "@/lib/supaplay";
 import { anivexaDubStream } from "@/lib/anivexa";
+import { flixDubStream, FLIX_REFERER, flixDubThrough } from "@/lib/flixcloud";
 import {
   isBackupServer,
   backupProviderOf,
@@ -89,6 +90,25 @@ export async function GET(req: Request) {
     // else: fall through — better a real dub from another source than a 404
   }
 
+  // ---- FlixCloud-first for mapped titles (Ranma ½ 2024 S1) ---------------
+  // animefrenzy's dual-audio FlixCloud embeds carry the real English track.
+  // The fleet probed every chain verdict FALSE for this title — Zoko's own
+  // "dub" page is a re-upload of the sub — so resolving the chain here would
+  // gamble on a DUB label with Japanese audio. Flix or honest 404 (the player
+  // then offers the sub), nothing in between. Resolution happens server-side
+  // so playback stays inside OUR player instead of their ArtPlayer iframe.
+  const flixThru = flixDubThrough(malId);
+  if (lang === "dub" && flixThru != null && ep <= flixThru) {
+    const flix = await flixDubStream(malId, ep).catch(() => null);
+    if (flix) {
+      // flix.src is already a proxy URL serving the stored synthesized master
+      // (the raw JWT master is IP-bound, so it never reaches the player raw);
+      // pk rides along for the child playlists the proxy fetches later
+      return respond(malId, ep, { src: flix.src, subtitles: flix.subtitles, skip: flix.skip }, server, "flix", FLIX_REFERER, flix.pk);
+    }
+    return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
+  }
+
   // ---- DUB: two-phase parallel resolution --------------------------------
   // The old chain resolved STRICTLY serially (requested server -> other
   // server -> SupaPlay -> megaplay -> megaplay-embed), so a fake/missing dub
@@ -157,8 +177,9 @@ async function respond(
   ep: number,
   stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
   serverUsed: ServerId,
-  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | ServerId,
+  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | ServerId,
   referer?: string | null,
+  pk?: string,
 ) {
   // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip
   // dataset + a cached live AniSkip query for brand-new/uncovered episodes
@@ -173,6 +194,9 @@ async function respond(
       // backup dub sources need their Referer riding along on every proxy
       // fetch (rf param) — the player forwards it on the first playlist call
       ...(referer ? { referer } : {}),
+      // FlixCloud playlists arrive XOR-obfuscated; the proxy peels that with
+      // this per-video key (rides along like rf, propagates to children)
+      ...(pk ? { pk } : {}),
       // a friendly display name for the toast ("DUB via AniNeko (backup)")
       ...(isBackupServer(provider) ? { providerName: backupServerName(provider) } : {}),
     },

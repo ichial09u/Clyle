@@ -18,15 +18,20 @@ import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
 
 type Panel = null | "quality" | "speed" | "subs";
-type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string };
+type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
 // `referer` rides along as `rf` on the FIRST playlist call — the proxy allows
 // rf-carrying requests whose host isn't in its static allowlist, which is how
-// the Anivexa backup network's rotating CDN hosts get through.
-const proxyUrl = (u: string, type: "m3u8" | "seg" | "vtt", referer?: string | null) =>
-  `/api/stream/proxy?type=${type}&u=${encodeURIComponent(u)}${referer ? `&rf=${encodeURIComponent(referer)}` : ""}`;
+// the Anivexa backup network's rotating CDN hosts get through. `pk` rides the
+// same way: FlixCloud's XOR-obfuscated playlists get peeled by the proxy.
+// (A src that IS already a proxy URL — the FlixCloud stored master — passes
+// through untouched so it doesn't get double-wrapped.)
+const proxyUrl = (u: string, type: "m3u8" | "seg" | "vtt", referer?: string | null, pk?: string | null) =>
+  u.startsWith("/api/stream/proxy")
+    ? u
+    : `/api/stream/proxy?type=${type}&u=${encodeURIComponent(u)}${referer ? `&rf=${encodeURIComponent(referer)}` : ""}${pk ? `&pk=${encodeURIComponent(pk)}` : ""}`;
 
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
@@ -467,7 +472,7 @@ export default function WatchView({
         }
         const data = (await res.json()) as Resolved;
         if (!cancelled) {
-          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null });
+          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null });
           // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
           // network) kick in when neither Zoko nor Kiwi carries a real dub —
           // say so, it explains any minor differences (sub style, quality ladder)
@@ -479,14 +484,19 @@ export default function WatchView({
                   : "English DUB via SupaPlay — Zoko/Kiwi had none",
                 5_000,
               );
+            } else if (data.provider === "flix") {
+              showPlayerMsg("English DUB via FlixCloud — dual-audio source", 5_000);
             } else if (data.provider.startsWith("anivexa-")) {
               const nm = data.providerName || data.provider.slice("anivexa-".length);
               showPlayerMsg(`English DUB via ${nm} (backup server) — Zoko/Kiwi had none`, 6_000);
             }
           }
           // absolute public URL the Chromecast receiver can fetch through our proxy
-          const isHls = /\.m3u8($|\?)/i.test(data.src);
-          castMediaUrlRef.current = `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}${data.referer ? `&rf=${encodeURIComponent(data.referer)}` : ""}`;
+          const isProxied = data.src.startsWith("/api/");
+          const isHls = /\.m3u8($|\?|%3f)/i.test(data.src) || isProxied;
+          castMediaUrlRef.current = isProxied
+            ? `${window.location.origin}${data.src}`
+            : `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}${data.referer ? `&rf=${encodeURIComponent(data.referer)}` : ""}${data.pk ? `&pk=${encodeURIComponent(data.pk)}` : ""}`;
         }
       } catch {
         if (!cancelled) setStreamError(true);
@@ -729,8 +739,19 @@ export default function WatchView({
         startFragPrefetch: true,
       });
       hlsRef.current = hls;
-      hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer));
+      hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer, stream.pk));
       hls.attachMedia(video);
+      // dual-audio masters (the FlixCloud dub embeds carry Japanese + English
+      // tracks with Japanese flagged default): lang=dub must actually SPEAK
+      // English, so flip to the English track the moment hls enumerates them
+      const pickDubAudio = () => {
+        if (lang !== "dub") return;
+        const tracks = hls.audioTracks ?? [];
+        const idx = tracks.findIndex((t) => /eng/i.test(`${t.lang ?? ""} ${t.name ?? ""}`));
+        if (idx >= 0 && hls.audioTrack !== idx) hls.audioTrack = idx;
+      };
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, pickDubAudio);
+      hls.on(Hls.Events.MANIFEST_PARSED, pickDubAudio);
       hls.on(Hls.Events.MANIFEST_PARSED, (_e, data) => {
         setLevels(data.levels ?? []);
         startPlayback();
@@ -747,7 +768,7 @@ export default function WatchView({
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       // Safari native HLS
-      video.src = proxyUrl(stream.src, "m3u8", stream.referer);
+      video.src = proxyUrl(stream.src, "m3u8", stream.referer, stream.pk);
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (!destroyed) {
       setStreamError(true);
@@ -1339,7 +1360,7 @@ export default function WatchView({
                   setStream(null);
                   fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
                     .then((r) => (r.ok ? r.json() : null))
-                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null }))
+                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null }))
                     .catch(() => setStreamError(true));
                 }}
                 className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
