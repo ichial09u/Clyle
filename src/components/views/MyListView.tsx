@@ -1,38 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Heart } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
-import { useMyList } from "@/lib/client-store";
+import { minimalLite, outboxSend, useMyList } from "@/lib/client-store";
 import PosterCard from "@/components/anime/PosterCard";
 
 export default function MyListView({ onSelect }: { onSelect: (a: AnimeLite) => void }) {
-  const { malIds, ready } = useMyList();
+  const { list, malIds, ready } = useMyList();
   const [items, setItems] = useState<AnimeLite[] | null>(null);
   const [idsKey, setIdsKey] = useState<string>("");
+  // local entries mirror the ids — the offline fallback renders from these
+  const listRef = useRef(list);
+  listRef.current = list;
 
   const key = ready ? malIds.join(",") : "";
   useEffect(() => {
     if (!ready || !malIds.length) return;
     let cancelled = false;
     (async () => {
-      try {
-        const res = await fetch("/api/mylist", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ malIds }),
-        });
-        const payload = (await res.json()) as { items: AnimeLite[] };
-        if (!cancelled) {
+      // outbox-routed: offline the POST is parked and replayed on reconnect
+      // (keeps the server-side list hydrated), but the grid renders either way
+      const res = await outboxSend("mylist", "/api/mylist", "POST", JSON.stringify({ malIds })).catch(() => null);
+      if (cancelled) return;
+      if (res && res.ok) {
+        try {
+          const payload = (await res.json()) as { items: AnimeLite[] };
           setItems(payload.items);
           setIdsKey(key);
-        }
-      } catch {
-        if (!cancelled) {
-          setItems([]);
-          setIdsKey(key);
+          return;
+        } catch {
+          /* fall through to local */
         }
       }
+      // offline / failed — the local entries already carry title + artwork
+      setItems(listRef.current.map((e) => minimalLite(e.malId, e.title, e.image)));
+      setIdsKey(key);
     })();
     return () => {
       cancelled = true;

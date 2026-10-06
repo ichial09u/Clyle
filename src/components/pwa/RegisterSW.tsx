@@ -3,13 +3,15 @@
 import { useEffect } from "react";
 
 /**
- * Registers the minimal Clyle service worker (/public/sw.js).
+ * Registers the Clyle service worker (/public/sw.js).
  *
  * Production only — in dev it would fight Next's HMR. Registration is
- * delayed a beat so it never competes with first paint. The SW itself is a
- * network pass-through whose only job is to make Android Chrome treat the
- * site as an installable PWA (beforeinstallprompt) and to show an offline
- * notice for lost-connection navigations.
+ * delayed a beat so it never competes with first paint. The SW is the
+ * offline engine: it caches the app shell, build assets, catalog API
+ * responses, poster art, and (crucially) the HLS playlists/segments that
+ * stream through our own /api/stream/proxy — which is what makes already-
+ * watched episodes play with no connection. Progress writes made offline
+ * are queued client-side (client-store outbox) and replayed on reconnect.
  */
 export default function RegisterSW() {
   useEffect(() => {

@@ -92,6 +92,9 @@ export default function WatchView({
   const [backupDub, setBackupDub] = useState<Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null>(null);
   // generic in-player toast (dub fallback notices); cast errors use castMsg
   const [playerMsg, setPlayerMsg] = useState<string | null>(null);
+  // live connection state — drives the offline hints (what plays offline vs
+  // what needs the network is explained right in the player)
+  const [offline, setOffline] = useState(false);
 
   // per-episode DUB availability for the CURRENT episode: the highest proven
   // boundary across both chains (either chain can serve the dub via fallback)
@@ -129,6 +132,18 @@ export default function WatchView({
     setPlayerMsg(text);
     window.setTimeout(() => setPlayerMsg((m) => (m === text ? null : m)), ms);
   };
+
+  // track the connection so the player can explain itself when offline
+  useEffect(() => {
+    const sync = () => setOffline(typeof navigator !== "undefined" && navigator.onLine === false);
+    sync();
+    window.addEventListener("online", sync);
+    window.addEventListener("offline", sync);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", sync);
+    };
+  }, []);
 
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -1351,7 +1366,11 @@ export default function WatchView({
 
         {streamError && !casting && !iframeFallback ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
-            <p className="text-[13px] text-gray-300">Our player couldn&apos;t load this stream.</p>
+            <p className="text-[13px] text-gray-300">
+              {offline
+                ? "You\u2019re offline and this episode isn\u2019t saved on this device yet. Episodes you watch while online play without internet."
+                : "Our player couldn\u2019t load this stream."}
+            </p>
             <div className="flex gap-2">
               <button
                 onClick={(e) => {
@@ -1377,6 +1396,17 @@ export default function WatchView({
                 Use Zoko player
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {/* offline + embedded Zoko player: the third-party iframe needs the
+            network — say so instead of letting its own error page confuse */}
+        {offline && iframeFallback && !casting ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center z-20 pointer-events-none">
+            <p className="text-[13px] text-gray-300">
+              You&rsquo;re offline — the embedded player needs internet. Episodes you watched while
+              online still play on our own player.
+            </p>
           </div>
         ) : null}
 

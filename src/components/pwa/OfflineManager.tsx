@@ -1,0 +1,188 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Wifi, WifiOff, X } from "lucide-react";
+import { flushOutbox } from "@/lib/client-store";
+
+/**
+ * Offline mode — the visible half of offline viewing.
+ *
+ * What the service worker (public/sw.js) can't do is talk to the user, so
+ * this component owns the experience around offline:
+ *
+ *   - POPUP when the connection drops: explains that Clyle keeps working —
+ *     browsing and every episode already watched on this device still play,
+ *     and progress saves locally and syncs on reconnect. Shown once per
+ *     offline transition (never nagged again until the next drop).
+ *   - PILL while offline: a dismissible status chip, hidden while the video
+ *     is fullscreen so it never sits on top of playback.
+ *   - RECONNECT toast + sync: when the network returns, the progress/watchtime
+ *     outbox (client-store) is flushed and the user sees "progress synced".
+ *   - HEARTBEAT while offline: mobile browsers (iOS PWA especially) sometimes
+ *     never fire `online`; a 15s probe of the manifest catches the comeback.
+ *   - CATCH-UP: opening the app while online also flushes any outbox left
+ *     behind by a previous session that died offline.
+ */
+export default function OfflineManager() {
+  const [mounted, setMounted] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [popup, setPopup] = useState(false);
+  const [pillHidden, setPillHidden] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const beatRef = useRef<number | null>(null);
+  const toastTimer = useRef<number | null>(null);
+  const offlineRef = useRef(false);
+
+  const showToast = useCallback((text: string, ms = 4_500) => {
+    setToast(text);
+    if (toastTimer.current) window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), ms);
+  }, []);
+
+  const goOnline = useCallback(async () => {
+    if (!offlineRef.current) return;
+    offlineRef.current = false;
+    setOffline(false);
+    setPopup(false);
+    if (beatRef.current) {
+      window.clearInterval(beatRef.current);
+      beatRef.current = null;
+    }
+    const queued = await flushOutbox();
+    showToast(queued > 0 ? `Back online — ${queued} update${queued === 1 ? "" : "s"} synced` : "Back online");
+  }, [showToast]);
+
+  const goOffline = useCallback(() => {
+    if (offlineRef.current) return;
+    offlineRef.current = true;
+    setOffline(true);
+    setPillHidden(false);
+    setPopup(true); // once per transition
+  }, []);
+
+  useEffect(() => {
+    setMounted(true);
+    const startOffline = typeof navigator !== "undefined" && navigator.onLine === false;
+    if (startOffline) {
+      offlineRef.current = true;
+      setOffline(true);
+      // don't fight the app's first paint
+      window.setTimeout(() => setPopup(true), 1_200);
+    } else {
+      // catch-up: replay anything queued by a previous offline session
+      const t = window.setTimeout(() => void flushOutbox(), 3_000);
+      return () => window.clearTimeout(t);
+    }
+  }, []);
+
+  useEffect(() => {
+    const onOnline = () => void goOnline();
+    const onOffline = () => goOffline();
+    const onFs = () => setFullscreen(Boolean(document.fullscreenElement));
+    const onVisible = () => {
+      // returning to the app while online is another sync opportunity
+      if (document.visibilityState === "visible" && !offlineRef.current) void flushOutbox();
+    };
+    window.addEventListener("online", onOnline);
+    window.addEventListener("offline", onOffline);
+    document.addEventListener("fullscreenchange", onFs);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      window.removeEventListener("offline", onOffline);
+      document.removeEventListener("fullscreenchange", onFs);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [goOnline, goOffline]);
+
+  // heartbeat: browsers (esp. iOS PWA) can miss the online event entirely
+  useEffect(() => {
+    if (!offline || beatRef.current) return;
+    const probe = async () => {
+      try {
+        const res = await fetch("/manifest.webmanifest", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (res.ok) void goOnline();
+      } catch {
+        /* still offline */
+      }
+    };
+    beatRef.current = window.setInterval(probe, 15_000);
+    return () => {
+      if (beatRef.current) {
+        window.clearInterval(beatRef.current);
+        beatRef.current = null;
+      }
+    };
+  }, [offline, goOnline]);
+
+  if (!mounted) return null;
+
+  return (
+    <>
+      {/* ---- offline popup (once per drop) ---- */}
+      {popup ? (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-label="You are offline"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-white/10 bg-[#0c0c0f] p-6 text-center shadow-2xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/30">
+              <WifiOff className="h-6 w-6 text-[#ff6b6b]" />
+            </div>
+            <h2 className="font-slab mt-4 text-lg font-bold text-white">You&apos;re offline</h2>
+            <p className="mt-2 text-[13px] leading-relaxed text-white/60">
+              Clyle keeps working without internet — browse your catalog and keep watching
+              episodes you&apos;ve played on this device, in the quality you watched them.
+              Everything you watch now is saved and syncs the moment you&apos;re back online.
+            </p>
+            <button
+              onClick={() => setPopup(false)}
+              className="mt-5 w-full rounded-xl bg-white py-3 text-sm font-semibold text-black active:scale-[0.98] transition-transform"
+            >
+              Keep watching
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ---- offline pill (hidden in fullscreen + dismissible) ---- */}
+      {offline && !popup && !pillHidden && !fullscreen ? (
+        <div className="fixed bottom-[76px] left-1/2 z-[45] -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#141418]/95 px-4 py-2 shadow-lg backdrop-blur">
+            <WifiOff className="h-3.5 w-3.5 text-[#ff6b6b]" />
+            <span className="text-xs text-white/70">Offline — saved episodes still play</span>
+            <button
+              onClick={() => setPillHidden(true)}
+              aria-label="Dismiss offline notice"
+              className="ml-1 text-white/40 hover:text-white/70"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {/* ---- reconnect / sync toast ---- */}
+      {toast ? (
+        <div className="fixed bottom-[76px] left-1/2 z-[46] -translate-x-1/2">
+          <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-xl">
+            {offline ? (
+              <WifiOff className="h-3.5 w-3.5 text-[#d32f2f]" />
+            ) : toast.includes("synced") ? (
+              <Check className="h-3.5 w-3.5 text-green-600" />
+            ) : (
+              <Wifi className="h-3.5 w-3.5 text-green-600" />
+            )}
+            <span className="text-xs font-semibold text-black">{toast}</span>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}

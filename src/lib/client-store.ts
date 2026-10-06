@@ -34,6 +34,138 @@ function writeJson(key: string, value: unknown) {
   }
 }
 
+/* ---------------- offline outbox (sync when back online) ----------------
+ * Every server write the app makes while offline (progress saves, watch
+ * time, removal deletes, my-list hydrate) is parked in localStorage under a
+ * dedupe key and replayed the moment the connection is back — either by the
+ * browser's `online` event or the next time the app opens. Same-key items
+ * replace each other (latest position wins), so a whole offline session of
+ * heartbeats collapses into one fresh write per episode.
+ */
+
+const OUTBOX_KEY = "animetest123.outbox";
+const OUTBOX_MAX = 120;
+
+interface OutboxItem {
+  k: string; // dedupe key
+  url: string;
+  method: "POST" | "DELETE";
+  body?: string;
+  at: number;
+}
+
+function readOutbox(): OutboxItem[] {
+  return readJson<OutboxItem[]>(OUTBOX_KEY, []);
+}
+
+function writeOutbox(items: OutboxItem[]) {
+  writeJson(OUTBOX_KEY, items.slice(-OUTBOX_MAX));
+}
+
+function queueOutbox(key: string, url: string, method: "POST" | "DELETE", body?: string) {
+  try {
+    const items = readOutbox().filter((i) => i.k !== key);
+    items.push({ k: key, url, method, body, at: Date.now() });
+    writeOutbox(items);
+  } catch {
+    /* ignore */
+  }
+}
+
+function dequeueOutbox(key: string) {
+  try {
+    const items = readOutbox();
+    if (!items.some((i) => i.k === key)) return;
+    writeOutbox(items.filter((i) => i.k !== key));
+  } catch {
+    /* ignore */
+  }
+}
+
+/**
+ * Send a write request, or park it in the outbox when the network is down.
+ * Returns the Response, or null when the item was queued (or the request
+ * failed outright and is now queued). `queueFirst` parks the item BEFORE
+ * attempting — for must-eventually-land writes (progress deletes) that
+ * survive the page dying mid-request.
+ */
+export function outboxSend(
+  key: string,
+  url: string,
+  method: "POST" | "DELETE",
+  body?: string,
+  opts?: { queueFirst?: boolean },
+): Promise<Response | null> {
+  if (opts?.queueFirst) queueOutbox(key, url, method, body);
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    if (!opts?.queueFirst) queueOutbox(key, url, method, body);
+    return Promise.resolve(null);
+  }
+  return fetch(url, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : undefined,
+    body,
+    ...(opts?.queueFirst ? { keepalive: true } : {}),
+  })
+    .then((res) => {
+      if (res.ok && opts?.queueFirst) dequeueOutbox(key);
+      return res;
+    })
+    .catch(() => {
+      if (!opts?.queueFirst) queueOutbox(key, url, method, body);
+      return null;
+    });
+}
+
+let flushingOutbox = false;
+
+/**
+ * Replay the outbox in order. Stops at the first failure (still offline /
+ * server refusing) so later items don't jump the queue. Dispatches
+ * `clyle-synced` (detail = number of synced writes) when anything landed.
+ */
+export async function flushOutbox(): Promise<number> {
+  if (flushingOutbox) return 0;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return 0;
+  flushingOutbox = true;
+  let synced = 0;
+  try {
+    let items = readOutbox();
+    while (items.length) {
+      const item = items[0];
+      try {
+        const res = await fetch(item.url, {
+          method: item.method,
+          headers: item.body ? { "Content-Type": "application/json" } : undefined,
+          body: item.body,
+        });
+        if (!res.ok) break; // server refused — retry on a later flush
+        items = items.slice(1);
+        writeOutbox(items);
+        synced++;
+      } catch {
+        break; // still offline — stop
+      }
+    }
+  } finally {
+    flushingOutbox = false;
+  }
+  if (synced > 0) {
+    try {
+      window.dispatchEvent(new CustomEvent("clyle-synced", { detail: synced }));
+      window.dispatchEvent(new CustomEvent("progress-changed"));
+    } catch {
+      /* ignore */
+    }
+  }
+  return synced;
+}
+
+/** How many writes are waiting to be synced (debug/settings display). */
+export function outboxPendingCount(): number {
+  return readOutbox().length;
+}
+
 const MYLIST_EVENT = "mylist-changed";
 
 function subscribeMyList(onChange: () => void) {
@@ -243,12 +375,9 @@ export function saveProgressDetailed(args: SaveProgressArgs, opts?: { keepalive?
     if (opts?.keepalive && "sendBeacon" in navigator) {
       navigator.sendBeacon("/api/progress", new Blob([body], { type: "application/json" }));
     } else {
-      fetch("/api/progress", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        ...(opts?.keepalive ? { keepalive: true } : {}),
-      }).catch(() => undefined);
+      // offline-safe: a failed save parks in the outbox and lands when the
+      // connection returns (same dedupe key — the latest position wins)
+      void outboxSend(`prog:${args.malId}:${args.episode}:${args.lang}`, "/api/progress", "POST", body);
     }
   } catch {
     /* ignore */
@@ -275,25 +404,18 @@ export function removeProgress(malId: number) {
   } catch {
     /* ignore */
   }
-  // keepalive so the removal survives the tab closing mid-request; the
-  // server tombstones the removal too (blocks late beacon/heartbeat saves).
-  // Retried twice — a lost DELETE (subway dead zone, app killed mid-flight)
-  // used to leave the server row alive and the card resurrected on the next
-  // Home visit; the retries close most of that window.
+  // queueFirst: the DELETE is parked BEFORE it is attempted, so a lost
+  // request (subway dead zone, app killed mid-flight) is replayed by the
+  // next flush instead of leaving the server row alive — the old retry
+  // loop could never cover "app died before the request fired".
   const userId = getUserId();
-  const del = (attempt: number): void => {
-    try {
-      fetch(`/api/progress?userId=${encodeURIComponent(userId)}&malId=${malId}`, {
-        method: "DELETE",
-        keepalive: true,
-      }).catch(() => {
-        if (attempt < 2) window.setTimeout(() => del(attempt + 1), 2_500 * (attempt + 1));
-      });
-    } catch {
-      if (attempt < 2) window.setTimeout(() => del(attempt + 1), 2_500 * (attempt + 1));
-    }
-  };
-  del(0);
+  void outboxSend(
+    `progd:${malId}`,
+    `/api/progress?userId=${encodeURIComponent(userId)}&malId=${malId}`,
+    "DELETE",
+    undefined,
+    { queueFirst: true },
+  );
 }
 
 /**
@@ -359,12 +481,7 @@ export function clearProgressTombstone(malId: number) {
   delete map[String(malId)];
   writeJson(REMOVED_KEY, map);
   try {
-    fetch("/api/progress", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: getUserId(), malId, resume: true }),
-      keepalive: true,
-    }).catch(() => undefined);
+    void outboxSend(`tomb:${malId}`, "/api/progress", "POST", JSON.stringify({ userId: getUserId(), malId, resume: true }));
   } catch {
     /* ignore */
   }
@@ -600,15 +717,11 @@ export function recordWatchSeconds(
     if (opts?.keepalive && "sendBeacon" in navigator) {
       navigator.sendBeacon("/api/watchtime", new Blob([body], { type: "application/json" }));
     } else {
-      fetch("/api/watchtime", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      })
-        .then((res) => {
-          if (!res.ok) revert(); // server rejected — retry on a later tick
-        })
-        .catch(revert);
+      void outboxSend(`wt:${day}:${args.malId}`, "/api/watchtime", "POST", body).then((res) => {
+        // null = the delta was parked in the offline outbox — treat as sent
+        // (the flush replays it); only a live server rejection reverts
+        if (res !== null && !res.ok) revert();
+      });
     }
   } catch {
     revert();
