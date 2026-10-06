@@ -29,11 +29,28 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
         {(genres ?? Array.from({ length: 36 }).map((_, i) => ({ name: `slot-${i}`, count: -1 }))).map((g) =>
           g.count === -1 ? (
             <div key={g.name} className="h-[48px] rounded-md bg-[#161616] animate-pulse" />
+          ) : g.name === "Pokémon" ? (
+            // Pokémon — the flagship franchise tile. The official wordmark
+            // artwork IS the label (no text, no count, no glow) so the button
+            // pops out of the grid the way the brand does.
+            <button
+              key={g.name}
+              onClick={() => onSelect(g.name)}
+              aria-label="Pokémon"
+              className="h-[48px] rounded-md px-2 flex items-center justify-center bg-[#12141d] hover:bg-[#1b1f30] active:scale-95 transition"
+            >
+              <img
+                src="/logos/pokemon-wordmark.svg"
+                alt="Pokémon"
+                draggable={false}
+                className="h-[24px] w-auto max-w-full object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]"
+              />
+            </button>
           ) : g.name === "OG" ? (
             // OG — the faked niche-classics genre. Styled like a treasure
-            // button: polished gold, breathing glow halo, looping sheen sweep
-            // (see .og-tile in globals.css) — deliberately the coolest tile
-            // on the grid to hit.
+            // button: polished gold, looping sheen sweep (see .og-tile in
+            // globals.css) — deliberately the coolest tile on the grid.
+            // No count number — the vault size is a surprise, not a stat.
             <button
               key={g.name}
               onClick={() => onSelect(g.name)}
@@ -42,7 +59,6 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
             >
               <span aria-hidden className="text-[12px] drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]">👑</span>
               OG
-              <span className="text-[10px] font-bold opacity-70">{g.count}</span>
             </button>
           ) : (
             <button

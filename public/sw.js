@@ -34,8 +34,9 @@ const IMG = `clyle-img-${VERSION}`;
 const OWNED = [SHELL, STATIC, API, MEDIA, IMG];
 
 // segment entries (~0.7-1.4 MB each) and poster entries we keep at most.
-// ~1200 segments ≈ 1-1.5 GB — several full episodes at 1080p.
-const CAPS = { [MEDIA]: 1200, [IMG]: 600 };
+// ~2400 segments ≈ 2-3 GB — two FULL episodes downloaded for offline plus
+// the tail of whatever played before (the downloader walks current + next).
+const CAPS = { [MEDIA]: 2400, [IMG]: 600 };
 let trimTick = 0;
 
 self.addEventListener("install", (event) => {
@@ -235,8 +236,27 @@ async function handleMedia(request, url) {
       if (res && res.ok) stash(MEDIA, request, res.clone());
       return res;
     } catch {
-      const hit = await (await caches.open(MEDIA)).match(request);
-      return hit || Response.error();
+      const cache = await caches.open(MEDIA);
+      const hit = await cache.match(request);
+      if (!hit) return Response.error();
+      const ct = hit.headers.get("Content-Type") || "";
+      if (/mpegurl/i.test(ct)) {
+        const full = await hit.text();
+        // offline master: keep only the variants we actually SAVED (their
+        // media playlist + first segment are in the cache). Without this,
+        // hls.js's ABR could pick a quality level whose segments were never
+        // downloaded — every fragment 404s and playback dies even though a
+        // full copy of another level is sitting right there. Serving a
+        // single-variant master pins it to the saved quality.
+        const text = full.includes("#EXT-X-STREAM-INF")
+          ? await filterMasterToCached(full, request.url)
+          : full;
+        return new Response(text, {
+          status: 200,
+          headers: { "Content-Type": ct || "application/vnd.apple.mpegurl", "Cache-Control": "no-store" },
+        });
+      }
+      return hit;
     }
   }
 
@@ -255,6 +275,83 @@ async function handleMedia(request, url) {
     return res;
   } catch {
     return Response.error();
+  }
+}
+
+/**
+ * Offline master filter — drop every variant whose media playlist or first
+ * segment is not in the MEDIA cache, and every audio rendition whose
+ * playlist is not cached (dual-audio masters keep the rendition the
+ * downloader saved). Variants with a lost audio group get the AUDIO=
+ * attribute stripped. If nothing survives, hand back the original text —
+ * a broken manifest is no worse than a missing one.
+ */
+async function filterMasterToCached(text, baseUrl) {
+  try {
+    const cache = await caches.open(MEDIA);
+    const lines = text.split(/\r?\n/);
+    const out = [];
+    const keptAudioGroups = new Set();
+    let pendingInf = null;
+    let keptVariants = 0;
+    for (const raw of lines) {
+      const line = raw.trim();
+      if (!line) {
+        out.push(raw);
+        continue;
+      }
+      if (line.startsWith("#EXT-X-STREAM-INF")) {
+        pendingInf = line;
+        continue;
+      }
+      if (line.startsWith("#")) {
+        if (line.startsWith("#EXT-X-MEDIA")) {
+          const uri = /URI="([^"]+)"/.exec(line)?.[1];
+          if (!uri) {
+            out.push(line); // rendition without its own playlist — always fine
+            continue;
+          }
+          try {
+            if (await cache.match(new URL(uri, baseUrl).toString())) {
+              keptAudioGroups.add(/GROUP-ID="([^"]+)"/.exec(line)?.[1] ?? "");
+              out.push(line);
+            }
+          } catch { /* rendition not saved — drop the line */ }
+          continue;
+        }
+        out.push(line);
+        continue;
+      }
+      // variant URI line (paired with the pending #EXT-X-STREAM-INF)
+      if (pendingInf) {
+        let keep = false;
+        try {
+          const abs = new URL(line, baseUrl).toString();
+          const pl = await cache.match(abs);
+          if (pl) {
+            const plText = await pl.text();
+            const firstSeg = plText
+              .split(/\r?\n/)
+              .map((l) => l.trim())
+              .find((l) => l && !l.startsWith("#"));
+            if (firstSeg && (await cache.match(new URL(firstSeg, abs).toString()))) keep = true;
+          }
+        } catch { /* unsaved — drop */ }
+        if (keep) {
+          let inf = pendingInf;
+          const gid = /AUDIO="([^"]+)"/.exec(inf)?.[1];
+          if (gid && !keptAudioGroups.has(gid)) inf = inf.replace(/,AUDIO="[^"]+"/g, "");
+          out.push(inf, line);
+          keptVariants++;
+        }
+        pendingInf = null;
+        continue;
+      }
+      out.push(line);
+    }
+    return keptVariants > 0 ? out.join("\n") : text;
+  } catch {
+    return text;
   }
 }
 

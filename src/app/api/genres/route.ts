@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { POPULAR_GENRES, OG_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
+import { POPULAR_GENRES, OG_GENRE, POKEMON_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -28,11 +28,19 @@ export async function GET() {
   const ogCount = await db.anime.count({
     where: ogNicheVaultWhere(),
   });
+  // Pokémon — franchise pseudo-genre (import tags every entry with it); the
+  // wordmark tile is PINNED to the front of the grid when the vault is live
+  const pokeCount = await db.anime.count({
+    where: { inCatalog: true, genres: { contains: `%"${POKEMON_GENRE}"%` } },
+  });
   const genres = [
+    ...(pokeCount > 0 ? [{ name: POKEMON_GENRE, count: pokeCount }] : []),
     { name: OG_GENRE, count: ogCount },
     ...POPULAR_GENRES.map((name) => ({ name, count: counts.get(name) ?? 0 })),
   ]
     .filter((g) => g.count > 0)
-    .sort((a, b) => b.count - a.count);
+    .sort((a, b) => b.count - a.count)
+    // re-pin the Pokémon tile to the front after the size sort
+    .sort((a, b) => (a.name === POKEMON_GENRE ? -1 : b.name === POKEMON_GENRE ? 1 : 0));
   return NextResponse.json({ genres });
 }

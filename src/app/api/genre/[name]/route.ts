@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { anilistToJikan, animeByGenre } from "@/lib/anilist";
 import { lite } from "@/lib/serialize";
-import { OG_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
+import { OG_GENRE, POKEMON_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -34,7 +34,22 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
     return NextResponse.json({ genre: OG_GENRE, catalog: rows.map(lite), suggestions: [] });
   }
 
-  const like = `%"${genre.replace(/[%_]/g, "")}"%`;
+  const like = `%"${genre.replace(/[%_"]/g, "")}"%`;
+
+  // Pokémon serves in WATCH ORDER — release-chronological (Indigo League →
+  // the movies of that era → the next series...), the way a franchise
+  // marathon actually goes. Popularity order would put Journeys first.
+  if (genre === POKEMON_GENRE) {
+    const rows = await db.anime.findMany({
+      where: { inCatalog: true, genres: { contains: like } },
+      orderBy: [
+        { year: { sort: "asc", nulls: "last" } },
+        { popularity: { sort: "asc", nulls: "last" } },
+      ],
+      take: 150, // the whole franchise today (~86) — headroom without unbounded queries
+    });
+    return NextResponse.json({ genre, catalog: rows.map(lite), suggestions: [] });
+  }
 
   const rows = await db.anime.findMany({
     where: { inCatalog: true, genres: { contains: like } },

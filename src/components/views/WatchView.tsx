@@ -16,6 +16,7 @@ import {
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
+import { enqueueEpisodeSave, type SaveState } from "@/lib/offline-download";
 
 type Panel = null | "quality" | "speed" | "subs";
 type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null };
@@ -95,6 +96,8 @@ export default function WatchView({
   // live connection state — drives the offline hints (what plays offline vs
   // what needs the network is explained right in the player)
   const [offline, setOffline] = useState(false);
+  // offline-save progress ("Saving for offline · 43%" pill)
+  const [saveState, setSaveState] = useState<SaveState | null>(null);
 
   // per-episode DUB availability for the CURRENT episode: the highest proven
   // boundary across both chains (either chain can serve the dub via fallback)
@@ -306,18 +309,29 @@ export default function WatchView({
      orientation WITHOUT fullscreen, so: attempt on mount, and re-assert every
      time the app becomes visible again or playback (re)starts. Failed
      attempts (browser tab without fullscreen, iOS) are silently ignored —
-     same posture as the fullscreen-gated attempt above. */
+     same posture as the fullscreen-gated attempt above.
+
+     The app-switch comeback (the "back to vertical" bug): the OS releases
+     the orientation lock while backgrounded, and the FIRST re-lock attempt
+     right at visibilitychange can land while the activity is still settling
+     and silently fail. So each resume fires a BURST of retries over the
+     following two seconds, plus re-asserts on focus/pageshow and every tap
+     (all throttled) — by the time the user is looking at the player it is
+     locked landscape again. Fullscreen, which died in the background too,
+     gets a best-effort silent re-entry (harmless where denied). */
   useEffect(() => {
     const shell = shellRef.current;
     if (!shell || shell.closest('[data-leaving="true"]')) return;
     if (!window.matchMedia?.("(pointer: coarse)")?.matches) return; // phones/tablets only
     type Orient = ScreenOrientation & { lock?: (o: "landscape") => Promise<void> };
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    const el = shell as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
     let stopped = false;
     let lastAt = 0;
     const attempt = () => {
       if (stopped) return;
       const now = Date.now();
-      if (now - lastAt < 1_000) return; // throttle the resume/play churn
+      if (now - lastAt < 900) return; // throttle the resume/play/tap churn
       lastAt = now;
       const so = screen.orientation as Orient | undefined;
       try {
@@ -327,17 +341,41 @@ export default function WatchView({
         /* iOS Safari has no orientation lock — ignore */
       }
     };
-    attempt(); // mount: covers PWA reopen straight into a restored player
-    const onVis = () => {
-      if (document.visibilityState === "visible") attempt();
+    const reassert = () => {
+      [0, 300, 900, 1_800].forEach((d) =>
+        window.setTimeout(() => {
+          if (!stopped) attempt();
+        }, d),
+      );
     };
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      reassert();
+      // fullscreen died in the background as well — try a silent re-entry so
+      // the comeback looks exactly like the moment the app was left
+      try {
+        if (!(doc.fullscreenElement ?? doc.webkitFullscreenElement)) {
+          const p = el.requestFullscreen?.() ?? el.webkitRequestFullscreen?.();
+          if (p && typeof p.catch === "function") p.catch(() => undefined);
+        }
+      } catch {
+        /* denied without a gesture — the shell is CSS-fullscreen anyway */
+      }
+    };
+    attempt(); // mount: covers PWA reopen straight into a restored player
     document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pageshow", onVis);
+    window.addEventListener("focus", reassert);
+    window.addEventListener("pointerdown", reassert);
     const video = videoRef.current;
-    video?.addEventListener("play", onVis);
+    video?.addEventListener("play", attempt);
     return () => {
       stopped = true;
       document.removeEventListener("visibilitychange", onVis);
-      video?.removeEventListener("play", onVis);
+      window.removeEventListener("pageshow", onVis);
+      window.removeEventListener("focus", reassert);
+      window.removeEventListener("pointerdown", reassert);
+      video?.removeEventListener("play", attempt);
     };
   }, []);
 
@@ -869,6 +907,52 @@ export default function WatchView({
     return () => window.clearTimeout(t);
   }, [ready, iframeFallback, anime.malId, episode, total, lang, server]);
 
+  /* -------- offline save: download this episode (then the next one) --------
+     Watching online only caches a ~60s rolling buffer, so offline playback
+     used to stall at the end of it ("plays a good minute then buffers").
+     While online, walk the whole HLS tree through the proxy so the SW
+     stashes every byte — chosen quality's segments in order, dual-audio
+     renditions, AES keys, subtitles — then resolve + save the NEXT episode
+     too (its /api/stream answer doubles as the SW's API-cache warm, so the
+     offline next-episode tap resolves from the cache and just plays).
+     Everything runs in a module singleton: navigating away never interrupts
+     a download, and re-runs only fetch segments the SW doesn't have yet. */
+  const saveKey = `${anime.malId}:${episode}:${lang}:${server}`;
+  useEffect(() => {
+    if (!ready || !stream || iframeFallback || offline) return;
+    const isHls = /\.m3u8($|\?)/i.test(stream.src) || stream.src.startsWith("/api/");
+    enqueueEpisodeSave({
+      key: saveKey,
+      playlistUrl: proxyUrl(stream.src, isHls ? "m3u8" : "seg", stream.referer, stream.pk),
+      subtitles: (stream.subtitles ?? []).slice(0, 2).map((s) => proxyUrl(s.src, "vtt")),
+      onProgress: (s) => setSaveState(s),
+      resolveNext:
+        episode < total
+          ? async () => {
+              const res = await fetch(
+                `/api/stream?malId=${anime.malId}&ep=${episode + 1}&lang=${lang}&server=${server}`,
+              );
+              if (!res.ok) return null;
+              const d = (await res.json()) as Resolved;
+              if (!d?.src) return null;
+              const nextHls = /\.m3u8($|\?)/i.test(d.src) || d.src.startsWith("/api/");
+              return {
+                key: `${anime.malId}:${episode + 1}:${lang}:${server}`,
+                playlistUrl: proxyUrl(d.src, nextHls ? "m3u8" : "seg", d.referer, d.pk),
+                subtitles: (d.subtitles ?? []).slice(0, 2).map((s) => proxyUrl(s.src, "vtt")),
+              };
+            }
+          : undefined,
+    });
+  }, [ready, stream, iframeFallback, offline, saveKey, episode, total, anime.malId, lang, server]);
+
+  // the "Saved for offline ✓" pill clears itself a few seconds after landing
+  useEffect(() => {
+    if (saveState?.phase !== "done") return;
+    const t = window.setTimeout(() => setSaveState(null), 5_000);
+    return () => window.clearTimeout(t);
+  }, [saveState]);
+
   const go = useCallback((ep: number) => {
     if (ep >= 1 && ep <= total) onEpisodeChange(ep, lang, server);
   }, [total, onEpisodeChange, lang, server]);
@@ -1321,6 +1405,34 @@ export default function WatchView({
             >
               Start over
             </button>
+          </div>
+        ) : null}
+
+        {/* offline-save pill — "Saving for offline · 43%" → "Saved for offline ✓"
+            (the same pill reports the chained NEXT-episode save) */}
+        {saveState && !casting && saveState.phase !== "error" ? (
+          <div
+            className="absolute left-4 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full px-3 py-1.5 player-layer pointer-events-none"
+            style={{ bottom: "7.5rem" }}
+          >
+            {saveState.phase === "download" ? (
+              <>
+                <Download className="w-3.5 h-3.5 text-[#35d5bf] animate-pulse" />
+                <span className="text-[11px] text-gray-200 whitespace-nowrap">
+                  {saveState.key === saveKey ? "Saving for offline" : "Saving next episode"}
+                  {saveState.total ? ` · ${Math.round((saveState.done / saveState.total) * 100)}%` : ""}
+                </span>
+              </>
+            ) : (
+              <>
+                <Check className="w-3.5 h-3.5 text-[#35d5bf]" />
+                <span className="text-[11px] text-gray-200 whitespace-nowrap">
+                  {saveState.key === saveKey
+                    ? "Saved for offline"
+                    : "Next episode saved for offline"}
+                </span>
+              </>
+            )}
           </div>
         ) : null}
 

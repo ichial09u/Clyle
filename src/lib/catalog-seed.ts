@@ -102,6 +102,14 @@ export const OG_GENRE = "OG";
 export const OG_MAX_YEAR = 2009;
 
 /**
+ * "Pokémon" — a pseudo-genre tile on the Genres grid (like OG): the whole
+ * franchise (main series + movies + specials) is tagged with it on import,
+ * /api/genres pins its wordmark tile to the front, and /api/genre/Pokémon
+ * serves it in WATCH ORDER (release-chronological) instead of popularity.
+ */
+export const POKEMON_GENRE = "Pokémon";
+
+/**
  * The OG vault is NICHE-ONLY — "animes people haven't heard about in a while
  * or at all", not the pre-2010 greatest hits. A title is too famous for the
  * vault when EITHER fame signal says so:

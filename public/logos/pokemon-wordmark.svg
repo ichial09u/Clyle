@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 380 132" role="img" aria-label="Pokémon">
+  <!-- Pokémon wordmark tile art — classic yellow fill with the deep-blue
+       outline, drawn as a single heavy-weight text run so it stays crisp at
+       tile size. textLength pins the width so font fallbacks can't overflow. -->
+  <g>
+    <text x="190" y="96"
+      text-anchor="middle"
+      font-family="'Arial Black','Arial Bold','Noto Sans SC',Helvetica,sans-serif"
+      font-weight="900"
+      font-size="97"
+      letter-spacing="0.5"
+      textLength="348"
+      lengthAdjust="spacingAndGlyphs"
+      fill="#FFCB05"
+      stroke="#2A3B8F"
+      stroke-width="17"
+      stroke-linejoin="round"
+      stroke-linecap="round"
+      paint-order="stroke fill"
+      transform="rotate(-2 190 66)">Pokémon</text>
+    <!-- top gloss: the classic highlight band across the upper half -->
+    <clipPath id="glossClip">
+      <rect x="10" y="0" width="360" height="62"/>
+    </clipPath>
+    <text x="190" y="96" clip-path="url(#glossClip)"
+      text-anchor="middle"
+      font-family="'Arial Black','Arial Bold','Noto Sans SC',Helvetica,sans-serif"
+      font-weight="900"
+      font-size="97"
+      letter-spacing="0.5"
+      textLength="348"
+      lengthAdjust="spacingAndGlyphs"
+      fill="#FFE45C"
+      stroke="none"
+      transform="rotate(-2 190 66)">Pokémon</text>
+  </g>
+</svg>
