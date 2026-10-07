@@ -1,0 +1,97 @@
+cc-sync fleet: 51 episodes, 6 bots, lang=dub, cues=3, asr-conc=2
+[bot3] Soul Eater ep3: ERROR The operation was aborted due to timeout
+[bot5] Soul Eater ep5: ERROR The operation was aborted due to timeout
+[bot6] Soul Eater ep6: ERROR The operation was aborted due to timeout
+[bot1] Soul Eater ep1: ERROR The operation was aborted due to timeout
+[bot2] Soul Eater ep2: ERROR The operation was aborted due to timeout
+[bot4] Soul Eater ep4: ERROR The operation was aborted due to timeout
+[bot3] Soul Eater ep7: ERROR The operation was aborted due to timeout
+[bot5] Soul Eater ep8: ERROR The operation was aborted due to timeout
+[bot6] Soul Eater ep9: ERROR The operation was aborted due to timeout
+[bot1] Soul Eater ep10: ERROR The operation was aborted due to timeout
+[bot2] Soul Eater ep11: ERROR The operation was aborted due to timeout
+(node:8480) TimeoutNegativeWarning: -1791411050419 is a negative number.
+Timeout duration was set to 1.
+(Use `node --trace-warnings ...` to show where the warning was created)
+cc-sync fleet: 51 episodes, 4 bots, lang=dub, cues=3, asr-conc=2
+cc-sync fleet: 51 episodes, 4 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+[bot1] Soul Eater ep1: offset=0.40s conf=0.6 (4/4 windows, spread=9.75s)
+[bot2] Soul Eater ep2: offset=0.10s conf=0.95 (4/4 windows, spread=4.25s)
+[bot1] Soul Eater ep3: offset=2.90s conf=0.95 (4/4 windows, spread=6.75s)
+[bot3] Soul Eater ep4: offset=5.00s conf=0.3 (4/4 windows, spread=8.00s)
+[bot4] Soul Eater ep7: offset=1.90s conf=0.6 (4/4 windows, spread=12.50s)
+[bot1] Soul Eater ep6: offset=-7.00s conf=0.95 (4/4 windows, spread=6.00s)
+[bot2] Soul Eater ep5: offset=-2.50s conf=0.54 (3/4 windows, spread=4.00s)
+[bot3] Soul Eater ep8: offset=-4.40s conf=0.3 (4/4 windows, spread=11.75s)
+[bot4] Soul Eater ep9: offset=-1.10s conf=0.6 (4/4 windows, spread=15.00s)
+[bot1] Soul Eater ep10: offset=4.60s conf=0.6 (4/4 windows, spread=15.50s)
+[bot3] Soul Eater ep12: offset=1.80s conf=0.21 (2/4 windows, spread=4.00s)
+[bot2] Soul Eater ep11: offset=1.50s conf=0.3 (4/4 windows, spread=15.75s)
+[bot4] Soul Eater ep13: offset=6.30s conf=0.54 (3/4 windows, spread=7.50s)
+[bot1] Soul Eater ep14: offset=7.00s conf=0.95 (4/4 windows, spread=15.50s)
+[bot3] Soul Eater ep15: offset=-1.20s conf=0.3 (4/4 windows, spread=16.00s)
+[bot2] Soul Eater ep16: offset=-2.90s conf=0.6 (4/4 windows, spread=7.75s)
+[bot4] Soul Eater ep17: offset=-5.20s conf=0.21 (2/3 windows, spread=4.50s)
+[bot1] Soul Eater ep18: offset=-1.60s conf=0.3 (4/4 windows, spread=7.75s)
+[bot3] Soul Eater ep19: offset=1.90s conf=0.3 (4/4 windows, spread=12.25s)
+[bot2] Soul Eater ep20: offset=-1.40s conf=0.3 (4/4 windows, spread=8.50s)
+[bot4] Soul Eater ep21: offset=-1.60s conf=0.3 (4/4 windows, spread=14.75s)
+[bot1] Soul Eater ep22: offset=0.50s conf=0.27 (3/4 windows, spread=14.25s)
+[bot3] Soul Eater ep23: offset=2.00s conf=0.3 (4/4 windows, spread=11.75s)
+[bot2] Soul Eater ep24: offset=-3.90s conf=0.6 (4/4 windows, spread=8.75s)
+[bot4] Soul Eater ep25: offset=1.60s conf=0.21 (2/4 windows, spread=7.25s)
+[bot1] Soul Eater ep26: offset=3.30s conf=0.3 (4/4 windows, spread=13.50s)
+[bot3] Soul Eater ep27: offset=-1.00s conf=0.6 (4/4 windows, spread=9.25s)
+[bot2] Soul Eater ep28: offset=0.00s conf=0.3 (4/4 windows, spread=10.50s)
+[bot4] Soul Eater ep29: offset=1.10s conf=0.6 (4/4 windows, spread=10.75s)
+[bot1] Soul Eater ep30: offset=-1.70s conf=0.6 (4/4 windows, spread=10.00s)
+[bot3] Soul Eater ep31: offset=-6.70s conf=0.54 (3/4 windows, spread=12.50s)
+[bot2] Soul Eater ep32: offset=-0.20s conf=0.27 (3/4 windows, spread=6.75s)
+[bot4] Soul Eater ep33: offset=5.90s conf=0.3 (4/4 windows, spread=7.50s)
+[bot1] Soul Eater ep34: offset=4.40s conf=0.6 (4/4 windows, spread=16.00s)
+[bot3] Soul Eater ep35: offset=0.30s conf=0.6 (4/4 windows, spread=10.75s)
+[bot2] Soul Eater ep36: offset=-1.70s conf=0.3 (4/4 windows, spread=16.00s)
+[bot4] Soul Eater ep37: offset=1.50s conf=0.3 (4/4 windows, spread=16.00s)
+[bot1] Soul Eater ep38: offset=4.40s conf=0.3 (4/4 windows, spread=4.00s)
+[bot3] Soul Eater ep39: offset=-2.50s conf=0.6 (4/4 windows, spread=14.00s)
+[bot2] Soul Eater ep40: offset=-1.40s conf=0.3 (4/4 windows, spread=13.00s)
+[bot4] Soul Eater ep41: offset=1.40s conf=0.3 (4/4 windows, spread=12.75s)
+[bot1] Soul Eater ep42: offset=-1.50s conf=0.3 (4/4 windows, spread=15.50s)
+[bot3] Soul Eater ep43: offset=-1.70s conf=0.3 (4/4 windows, spread=14.00s)
+[bot2] Soul Eater ep44: offset=5.90s conf=0.95 (4/4 windows, spread=12.00s)
+[bot4] Soul Eater ep45: offset=-0.50s conf=0.6 (4/4 windows, spread=12.25s)
+[bot3] Soul Eater ep47: offset=-3.70s conf=0.27 (3/3 windows, spread=5.75s)
+[bot1] Soul Eater ep46: offset=-3.10s conf=0.3 (4/4 windows, spread=9.25s)
+[bot2] Soul Eater ep48: offset=3.30s conf=0.95 (4/4 windows, spread=3.25s)
+[bot4] Soul Eater ep49: offset=-0.50s conf=0.6 (4/4 windows, spread=13.00s)
+[bot3] Soul Eater ep50: offset=-7.60s conf=0.95 (4/4 windows, spread=4.75s)
+[bot1] Soul Eater ep51: offset=1.30s conf=0.6 (4/4 windows, spread=7.50s)
+
+fleet done in 16.3min — 51/51 episodes, 51 measured
+drift s: min=-7.60 median=0.00 max=7.00
+episodes with captions >=0.5s LATE: 22/51
+EXITED code=0 at 2026-10-07T23:04:27+00:00
+cc-sync fleet: 18 episodes, 4 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+[bot3] Deltora Quest ep54: no-dub-stream
+[bot1] Deltora Quest ep11: offset=-2.10s conf=0.6 (4/4 windows, spread=8.50s)
+[bot2] Deltora Quest ep33: offset=5.00s conf=0.6 (4/4 windows, spread=8.25s)
+[bot3] Detective Conan: Black Iron Submarine ep1: offset=-0.40s conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Black Magic M-66 ep1: offset=-0.10s conf=0.6 (4/4 windows, spread=15.00s)
+[bot1] Lupin the 3rd: Alcatraz Connection ep1: offset=0.00s conf=0.9 (3/3 windows, spread=0.50s)
+[bot1] Mega Man X - The Day of Sigma ep1: no-cc
+[bot2] Sorcerous Stabber Orphen: Battle of Kimluck ep2: offset=-5.70s conf=0.54 (3/4 windows, spread=7.00s)
+[bot3] Sorcerous Stabber Orphen: Battle of Kimluck ep6: offset=0.00s conf=0.95 (4/4 windows, spread=1.25s)
+[bot4] Sorcerous Stabber Orphen: Battle of Kimluck ep9: offset=0.50s conf=0.54 (3/4 windows, spread=5.25s)
+[bot1] A Little Snow Fairy Sugar ep4: offset=0.00s conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] A Little Snow Fairy Sugar ep12: offset=-0.20s conf=0.9 (3/4 windows, spread=0.25s)
+[bot2] New Cutey Honey ep1: no-cc
+[bot2] New Cutey Honey ep4: no-cc
+[bot2] New Cutey Honey ep7: no-cc
+[bot3] A Little Snow Fairy Sugar ep20: offset=-0.10s conf=0.95 (4/4 windows, spread=3.25s)
+[bot4] Towanoquon: The Roaring Anxiety ep1: offset=1.10s conf=0.6 (4/4 windows, spread=15.50s)
+[bot1] Full Metal Panic! The Second Raid: Zenyasai - Scene 00 ep1: offset=-0.40s conf=0.95 (4/4 windows, spread=1.75s)
+
+fleet done in 5.2min — 18/18 episodes, 13 measured
+drift s: min=-5.70 median=-0.10 max=5.00
+episodes with captions >=0.5s LATE: 3/13
+WAVE2 EXITED code=0 at 2026-10-07T23:10:05+00:00
