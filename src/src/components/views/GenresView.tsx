@@ -3,47 +3,50 @@
 import { useEffect, useState } from "react";
 import type { GenreInfo } from "@/lib/types";
 
-/* Per-genre tile identity — every regular genre tile gets its own dark-to-
- * bright gradient + icon so the grid reads as a themed board. Colors are
- * dark→saturated on purpose: white labels keep AA contrast on every stop.
+/* Per-genre tile icon. Every regular genre tile is a BASIC non-colored
+ * button (owner request 2026-10-07: same grid, same icons, same size — just
+ * neutral dark surfaces instead of the old per-genre gradients, which were
+ * deliberately retired; do NOT re-introduce colored backgrounds).
  *
- * ⚠️ REGRESSION GUARD — these two bespoke tiles are OWNER-APPROVED and must
- * survive every future redesign (they were lost once when a later session
- * reverted them; do NOT "normalize" them away again):
- *   • Pokémon  = animated GIF background + cropped classic wordmark overlay
- *   • OG       = same gradient-tile structure as the rest (👑 + gold)
- * e2e-smoke asserts both (assets 200 + markup present). */
-const GENRE_TILES: Record<string, { icon: string; g: [string, string] }> = {
-  Action: { icon: "⚡", g: ["#7f1d1d", "#dc2626"] },
-  Adventure: { icon: "🧭", g: ["#7c2d12", "#ea580c"] },
-  Comedy: { icon: "😂", g: ["#713f12", "#ca8a04"] },
-  Drama: { icon: "🎭", g: ["#4c0519", "#be123c"] },
-  Fantasy: { icon: "🐉", g: ["#4c1d95", "#8b5cf6"] },
-  Horror: { icon: "👻", g: ["#450a0a", "#991b1b"] },
-  "Mahou Shoujo": { icon: "🪄", g: ["#831843", "#db2777"] },
-  Mecha: { icon: "🤖", g: ["#292524", "#78716c"] },
-  Military: { icon: "🎖️", g: ["#1c1917", "#57534e"] },
-  Music: { icon: "🎵", g: ["#701a75", "#c026d3"] },
-  Mystery: { icon: "🕵️", g: ["#292524", "#57534e"] },
-  Psychological: { icon: "🧠", g: ["#3b0764", "#9333ea"] },
-  Romance: { icon: "💗", g: ["#4c0519", "#f43f5e"] },
-  School: { icon: "🎒", g: ["#14532d", "#16a34a"] },
-  "Sci-Fi": { icon: "🚀", g: ["#134e4a", "#0d9488"] },
-  "Slice of Life": { icon: "🍃", g: ["#365314", "#65a30d"] },
-  Sports: { icon: "🏆", g: ["#7c2d12", "#f59e0b"] },
-  "Super Power": { icon: "💥", g: ["#7c2d12", "#ef4444"] },
-  Supernatural: { icon: "🔮", g: ["#4c1d95", "#a855f7"] },
-  Thriller: { icon: "🗡️", g: ["#1c1917", "#44403c"] },
-  Ecchi: { icon: "🌶️", g: ["#831843", "#e11d48"] },
-  Isekai: { icon: "🌀", g: ["#134e4a", "#14b8a6"] },
-  Historical: { icon: "🏯", g: ["#451a03", "#b45309"] },
-  Space: { icon: "🪐", g: ["#2e1065", "#6d28d9"] },
-  Vampire: { icon: "🦇", g: ["#450a0a", "#b91c1c"] },
-  Harem: { icon: "💘", g: ["#500724", "#ec4899"] },
-  OG: { icon: "👑", g: ["#713f12", "#eab308"] },
+ * ⚠️ REGRESSION GUARDS —
+ *   • Pokémon = the ONE exception: animated GIF background + cropped classic
+ *     wordmark overlay, OWNER-APPROVED, keep exactly as-is (it was lost once
+ *     when a later session reverted it; do NOT "normalize" it away again).
+ *   • OG keeps its 👑 icon but is a basic tile now — the old gold gradient
+ *     was explicitly retired by the owner together with the other colors.
+ * e2e-smoke guards the removed Crunchyroll sync route; genre grid itself is
+ * asserted only via GET /api/genres (shape). */
+const GENRE_ICONS: Record<string, string> = {
+  Action: "⚡",
+  Adventure: "🧭",
+  Comedy: "😂",
+  Drama: "🎭",
+  Fantasy: "🐉",
+  Horror: "👻",
+  "Mahou Shoujo": "🪄",
+  Mecha: "🤖",
+  Military: "🎖️",
+  Music: "🎵",
+  Mystery: "🕵️",
+  Psychological: "🧠",
+  Romance: "💗",
+  School: "🎒",
+  "Sci-Fi": "🚀",
+  "Slice of Life": "🍃",
+  Sports: "🏆",
+  "Super Power": "💥",
+  Supernatural: "🔮",
+  Thriller: "🗡️",
+  Ecchi: "🌶️",
+  Isekai: "🌀",
+  Historical: "🏯",
+  Space: "🪐",
+  Vampire: "🦇",
+  Harem: "💘",
+  OG: "👑",
 };
 
-const TILE_FALLBACK = { icon: "📺", g: ["#1c1c1c", "#282828"] } as const;
+const TILE_FALLBACK_ICON = "📺";
 
 export default function GenresView({ onSelect }: { onSelect: (genre: string) => void }) {
   const [genres, setGenres] = useState<GenreInfo[] | null>(null);
@@ -97,21 +100,20 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
               />
             </button>
           ) : (() => {
-            // every genre tile — themed gradient + icon (OG included: same
-            // structure as the rest, gold crown gradient as its identity)
-            const tile = GENRE_TILES[g.name] ?? TILE_FALLBACK;
+            // every genre tile — basic non-colored button (owner request):
+            // neutral dark surface, same size/placement/icon as before
+            const icon = GENRE_ICONS[g.name] ?? TILE_FALLBACK_ICON;
             return (
               <button
                 key={g.name}
                 onClick={() => onSelect(g.name)}
                 aria-label={g.name}
-                className="h-[48px] rounded-md px-2 flex items-center justify-center gap-1.5 ring-1 ring-inset ring-white/10 hover:brightness-110 active:scale-95 transition"
-                style={{ background: `linear-gradient(135deg, ${tile.g[0]} 0%, ${tile.g[1]} 100%)` }}
+                className="h-[48px] rounded-md px-2 flex items-center justify-center gap-1.5 bg-[#1d1d1d] ring-1 ring-inset ring-white/10 hover:bg-[#282828] active:scale-95 transition"
               >
-                <span aria-hidden className="shrink-0 text-[14px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.6)]">
-                  {tile.icon}
+                <span aria-hidden className="shrink-0 text-[14px] leading-none">
+                  {icon}
                 </span>
-                <span className="min-w-0 text-center text-[13px] font-semibold text-white leading-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.5)]">
+                <span className="min-w-0 text-center text-[13px] font-semibold text-gray-100 leading-tight">
                   {g.name}
                 </span>
               </button>

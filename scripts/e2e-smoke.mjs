@@ -4,9 +4,9 @@
  *
  * Zero-dependency fetch suite that exercises the real deployment the way a
  * player would: browse, search, open an anime, open episodes, post/like/
- * reply/delete a comment, save progress, sign-in plumbing, Crunchyroll sync
- * guardrails, and the self-heal endpoint. Any failure prints a red line and
- * the process exits non-zero.
+ * reply/delete a comment, save progress, sign-in plumbing, absence guards
+ * for removed features (Crunchyroll sync), and the self-heal endpoint. Any
+ * failure prints a red line and the process exits non-zero.
  *
  *   BASE_URL=https://temporary-spry-granite-1f0h7ae.vercel.app node scripts/e2e-smoke.mjs
  *
@@ -94,15 +94,12 @@ async function expectJson(name, path, init, validate, timeout) {
     record("GET /api/auth/signout rejected (POST-only)", res.status === 405 || res.status === 404, `status ${res.status}`);
   }
 
-  // ---- 2b) Crunchyroll sync guardrails (identity + auth error paths) ----
+  // ---- 2b) Crunchyroll sync — REMOVED (owner asked to delete it) ----
+  // guard the absence: the route, the Profile card and the libs are gone;
+  // if this ever 200s again the feature crept back without approval.
   {
-    const noId = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ etpRt: "x".repeat(40) }) });
-    record("POST /api/crunchyroll/sync no identity -> 401", noId.status === 401, `status ${noId.status}`);
-    // junk cookie of valid length -> the route calls Crunchyroll -> CR rejects -> 401 with a helpful message
-    const junk = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ userId: `${BOT}-cr`, etpRt: "junk-value-not-a-real-cookie-xyz" }) }, 40_000);
-    record("POST /api/crunchyroll/sync junk cookie -> 401 (CR rejected)", junk.status === 401, `status ${junk.status}`);
-    const email = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ userId: `${BOT}-cr`, etpRt: "someone@example.com" }) });
-    record("POST /api/crunchyroll/sync email paste -> 400 explainer", email.status === 400, `status ${email.status}`);
+    const gone = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ etpRt: "x".repeat(40), userId: `${BOT}-cr` }) });
+    record("POST /api/crunchyroll/sync (removed -> 404)", gone.status === 404, `status ${gone.status}`);
   }
 
   // ---- 3) catalog APIs ----

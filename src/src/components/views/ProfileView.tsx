@@ -5,7 +5,6 @@ import { Camera, Check, LogOut, Pencil, Settings as SettingsIcon } from "lucide-
 import { fileToAvatarDataUrl, useProfile, useSaveProfile } from "@/lib/profile-store";
 import { restoreAccountOnSignOut } from "@/lib/account";
 import { fetchSession } from "@/components/account/AccountSync";
-import CrunchyrollSync from "@/components/account/CrunchyrollSync";
 
 /**
  * The Profile page — deliberately minimal (user ask): only the identity
@@ -224,8 +223,6 @@ export default function ProfileView({ onSettings }: { onSettings: () => void }) 
         )}
       </section>
 
-      {/* Crunchyroll — bring your Continue Watching over */}
-      <CrunchyrollSync />
     </div>
   );
 }
