@@ -1,0 +1,449 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// An anime in the Zoko catalog (identified by its MyAnimeList ID,
+// which is what Zoko's player URLs are keyed on:
+// https://zokoanime.video/download/mal/{malId}/{episode}/{sub|dub})
+model Anime {
+  malId        Int      @id
+  title        String
+  titleEnglish String?
+  image        String?
+  banner       String?
+  synopsis     String?
+  type         String?  // TV, Movie, OVA, ONA, Special
+  rating       String?  // e.g. "PG-13 - Teens 13 or older"
+  ratingShort  String?  // e.g. "PG-13"
+  status       String?  // "Currently Airing" | "Finished Airing" ...
+  airing       Boolean  @default(false)
+  season       String?  // Fall, Spring...
+  year         Int?
+  durationMin  Int?
+  score        Float?
+  rank         Int?
+  popularity   Int?
+  members      Int?
+  genres       String   @default("[]") // JSON array of genre names
+  studios      String   @default("[]") // JSON array
+  trailerYt    String?
+  logoUrl      String? // official title-logo art (fanart.tv-style clearlogo) overlaid inside poster cards
+  totalEpisodes Int     @default(0) // known episode count from MAL
+  nextEpisodeAt  Int?   // unix SECONDS (UTC) the next episode airs — null when finished/unscheduled. Powers "New episode soon" card badges + the hero countdown
+  nextEpisodeNum Int?   // number of that next episode (paired with nextEpisodeAt)
+  inCatalog     Boolean @default(true) // "Zoko has it"
+  hasDub        Boolean? // Zoko dub verdict: does a REAL (non-fake) English dub stream exist? (null = not probed yet)
+  hasDubKiwi    Boolean? // Kiwi dub verdict — same probe against the Kiwi server (null = not probed)
+  hasDubMega    Boolean? // Megaplay (yenime/flikhub) dub verdict — same probe, used to backfill missing DUB (null = not probed)
+  hasSub        Boolean? // Zoko sub verdict: does a REAL sub stream exist? (null = optimistic). Pokémon-class titles are DUB-ONLY on Zoko — sub pages are 200 empty shells
+  hasSubKiwi    Boolean? // Kiwi sub verdict — same probe against the Kiwi server (null = not probed)
+  // Per-EPISODE dub boundaries (the Elbaph fix: One Piece has dub servers, but
+  // the newest arc episodes aren't dubbed yet — the anime-level verdict can't
+  // express that). dubThru = highest episode a REAL dub is proven for (prefix
+  // boundary; 0 = proven none, null = unknown); dubHi = highest episode PROVEN
+  // dub-less (the binary search's hi bound). Maintained by the fleet bots
+  // (they literally click the DUB server and verify real audio) and by the
+  // episodes route in the background.
+  dubThruS1     Int? // Server #1 chain: zoko -> kiwi -> supaplay -> megaplay
+  dubHiS1       Int?
+  dubThruS2     Int? // Server #2 chain: kiwi -> zoko -> megaplay
+  dubHiS2       Int?
+  dubThruCheckedAt DateTime?
+  supaplayPath  String?  // SupaPlay MW detailPath (e.g. "jujutsu-kaisen-english-KD0jSM9ot5") — enables the SupaPlay DUB source for Server #1 (dub only)
+  supaplaySeason Int?   // which SupaPlay season (se=) this MAL entry maps to — multi-season subjects carry S1-S3 under one detailPath (null = 1)
+  anikotoSeriesId Int?   // AniKoto series id — unlocks the megaplay-embed DUB backfill (megaplay.buzz getSources via per-episode embed ids, dub only)
+  tmdbId        Int?    // The Movie Database id (TV or Movie), for TMDB popularity ranking
+  source        String  @default("seed") // seed | season-import | manual
+  lastSyncedAt  DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  episodes Episode[]
+
+  @@index([inCatalog, popularity])
+  @@index([airing])
+  @@index([updatedAt])
+}
+
+// One playable episode (for one audio track) of an anime.
+// Playback itself always goes through Zoko's player URL.
+model Episode {
+  id        String   @id @default(cuid())
+  animeId   Int
+  number    Int
+  title     String?
+  aired     String?  // ISO date string when it aired
+  lang      String   @default("sub") // "sub" | "dub"
+  filler    Boolean  @default(false)
+  recap     Boolean  @default(false)
+  addedAt   DateTime @default(now())
+
+  anime Anime @relation(fields: [animeId], references: [malId], onDelete: Cascade)
+
+  @@unique([animeId, number, lang])
+  @@index([animeId, lang, number])
+  @@index([addedAt])
+}
+
+// Log of each catalog sync run (episode import / new anime import)
+model SyncLog {
+  id            String   @id @default(cuid())
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  ok            Boolean  @default(false)
+  episodesAdded Int      @default(0)
+  animeAdded    Int      @default(0)
+  animeChecked  Int      @default(0)
+  detail        String?  // JSON summary or error
+}
+
+// A viewer profile. No passwords — the client generates an id (UUID) that is
+// kept in localStorage; nickname + avatar live here so comments can show them.
+model User {
+  id        String   @id
+  nickname  String   @default("Username")
+  avatar    String? // small data-URL (client resizes to 160x160 JPEG)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  progress WatchProgress[]
+  comments Comment[]
+}
+
+// Precise resume point for one (user, anime, episode): seconds watched out of
+// total seconds. Powers Continue Watching, the red bars on episode buttons and
+// "start where you were last".
+model WatchProgress {
+  id        String   @id @default(cuid())
+  userId    String
+  malId     Int
+  episode   Int
+  lang      String   @default("sub")
+  server    String   @default("zoko")
+  position  Float    @default(0) // seconds watched
+  duration  Float    @default(0) // total seconds
+  completed Boolean  @default(false)
+  title     String? // snapshot so Continue Watching survives catalog churn
+  image     String? // snapshot poster
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, malId, episode])
+  @@index([userId, updatedAt])
+  @@index([userId, malId])
+}
+
+// Aggregated in-app watch time per anime per calendar day — powers the
+// "Top 10 Today" rail on Home. Empty until someone actually watches: rows
+// only exist once real playback seconds have been recorded. `seconds`
+// accumulates from player heartbeats while a video is ACTUALLY playing
+// (paused/buffered/ended time never counts). `day` is the viewer's LOCAL
+// calendar day ("YYYY-MM-DD"), so "today" matches each user's timezone.
+model WatchStat {
+  id        String   @id @default(cuid())
+  day       String // "YYYY-MM-DD" (viewer's local calendar day)
+  malId     Int
+  seconds   Int      @default(0) // total seconds actually watched this day
+  title     String? // title snapshot from the player session
+  image     String? // poster snapshot from the player session
+  updatedAt DateTime @updatedAt
+
+  @@unique([day, malId])
+  @@index([day, seconds])
+  @@index([updatedAt])
+}
+
+// Top 10 membership-change event, surfaced in the bell notifications:
+//   "enter" — anime newly appeared in the Top 10
+//   "leave" — anime dropped out of the Top 10
+//   "up"    — anime climbed the ranking (surpassed a higher-ranked anime)
+//   "down"  — anime fell one or more ranks but is still in the Top 10
+// Deduped per (type, malId, day) so re-computations never double-notify.
+model Top10Event {
+  id        Int      @id @default(autoincrement())
+  type      String // "enter" | "leave" | "up" | "down"
+  malId     Int
+  day       String // the ranking day the event belongs to ("YYYY-MM-DD")
+  title     String
+  image     String?
+  rank      Int? // new rank (null for leaves)
+  prevRank  Int? // rank before the change (null for enters)
+  weeks     Int? // legacy (watch-time era leaves): full weeks the anime was up
+  createdAt DateTime @default(now())
+
+  @@unique([type, malId, day])
+  @@index([createdAt])
+}
+
+// Tombstones for deleted comments — the deploy carry-forward merge is
+// additive (upserts the prod dump into the bundled db), so without these a
+// comment a user deleted would resurrect on the next site update.
+model DeletedComment {
+  id        String   @id
+  deletedAt DateTime @default(now())
+}
+
+// Tombstones for "removed from Continue Watching". The player saves progress
+// from many paths (10s heartbeats, page-hide beacons, unmount flushes, cast
+// heartbeats, another tab) — any save landing just AFTER the DELETE would
+// re-insert the row and the anime would reappear in Continue Watching ("I
+// deleted it but it came back"). A removal tombstone blocks all stale saves
+// for that (user, anime) until the viewer actually plays it again.
+model RemovedProgress {
+  userId    String
+  malId     Int
+  removedAt DateTime @default(now())
+
+  @@id([userId, malId])
+  @@index([removedAt])
+}
+
+// Tiny KV store for Top 10 bookkeeping (last published/sealed day).
+model Top10Meta {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
+// Crowd-learned Skip Intro targets. When a show has no OP data anywhere
+// (brand-new seasons AniSkip hasn't yet), a viewer manually scrubbing past
+// the opening teaches the app where the OP ends for everyone. The stream API
+// uses the median of recent votes as a SkipIntro interval, so the button
+// self-corrects as people watch.
+model SkipVote {
+  id        String   @id @default(cuid())
+  malId     Int
+  ep        Int
+  target    Float // seconds the viewer scrubbed to — the implied OP end
+  createdAt DateTime @default(now())
+
+  @@index([malId, ep])
+  @@index([malId])
+}
+
+// Intro-scout fleet: VERIFIED OP openings measured from the actual streams
+// the player serves (the fleet bots watch the first minutes of every episode
+// and cross-match loudness envelopes across episodes — the opening is the
+// one part of a show that repeats identically). One row per episode; the
+// stream API prefers these over the vendored AniSkip dataset because they
+// are measured on OUR encodes, not community-submitted ones.
+model IntroScout {
+  id         String   @id @default(cuid())
+  malId      Int
+  ep         Int
+  start      Float // seconds — the measured (shared cold-open +) opening block
+  end        Float
+  quality    Float    @default(0) // envelope correlation 0-1 at match time
+  bots       Int      @default(1) // how many independent bot detections agree
+  server     String   @default("zoko")
+  nodetect   Boolean  @default(false) // true = bots watched this episode and found NO opening — the Skip Intro button is suppressed for it
+  detail     String? // JSON: gain, analyzedSec, block notes
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([malId, ep])
+  @@index([malId])
+}
+
+// Per-episode dub ground truth, measured by the fleet bots: a probe literally
+// clicks the DUB server — it runs the exact resolution chain the player's DUB
+// button runs (including fake-dub segment verification), so a miss is PROOF
+// the dub isn't there, never a sub-vs-dub detection error. Feeds the per-
+// episode dub boundaries on Anime (dubThruS1/S2).
+model DubProbe {
+  id        String   @id @default(cuid())
+  malId     Int
+  ep        Int
+  chain     String   @default("s1") // "s1" (zoko->kiwi->supaplay->megaplay) | "s2" (kiwi->zoko->megaplay)
+  ok        Boolean // true = real English dub served (provider set); false = proven absent for this episode
+  provider  String? // "zoko" | "kiwi" | "supaplay" | "yenime" when ok
+  detail    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([malId, ep, chain])
+  @@index([malId, chain])
+  @@index([updatedAt])
+}
+
+// Per-EPISODE, per-SERVER audio-language verdict for DUB streams, measured by
+// the offline fleet (ffmpeg audio decode, local machine): Zoko/Kiwi sometimes
+// mux the ORIGINAL Japanese audio into the DUB entry's different video encode
+// — the byte-compare passes (different file) but the audio is identical
+// Japanese (DAN DA DAN S1 case). Only a decoded-AUDIO comparison catches it.
+// "real" = dub audio differs from sub (and ASR spot-checks heard English);
+// "fake" = same audio as sub under a DUB label. Playback consults this table
+// to skip the fake entry and land on a real English backfill source.
+model DubAudio {
+  malId     Int
+  ep        Int
+  server    String // "zoko" | "kiwi"
+  verdict   String // "real" | "fake"
+  method    String @default("audio-md5") // audio-md5 | asr-en
+  detail    String? // transcript snippet / segment url used
+  checkedAt DateTime @default(now())
+
+  @@id([malId, ep, server])
+  @@index([server, verdict])
+}
+
+// Per-anime reference fingerprint for the fleet: the opening's normalized
+// loudness envelope (0.5 s steps, JSON array) plus its interval. Bots verify
+// every other episode against this instead of re-downloading a pair.
+model ScoutRef {
+  malId     Int      @id
+  start     Float
+  end       Float
+  env       String // JSON array of normalized RMS values (0.5 s steps)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// The fleet's report feed ("scout-07: One Piece ep 2 -> OP 31.0-111.0").
+// Ephemeral telemetry: regenerated as the bots loop, so deploys do not carry
+// it forward (IntroScout + ScoutRef are the durable artifacts).
+model ScoutFinding {
+  id        Int      @id @default(autoincrement())
+  bot       String
+  malId     Int
+  ep        Int
+  title     String
+  status    String // "ok" | "nodetect" | "error" | "establish"
+  start     Float?
+  end       Float?
+  quality   Float?
+  detail    String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Bug-patrol fleet findings. The 24/7 patrol bots crawl the site like a real
+// user — every API route (status/shape/latency), stream resolution for
+// sampled animes (sub + dub), data-consistency rules over the DB (invalid
+// intro intervals, dub-claim contradictions, orphaned rows), and poster art
+// reachability. Each distinct bug is one row, deduped by (kind, targetKey):
+// re-observations bump `count` + `lastSeen` instead of spamming new rows, and
+// a `fixed` finding that gets re-observed REOPENS automatically (the fix
+// regressed). Triage: status open -> fix -> mark fixed (via POST).
+model BugReport {
+  id        Int      @id @default(autoincrement())
+  kind      String   // "api-error" | "api-slow" | "api-shape" | "page-broken" | "stream-broken" | "dub-claim-mismatch" | "data-consistency" | "art-broken"
+  targetKey String   // stable dedup key, e.g. "GET /api/home" or "stream/malId=21/ep=1/lang=dub"
+  severity  Int      @default(2) // 1 = user-facing breakage, 2 = degraded, 3 = hygiene
+  detail    String?  // latest observation (message, latency, counts)
+  status    String   @default("open") // open | fixed | ignored
+  count     Int      @default(1) // how many sweeps re-observed it
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @updatedAt
+
+  @@unique([kind, targetKey])
+  @@index([status, severity])
+  @@index([lastSeen])
+}
+
+// Community comment on an anime (shows nickname + avatar snapshot at post time).
+// Supports one level of replies (parentId -> parent comment) and likes
+// (likedBy = JSON array of userIds; count = array length, so double-likes are
+// impossible per identity).
+model Comment {
+  id        String   @id @default(cuid())
+  malId     Int
+  userId    String
+  nickname  String
+  avatar    String?
+  text      String
+  parentId  String? // set when this comment is a reply
+  likedBy   String   @default("[]") // JSON array of userIds who liked it
+  createdAt DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies  Comment[] @relation("CommentReplies")
+
+  @@index([malId, createdAt])
+  @@index([parentId])
+}
+
+// SkipDB (skipdb.tv) bridge — MAL -> IMDb title mapping resolved once per
+// anime (Wikidata P4086+P345 dump, Jikan external links as backup). SkipDB
+// is keyed by IMDb ids, so this mapping is what lets the catalog use it.
+// `found=false` is a miss-cache: Jikan had no IMDb link — don't re-ask for
+// 30 days (Jikan is rate-limited to a trickle).
+model SkipDbTitle {
+  malId     Int      @id
+  imdbId    String? // "tt…" series id SkipDB understands
+  found     Boolean  @default(false) // true = imdbId resolved
+  via       String   @default("wikidata") // wikidata | jikan
+  checkedAt DateTime @default(now())
+}
+
+// SkipDB's per-episode skip segments, vendored into our DB by the backfill
+// bot from the official dump (ODbL 1.0) + the live API for fresh episodes.
+// This is the FALLBACK tier for anime AniSkip doesn't cover (HxH 2011,
+// Code Geass R2, Oshi no Ko, Naruto Shippuden, AoT…): the player only asks
+// for these when Zoko/scout/AniSkip all came up empty. Seconds, gated by the
+// same plausibility rules as every other tier — a wrong button is worse
+// than no button.
+model SkipDbFill {
+  id         String   @id @default(cuid())
+  malId      Int
+  ep         Int
+  kind       String // "op" | "ed"
+  start      Float
+  end        Float
+  confidence Float    @default(0) // SkipDB vote score, 0-1
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([malId, ep, kind])
+  @@index([malId])
+}
+
+// A Web Push subscription (browser opt-in — "actual notifications that pop up
+// when you're not in the app"). One row per browser endpoint; the client
+// re-upserts its subscription on every app open, so a deploy that resets the
+// SQLite file self-heals on the next visit without asking again.
+model PushSub {
+  endpoint  String   @id // the push service URL — unique per browser+install
+  p256dh    String // client public key (payload encryption)
+  auth      String // auth secret (payload encryption)
+  userId    String? // viewer profile that opted in (for future per-user filtering)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([updatedAt])
+}
+
+// Idempotency ledger for pushes — one row per logical notification so cron
+// overlap / arrival-kick storms can never double-ping ("ep:21:1123",
+// "anime:64340", "top10:2026-10-04", "soon:21:1124:1791050000").
+// Rows are cheap and wiped on deploy; a lost row at worst means one repeat.
+model PushLog {
+  key       String   @id
+  createdAt DateTime @default(now())
+}
+
+// Per-anime episode watches ("notify me about THIS anime's next episode").
+// One row per (device endpoint, anime) — created from the bell on the anime's
+// details page, managed from Settings -> Notifications. Episode pushes and
+// the daily airing-soon reminder go ONLY to these rows (opt-in per anime),
+// while catalog-level pushes (new series added, Top 10 moves) stay broadcast.
+model AnimeNotify {
+  id        Int      @id @default(autoincrement())
+  endpoint  String // the PushSub endpoint this device receives pushes through
+  malId     Int
+  title     String? // denormalized for the Settings list
+  image     String? // denormalized for the Settings list
+  createdAt DateTime @default(now())
+
+  @@unique([endpoint, malId])
+  @@index([malId])
+}

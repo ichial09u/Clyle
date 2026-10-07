@@ -32,10 +32,8 @@ const EXCLUDE = [
 // full upload died mid-loop; Sep 8's partial covered db/*; the 10 src edits
 // went up in the previous run)
 const MUST_UPLOAD = [
-  // Sep 8 backup-dub fleet gates: verdict gating in anivexa.ts + episodes route
-  "src/lib/anivexa.ts",
-  "src/app/api/anime/[malId]/episodes/route.ts",
-  "db/custom.db",
+  // the packaged catalog DB (no-op when the sha already exists server-side)
+  "src/db/custom.db",
 ];
 
 const api = async (path, init = {}) => {

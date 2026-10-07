@@ -1,0 +1,53 @@
+# dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# vercel
+.vercel/
+
+# env
+.env
+.env*.local
+
+# runtime data — jikan disk cache is rebuilt automatically
+db/jikan-cache/
+
+# logs
+dev.log
+server.log
+*.log
+!logs/.gitkeep
+
+# misc
+.DS_Store
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+bun.lockb
+
+# internal scratch
+.zscripts/
+frames/
+upload/
+scripts/seed.log
+scripts/seed-loop.log
+agent-ctx/
+tests/
+skills/
+Caddyfile
+mini-services/
+worklog.md
+download/
+.vercel
+db/export-comments.tmp.json
+
+# runtime-resolved FlixCloud masters (ephemeral JWTs, 5h TTL)
+db/flix-cache/

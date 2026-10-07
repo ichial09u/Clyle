@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 /**
- * e2e smoke — the "play-test bot" for AnimeTest123.
+ * e2e smoke — the "play-test bot" for Clyle.
  *
  * Zero-dependency fetch suite that exercises the real deployment the way a
- * player would: browse, open an anime, open episodes, post/like/reply/delete
- * a comment, save progress, and run the self-heal endpoint. Any failure is
- * printed as a red line and the process exits non-zero, so it can run from
- * cron, CI, or a watchdog loop:
+ * player would: browse, search, open an anime, open episodes, post/like/
+ * reply/delete a comment, save progress, sign-in plumbing, Crunchyroll sync
+ * guardrails, and the self-heal endpoint. Any failure prints a red line and
+ * the process exits non-zero.
  *
- *   BASE_URL=https://temporary-spry-granite-1f0h7ae.vercel.app npm run smoke
- *   node scripts/watchdog.mjs            # re-runs smoke every 15 min + logs
+ *   BASE_URL=https://temporary-spry-granite-1f0h7ae.vercel.app node scripts/e2e-smoke.mjs
  *
  * All probe writes use the "smoke-bot" identity and clean up after themselves.
  */
@@ -24,7 +23,7 @@ async function req(path, init = {}, timeout = TIMEOUT_MS) {
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), timeout);
   try {
-    return await fetch(`${BASE}${path}`, { ...init, signal: ctrl.signal, headers: { "Content-Type": "application/json", ...(init.headers ?? {}) } });
+    return await fetch(`${BASE}${path}`, { redirect: "manual", ...init, signal: ctrl.signal, headers: { "Content-Type": "application/json", ...(init.headers ?? {}) } });
   } finally {
     clearTimeout(t);
   }
@@ -33,12 +32,12 @@ async function req(path, init = {}, timeout = TIMEOUT_MS) {
 function record(name, ok, detail = "") {
   if (!ok) failed++;
   results.push({ name, ok, detail });
-  console.log(`${ok ? "\x1b[32mPASS\x1b[0m" : "\x1b[31mFAIL\x1b[0m"}  ${name}${detail ? ` — ${detail}` : ""}`);
+  console.log(`${ok ? "PASS" : "FAIL"}  ${name}${detail ? ` — ${detail}` : ""}`);
 }
 
-async function expectJson(name, path, init, validate) {
+async function expectJson(name, path, init, validate, timeout) {
   try {
-    const res = await req(path, init);
+    const res = await req(path, init, timeout);
     const body = await res.json().catch(() => null);
     const v = validate ? validate(res, body) : res.ok;
     record(name, v === true && res.ok, v === true ? "" : `status ${res.status} ${JSON.stringify(body).slice(0, 160)}`);
@@ -52,7 +51,7 @@ async function expectJson(name, path, init, validate) {
 (async () => {
   console.log(`\nSmoke-testing ${BASE}\n`);
 
-  // ---- 1) app shell ----
+  // ---- 1) app shell + sign-in pages ----
   try {
     const res = await req("/");
     const html = await res.text();
@@ -61,14 +60,76 @@ async function expectJson(name, path, init, validate) {
   } catch (err) {
     record("home page renders", false, String(err));
   }
+  try {
+    const res = await req("/signin");
+    const html = await res.text();
+    record("GET /signin (200)", res.ok, `status ${res.status}`);
+    record("signin mentions Google", res.ok && /google/i.test(html), res.ok ? "" : "no Google in HTML");
+  } catch (err) {
+    record("GET /signin (200)", false, String(err));
+  }
 
-  // ---- 2) catalog APIs ----
+  // ---- 2) Google sign-in plumbing (Task: complete sign-in framework) ----
+  try {
+    const res = await req("/api/auth/me");
+    const body = await res.json().catch(() => null);
+    record(
+      "GET /api/auth/me (configured:true, user shape)",
+      res.ok && body?.configured === true && (body?.user === null || (typeof body?.user?.id === "string" && body.user.id.startsWith("google:"))),
+      JSON.stringify(body).slice(0, 120),
+    );
+  } catch (err) {
+    record("GET /api/auth/me (configured:true, user shape)", false, String(err));
+  }
+  try {
+    const res = await req("/api/auth/google");
+    const loc = res.headers.get("location") ?? "";
+    const ok = res.status === 302 && loc.includes("accounts.google.com") && loc.includes("redirect_uri=");
+    record("GET /api/auth/google (302 -> Google chooser)", ok, `status ${res.status} loc=${loc.slice(0, 80)}`);
+  } catch (err) {
+    record("GET /api/auth/google (302 -> Google chooser)", false, String(err));
+  }
+  {
+    const res = await req("/api/auth/signout");
+    record("GET /api/auth/signout rejected (POST-only)", res.status === 405 || res.status === 404, `status ${res.status}`);
+  }
+
+  // ---- 2b) Crunchyroll sync guardrails (identity + auth error paths) ----
+  {
+    const noId = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ etpRt: "x".repeat(40) }) });
+    record("POST /api/crunchyroll/sync no identity -> 401", noId.status === 401, `status ${noId.status}`);
+    // junk cookie of valid length -> the route calls Crunchyroll -> CR rejects -> 401 with a helpful message
+    const junk = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ userId: `${BOT}-cr`, etpRt: "junk-value-not-a-real-cookie-xyz" }) }, 40_000);
+    record("POST /api/crunchyroll/sync junk cookie -> 401 (CR rejected)", junk.status === 401, `status ${junk.status}`);
+    const email = await req("/api/crunchyroll/sync", { method: "POST", body: JSON.stringify({ userId: `${BOT}-cr`, etpRt: "someone@example.com" }) });
+    record("POST /api/crunchyroll/sync email paste -> 400 explainer", email.status === 400, `status ${email.status}`);
+  }
+
+  // ---- 3) catalog APIs ----
   const home = await expectJson("GET /api/home", "/api/home", {}, (r, b) => Array.isArray(b?.hero) && b.hero.length > 0 && Array.isArray(b?.sections) && b.hero[0] && typeof b.hero[0].nextEpisodeAt !== "undefined");
   await expectJson("GET /api/latest", "/api/latest", {}, (r, b) => r.ok && b != null);
   await expectJson("GET /api/genres", "/api/genres", {}, (r, b) => r.ok && b != null);
 
-  // ---- 3) one anime end-to-end (One Piece, malId 21) ----
+  // ---- 3a) franchise search (accent/space folding + franchise completeness) ----
+  await expectJson(
+    "GET /api/search?q=one piece (franchise surfaces flagship)",
+    "/api/search?q=" + encodeURIComponent("one piece"),
+    {},
+    (r, b) => r.ok && Array.isArray(b?.catalog) && b.catalog.some((c) => c.malId === 21),
+  );
+  await expectJson(
+    "GET /api/search?q=pokemon (accent-folded franchise)",
+    "/api/search?q=pokemon",
+    {},
+    (r, b) => r.ok && Array.isArray(b?.catalog) && b.catalog.length > 0,
+  );
+
+  // ---- 3b) one anime end-to-end (One Piece, malId 21) + Elbaph art ----
   const anime = await expectJson("GET /api/anime/21", "/api/anime/21", {}, (r, b) => b?.anime?.malId === 21 || b?.malId === 21 || (b && JSON.stringify(b).includes("21")));
+  {
+    const raw = anime ? JSON.stringify(anime) : "";
+    record("One Piece posters are Elbaph arc art", raw.includes("op-elbaph-poster") && raw.includes("op-elbaph-banner"), raw.slice(0, 120));
+  }
   const eps = await expectJson(
     "GET /api/anime/21/episodes",
     "/api/anime/21/episodes",
@@ -93,9 +154,7 @@ async function expectJson(name, path, init, validate) {
     if (thru != null) console.log(`      One Piece: real dub through ep ${thru}/${eps.total} — DUB buttons hidden past it`);
   }
 
-  // ---- 3b) skip-intro data (three-tier: Zoko payload -> AniSkip dataset) ----
-  // One Piece carries Zoko-native skip data; Frieren is covered by the vendored
-  // AniSkip dataset instead. Both must expose a usable intro interval.
+  // ---- 3c) skip-intro data (three-tier: Zoko payload -> AniSkip dataset) ----
   await expectJson(
     "GET /api/stream (skip intro: Zoko-native)",
     "/api/stream?malId=21&ep=1&lang=sub&server=zoko",
@@ -109,12 +168,8 @@ async function expectJson(name, path, init, validate) {
     (r, b) => b?.skip?.intro && Number.isFinite(b.skip.intro.end) && b.skip.intro.end > b.skip.intro.start,
   );
 
-  // ---- 3b-3) FlixCloud DUB (Ranma ½ 2024 S1) -------------------------------
-  // The whole Zoko/Kiwi chain has no real dub for this title — /api/stream
-  // must land on the FlixCloud dual-audio resolver and hand back OUR-player
-  // material: a stored-master proxy URL (fkey=), the XOR key for the child
-  // playlists, and skip/subtitle data. The master playlist itself must serve
-  // plaintext through the proxy (this also warms the resolver cache).
+  // ---- 3d) FlixCloud DUB (Ranma ½ 2024 S1) — OUR-player material through
+  // the stored-master proxy (fkey= master + XOR key + plaintext master m3u8).
   {
     let flixSrc = "";
     await expectJson(
@@ -145,11 +200,7 @@ async function expectJson(name, path, init, validate) {
     }
   }
 
-  // ---- 3b) BACKUP DUB servers (the Anivexa network) ------------------------
-  // The episodes payload must always carry the backupDub key (null = still
-  // probing is fine) and an explicit backup-server dub request must resolve
-  // a real stream — falling back down the dub chain when the picked
-  // provider can't serve (that's the designed behavior).
+  // ---- 3e) BACKUP DUB servers (the Anivexa network) ----
   await expectJson(
     "GET /api/anime/21/episodes (backupDub key present)",
     "/api/anime/21/episodes",
@@ -157,7 +208,6 @@ async function expectJson(name, path, init, validate) {
     (r, b) => r.ok && "backupDub" in b && (b.backupDub === null || Array.isArray(b.backupDub)),
   );
   {
-    // explicit backup request — provider label honest even on fallback
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 75_000);
@@ -174,12 +224,7 @@ async function expectJson(name, path, init, validate) {
     }
   }
 
-  // ---- 3c) skip-intro audit: the bot walks EVERY anime in the catalog and
-  // verifies the Skip Intro data pipeline is healthy. Since the blind 8-90s
-  // heuristic was removed, an episode with no measured data shows NO button
-  // (by design) — the fleet measures those over time. The smoke check now
-  // asserts the audit RUNS and the fleet+datasets carry a healthy majority
-  // of samples (scout + exact + consensus + live + crowd), not a perfect 100%.
+  // ---- 3f) skip-intro audit: fleet + datasets must cover a healthy majority ----
   const audit = await expectJson(
     "GET /api/skip-audit (skip data pipeline healthy)",
     "/api/skip-audit",
@@ -189,7 +234,7 @@ async function expectJson(name, path, init, validate) {
       typeof b?.totals?.coveragePct === "number" &&
       b.totals.coveragePct >= 60 &&
       b?.totals?.sampled > 0 &&
-      (b.totals.scout ?? 0) > 0 && // the fleet is measuring
+      (b.totals.scout ?? 0) > 0 &&
       Array.isArray(b?.anime) &&
       b.anime.length > 0,
     60_000,
@@ -214,7 +259,7 @@ async function expectJson(name, path, init, validate) {
   const commentId = posted?.comment?.id;
 
   if (commentId) {
-    const liked = await expectJson(
+    await expectJson(
       "POST /api/comments/like (on)",
       "/api/comments/like",
       { method: "POST", body: JSON.stringify({ commentId, userId: BOT }) },
@@ -240,7 +285,7 @@ async function expectJson(name, path, init, validate) {
     );
     const del = await req("/api/comments", { method: "DELETE", body: JSON.stringify({ id: commentId, userId: BOT }) });
     record("DELETE /api/comments (cleanup)", del.ok, del.ok ? "probe + reply removed" : `status ${del.status}`);
-    // author-only guard: deleting someone else's must 403
+    // author-only guard: deleting someone else's must 403/404
     const guard = await req("/api/comments", { method: "DELETE", body: JSON.stringify({ id: commentId, userId: "someone-else" }) });
     record("DELETE guard (403 for non-author)", guard.status === 404 || guard.status === 403, `status ${guard.status}`);
   }
@@ -254,7 +299,7 @@ async function expectJson(name, path, init, validate) {
   );
   await expectJson("GET /api/continue (bot)", `/api/continue?userId=${BOT}`, {}, (r) => r.ok || r.status === 400);
 
-  // ---- 5b) watch time -> Top 10 Today (probe uses a scratch day so real rankings stay untouched) ----
+  // ---- 5b) watch time -> Top 10 Today (scratch day keeps real rankings clean) ----
   const probeDay = "1970-01-01";
   await expectJson(
     "POST /api/watchtime (roundtrip)",
@@ -262,7 +307,6 @@ async function expectJson(name, path, init, validate) {
     { method: "POST", body: JSON.stringify({ userId: BOT, malId: 21, day: probeDay, delta: 5, title: "smoke", image: null }) },
     (r, b) => r.ok && b?.ok === true,
   );
-  // negative checks: expectJson asserts res.ok, so raw 400s use req + record
   {
     const bad = await req("/api/watchtime", { method: "POST", body: JSON.stringify({ malId: 21, day: "not-a-day", delta: 5 }) });
     record("POST /api/watchtime rejects bad day", bad.status === 400, `status ${bad.status}`);
@@ -277,7 +321,6 @@ async function expectJson(name, path, init, validate) {
     const badGet = await req("/api/watchtime?day=nope");
     record("GET /api/watchtime rejects bad day", badGet.status === 400, `status ${badGet.status}`);
   }
-  // streak metadata rides every watchtime response (Netflix-style weeks badge)
   await expectJson(
     "GET /api/watchtime streak meta (scratch day)",
     `/api/watchtime?day=${probeDay}`,
@@ -314,7 +357,6 @@ async function expectJson(name, path, init, validate) {
       {},
       (r, b) => r.ok && typeof b?.publicKey === "string" && b.publicKey.startsWith("B") && b.publicKey.length > 60,
     );
-    // roundtrip a scratch subscription (fake endpoint never sent to; deleted below)
     if (key?.publicKey) {
       const endpoint = "https://fcm.googleapis.com/fcm/send/smoke-push-scratch";
       await expectJson(
@@ -373,7 +415,6 @@ async function expectJson(name, path, init, validate) {
       (r, b) => r.ok && b?.ok === true && b?.on === false,
     );
     {
-      // expectJson hard-requires res.ok — negative (4xx) checks use req+record
       const bad = await req("/api/anime-notify", { method: "POST", body: JSON.stringify({ endpoint: "http://insecure", malId: 21, on: true }) });
       record("POST /api/anime-notify rejects bad endpoint", bad.status === 400, `status ${bad.status}`);
     }
