@@ -3,50 +3,19 @@
 import { useEffect, useState } from "react";
 import type { GenreInfo } from "@/lib/types";
 
-/* Per-genre tile icon. Every regular genre tile is a BASIC non-colored
- * button (owner request 2026-10-07: same grid, same icons, same size — just
- * neutral dark surfaces instead of the old per-genre gradients, which were
- * deliberately retired; do NOT re-introduce colored backgrounds).
+/* Genre tiles — plain text buttons. Every regular genre tile is a BASIC
+ * non-colored button with NO icon/emoji (owner requests 2026-10-07: first
+ * "basic non color buttons instead of colored ones", then "remove the
+ * emojis too") — just the genre name on a neutral dark surface. The old
+ * per-genre gradients AND their emoji icons were deliberately retired;
+ * do NOT re-introduce either.
  *
- * ⚠️ REGRESSION GUARDS —
- *   • Pokémon = the ONE exception: animated GIF background + cropped classic
- *     wordmark overlay, OWNER-APPROVED, keep exactly as-is (it was lost once
- *     when a later session reverted it; do NOT "normalize" it away again).
- *   • OG keeps its 👑 icon but is a basic tile now — the old gold gradient
- *     was explicitly retired by the owner together with the other colors.
+ * ⚠️ REGRESSION GUARD — Pokémon is the ONE exception: animated GIF
+ * background + cropped classic wordmark overlay, OWNER-APPROVED, keep
+ * exactly as-is (it was lost once when a later session reverted it; do NOT
+ * "normalize" it away again).
  * e2e-smoke guards the removed Crunchyroll sync route; genre grid itself is
  * asserted only via GET /api/genres (shape). */
-const GENRE_ICONS: Record<string, string> = {
-  Action: "⚡",
-  Adventure: "🧭",
-  Comedy: "😂",
-  Drama: "🎭",
-  Fantasy: "🐉",
-  Horror: "👻",
-  "Mahou Shoujo": "🪄",
-  Mecha: "🤖",
-  Military: "🎖️",
-  Music: "🎵",
-  Mystery: "🕵️",
-  Psychological: "🧠",
-  Romance: "💗",
-  School: "🎒",
-  "Sci-Fi": "🚀",
-  "Slice of Life": "🍃",
-  Sports: "🏆",
-  "Super Power": "💥",
-  Supernatural: "🔮",
-  Thriller: "🗡️",
-  Ecchi: "🌶️",
-  Isekai: "🌀",
-  Historical: "🏯",
-  Space: "🪐",
-  Vampire: "🦇",
-  Harem: "💘",
-  OG: "👑",
-};
-
-const TILE_FALLBACK_ICON = "📺";
 
 export default function GenresView({ onSelect }: { onSelect: (genre: string) => void }) {
   const [genres, setGenres] = useState<GenreInfo[] | null>(null);
@@ -99,26 +68,20 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
                 className="relative z-10 h-[26px] w-auto max-w-[86%] object-contain drop-shadow-[0_2px_3px_rgba(0,0,0,0.7)]"
               />
             </button>
-          ) : (() => {
-            // every genre tile — basic non-colored button (owner request):
-            // neutral dark surface, same size/placement/icon as before
-            const icon = GENRE_ICONS[g.name] ?? TILE_FALLBACK_ICON;
-            return (
-              <button
-                key={g.name}
-                onClick={() => onSelect(g.name)}
-                aria-label={g.name}
-                className="h-[48px] rounded-md px-2 flex items-center justify-center gap-1.5 bg-[#1d1d1d] ring-1 ring-inset ring-white/10 hover:bg-[#282828] active:scale-95 transition"
-              >
-                <span aria-hidden className="shrink-0 text-[14px] leading-none">
-                  {icon}
-                </span>
-                <span className="min-w-0 text-center text-[13px] font-semibold text-gray-100 leading-tight">
-                  {g.name}
-                </span>
-              </button>
-            );
-          })()
+          ) : (
+            // every genre tile — basic non-colored text-only button (owner
+            // request): neutral dark surface, just the genre name
+            <button
+              key={g.name}
+              onClick={() => onSelect(g.name)}
+              aria-label={g.name}
+              className="h-[48px] rounded-md px-2 flex items-center justify-center bg-[#1d1d1d] ring-1 ring-inset ring-white/10 hover:bg-[#282828] active:scale-95 transition"
+            >
+              <span className="min-w-0 text-center text-[13px] font-semibold text-gray-100 leading-tight">
+                {g.name}
+              </span>
+            </button>
+          )
         )}
       </div>
     </div>
