@@ -51,7 +51,7 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
               key={g.name}
               onClick={() => onSelect(g.name)}
               aria-label="Pokémon"
-              className="group relative flex h-[48px] items-center justify-center rounded-md overflow-hidden bg-[#12141d] active:scale-95 transition"
+              className="group relative flex h-[48px] items-center justify-center rounded-md overflow-hidden bg-[#12141d] ring-1 ring-inset ring-white/10 hover:ring-white/30 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.55)] active:scale-95 transition duration-200"
             >
               <img
                 src="/tiles/pokemon-bg.gif"
@@ -75,7 +75,7 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
               key={g.name}
               onClick={() => onSelect(g.name)}
               aria-label={g.name}
-              className="h-[48px] rounded-md px-2 flex items-center justify-center bg-[#1d1d1d] ring-1 ring-inset ring-white/10 hover:bg-[#282828] active:scale-95 transition"
+              className="h-[48px] rounded-md px-2 flex items-center justify-center bg-[#1d1d1d] ring-1 ring-inset ring-white/10 hover:bg-[#262626] hover:ring-white/30 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.55)] active:scale-95 transition duration-200"
             >
               <span className="min-w-0 text-center text-[13px] font-semibold text-gray-100 leading-tight">
                 {g.name}

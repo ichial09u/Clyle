@@ -1108,10 +1108,26 @@ export default function WatchView({
   // button would land mid-cold-open and skip dialogue — no data, no button.
   const introSkip: { start: number; end: number } | undefined = stream?.skip?.intro;
   const outroSkip = stream?.skip?.outro;
+  // Pressed-this-appearance flags: the skip lands INSIDE the window (3 s
+  // before the OP ends), so currentTime-derived visibility alone keeps the
+  // button on screen through the seek latency AND the remaining window —
+  // the owner reported it "stays like a second longer". Once tapped, the
+  // button must vanish INSTANTLY: the flags suppress it until playback
+  // leaves the window (seeking back re-arms it for a fresh appearance).
+  const [skipIntroDismissed, setSkipIntroDismissed] = useState(false);
+  const [skipOutroDismissed, setSkipOutroDismissed] = useState(false);
   // pop up the MOMENT the opening starts — a 1 s lead absorbs timeupdate
   // granularity so the button is already on screen as the OP appears
-  const showSkipIntro = introSkip && currentTime >= introSkip.start - 1 && currentTime <= introSkip.end && !locked;
-  const showSkipOutro = outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked;
+  const showSkipIntro = Boolean(introSkip && !skipIntroDismissed && currentTime >= introSkip.start - 1 && currentTime <= introSkip.end && !locked);
+  const showSkipOutro = Boolean(outroSkip && !skipOutroDismissed && currentTime >= outroSkip.start && currentTime <= outroSkip.end && !locked);
+  // leaving the window re-arms the buttons (also covers episode switches —
+  // currentTime resets outside any window)
+  useEffect(() => {
+    const insideIntro = Boolean(introSkip && currentTime >= introSkip.start - 1 && currentTime <= introSkip.end);
+    if (!insideIntro) setSkipIntroDismissed(false);
+    const insideOutro = Boolean(outroSkip && currentTime >= outroSkip.start && currentTime <= outroSkip.end);
+    if (!insideOutro) setSkipOutroDismissed(false);
+  }, [currentTime, introSkip, outroSkip]);
 
   // Settings -> "Auto-skip intro / ending": same REAL skip data the buttons
   // use — no data, no auto-jump (a blind guess would skip dialogue). Fires
@@ -1455,6 +1471,7 @@ export default function WatchView({
           <button
             onClick={(e) => {
               e.stopPropagation();
+              setSkipOutroDismissed(true); // vanish instantly, don't wait for the seek
               seekTo(outroSkip!.end);
               showUi();
             }}
@@ -1469,8 +1486,11 @@ export default function WatchView({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              // land ~3 s BEFORE the opening ends — the viewer catches the
+              // vanish INSTANTLY on press (owner report: the button used to
+              // linger ~a second because visibility rode on currentTime,
+              // which only updates after the seek lands) — then jump to the
               // OP's final seconds (title reveal) instead of hard-cutting out
+              setSkipIntroDismissed(true);
               seekTo(Math.max(introSkip!.start, introSkip!.end - 3));
               showUi();
             }}
