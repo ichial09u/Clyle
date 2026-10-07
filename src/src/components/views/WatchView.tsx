@@ -1166,6 +1166,68 @@ export default function WatchView({
     setSubIdx(null);
   }, [stream]);
 
+  // CC-SYNC FLEET: a provider's caption track can lag (or lead) the dub
+  // audio — Soul Eater's dub CC ran seconds late. The cc-sync bots measure
+  // the exact drift per episode (ASR-align the dub audio to the cue text,
+  // median across sampled cues) and store it; here we fetch the verdict for
+  // THIS episode and shift every cue the browser materializes by -offset
+  // (positive offset = captions late -> cues move earlier). Below 250ms the
+  // drift is imperceptible, so untouched playback wins.
+  const ccOffsetRef = useRef(0);
+  useEffect(() => {
+    let ok = true;
+    ccOffsetRef.current = 0;
+    if (offline || iframeFallback) return; // offline copies / iframe embeds carry their own timing
+    fetch(`/api/captions?malId=${anime.malId}&ep=${episode}&lang=${lang}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { measured?: boolean; offsetMs?: number; confidence?: number } | null) => {
+        if (!ok || !d?.measured || typeof d.offsetMs !== "number") return;
+        if (Math.abs(d.offsetMs) < 250 || (d.confidence ?? 0) < 0.4) return;
+        ccOffsetRef.current = d.offsetMs / 1000;
+        const s = d.offsetMs > 0 ? `-${(d.offsetMs / 1000).toFixed(1)}s` : `+${(-d.offsetMs / 1000).toFixed(1)}s`;
+        const msg = `Captions auto-synced (${s})`;
+        setPlayerMsg(msg);
+        window.setTimeout(() => setPlayerMsg((m) => (m === msg ? null : m)), 5_000);
+      })
+      .catch(() => undefined);
+    return () => {
+      ok = false;
+    };
+    // stream?.src re-arms on episode/server switches (an episode can re-resolve)
+  }, [anime.malId, episode, lang, stream?.src, offline, iframeFallback]);
+
+  // Apply the drift to the native text tracks: VTTCue objects materialize
+  // when the browser parses the <track>'s VTT, so poll briefly and shift
+  // every cue not yet marked. Cue objects are per-track-instance — a caption
+  // language switch or episode change brings fresh unmarked cues, and this
+  // effect re-runs with the new track's src.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const t0 = Date.now();
+    const iv = window.setInterval(() => {
+      const off = ccOffsetRef.current;
+      if (!off) return;
+      let touched = false;
+      for (const track of Array.from(video.textTracks)) {
+        if (track.mode === "disabled") continue;
+        const cues = track.cues;
+        if (!cues) continue;
+        for (let i = 0; i < cues.length; i++) {
+          const cue = cues[i] as VTTCue & { __ccsync?: boolean };
+          if (cue.__ccsync) continue;
+          cue.startTime = Math.max(0, cue.startTime - off);
+          cue.endTime = Math.max(0.05, cue.endTime - off);
+          cue.__ccsync = true;
+          touched = true;
+        }
+      }
+      // settle once every loaded track has been shifted (or give up after 45s)
+      if ((touched && Date.now() - t0 > 4_000) || Date.now() - t0 > 45_000) window.clearInterval(iv);
+    }, 600);
+    return () => window.clearInterval(iv);
+  }, [subTrack?.src, subsOn, stream?.src]);
+
   const pct = duration > 0 ? ((scrub ?? currentTime) / duration) * 100 : 0;
   const bufPct = duration > 0 ? (buffered / duration) * 100 : 0;
   const casting = castState === "casting";

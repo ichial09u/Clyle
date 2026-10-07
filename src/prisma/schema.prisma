@@ -372,6 +372,30 @@ model Comment {
   @@index([parentId])
 }
 
+// CC-sync fleet verdict: how far a provider's caption track drifts from the
+// dub audio actually spoken (Soul Eater's dub CC ran ~seconds late). Bots
+// sample dialogue cues from the episode's VTT, transcribe the dub audio
+// around each cue with ASR, align transcript to cue text, and store the
+// MEDIAN lag. offsetMs > 0 = captions appear LATE by that much — the player
+// shifts every cue earlier by offsetMs so text lands with the voice.
+model CaptionSync {
+  malId      Int
+  ep         Int
+  lang       String   @default("dub") // "dub" | "sub" — which audio the CC rides with
+  server     String   @default("zoko") // provider the measurement was made on
+  offsetMs   Int      @default(0) // + = captions late; player shifts cues earlier
+  confidence Float    @default(0) // 0-1: matched cues x agreement
+  samples    Int      @default(0) // cues successfully aligned
+  attempted  Int      @default(0) // cues tried
+  spreadMs   Int      @default(0) // max-min across matched cues (drift indicator)
+  detail     String?  // JSON: per-cue offsets + cue times for audit
+  checkedAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([malId, ep, lang])
+  @@index([checkedAt])
+}
+
 // SkipDB (skipdb.tv) bridge — MAL -> IMDb title mapping resolved once per
 // anime (Wikidata P4086+P345 dump, Jikan external links as backup). SkipDB
 // is keyed by IMDb ids, so this mapping is what lets the catalog use it.

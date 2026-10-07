@@ -35,6 +35,16 @@ function resolveDatabaseUrl(): string {
     }
   }
 
+  // An inherited DATABASE_URL may point at a path that doesn't exist in this
+  // checkout (the dev harness injects <root>/db/custom.db while the actual
+  // database lives at <root>/src/db/custom.db) — SQLite then fails with
+  // "error 14: unable to open". Fall back to the packaged file when the
+  // configured path is missing; a real deployment always has its path.
+  const configured = process.env.DATABASE_URL.replace(/^file:/, '')
+  if (configured && !configured.startsWith(':memory:') && !existsSync(configured) && existsSync(PACKAGED_DB)) {
+    return `file:${PACKAGED_DB}`
+  }
+
   return process.env.DATABASE_URL
 }
 
