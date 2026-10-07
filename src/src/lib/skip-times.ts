@@ -53,6 +53,24 @@ type Dataset = Record<string, Record<string, EpisodeEntry>>;
 
 const data = skipDataset as unknown as Dataset;
 
+/* ------------------------------------------------------------------ *
+ * Tier 0 — owner-verified "no opening on this episode". Community
+ * sources can carry WRONG premiere rows and have no way to express
+ * absence (Tokyo Ghoul ep 1 ships a vote-backed op row in the AniSkip
+ * dump, yet the broadcast runs the cold open straight into the episode
+ * — the owner watched it: no OP, no button). An entry here outranks
+ * EVERY tier for that episode's intro: dataset exact rows, consensus,
+ * scout medians, SkipDB, live AniSkip, crowd learns. Outros are
+ * untouched (premieres still have their ED).
+ * ---------------------------------------------------------------- */
+const OWNER_NO_INTRO: Record<number, readonly number[]> = {
+  22319: [1], // Tokyo Ghoul S1 ep1 "Tragedy" — premiere has no opening
+};
+
+function ownerSaysNoIntro(malId: number, ep: number): boolean {
+  return OWNER_NO_INTRO[malId]?.includes(ep) ?? false;
+}
+
 /** median across an anime's known episodes, per type */
 const consensusCache = new Map<string, { op?: [number, number]; ed?: [number, number] }>();
 
@@ -164,7 +182,9 @@ export function withSkipData<T extends { skip?: SkipData }>(
   const zo = valid(zoko.outro) && plausibleOutro(zoko.outro) ? zoko.outro : undefined;
   const fi = valid(filled.intro) && plausibleIntro(filled.intro, opts.episodeLengthMin) ? filled.intro : undefined;
   const fo = valid(filled.outro) && plausibleOutro(filled.outro) ? filled.outro : undefined;
-  const intro = zi ?? fi;
+  // Tier 0 (owner) strips a wrong intro before it can ride any merge —
+  // the dataset/zoko payloads cannot express "no opening exists"
+  const intro = ownerSaysNoIntro(malId, ep) ? undefined : zi ?? fi;
   const outro = zo ?? fo;
   if (intro) merged.intro = intro;
   if (outro) merged.outro = outro;
@@ -236,6 +256,18 @@ export async function scoutIntro(
       const start = med(measured.map((r) => r.start));
       const end = med(measured.map((r) => r.end));
       if (end > start && end - start <= 150 && start <= 320) {
+        // PREMIERE GUARD — episode 1 is the classic no-opening episode
+        // (extended cold open, or none at all), so the anime-wide median
+        // may only button it when the fleet's measurements describe one
+        // FIXED video: lengths must agree tightly (recap bumps move the
+        // start, never the duration). Tokyo Ghoul S1's fleet "openings"
+        // span 84-124 s across episodes — the cross-match latched onto
+        // recurring non-OP content, and that noise's median must not
+        // fabricate a button on the premiere.
+        if (ep === 1) {
+          const lens = measured.map((r) => r.end - r.start);
+          if (Math.max(...lens) - Math.min(...lens) > 15) return null;
+        }
         return { interval: { start, end }, exact: false };
       }
     }
@@ -448,6 +480,9 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
   // episode (Kimetsu ep1: 10k votes vs one failed audio match). Consensus /
   // live / crowd intros are NOT protected — finale episodes genuinely drop
   // their OP and the anime-wide median must not button them.
+  // The OWNER verdict (Tier 0) suppresses UNCONDITIONALLY — a human watched
+  // the episode and confirmed no opening exists; no community row, however
+  // vote-backed, may resurrect the button (Tokyo Ghoul ep1).
   // scout + skipdb in parallel — the two sources are independent, and the
   // sequential round-trips used to add dead latency to EVERY stream resolve
   const [scout, sdbExact] = await Promise.all([
@@ -455,8 +490,9 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
     skipDbIntervals(malId, ep),
   ]);
   const confirmedNone = !!scout?.confirmedNone;
+  const ownerNone = ownerSaysNoIntro(malId, ep);
   const exactKnown = valid(stream.skip?.intro) || !!exactDatasetIntro(malId, ep) || !!sdbExact?.op;
-  const suppressIntro = confirmedNone && !exactKnown;
+  const suppressIntro = ownerNone || (confirmedNone && !exactKnown);
   if (suppressIntro) {
     delete skip.intro;
     if (!skip.outro) delete skip.source;
@@ -532,14 +568,15 @@ export async function withSkipDataLive<T extends { skip?: SkipData }>(
  * per-anime consensus), then the live tier's cache — `allowLiveFetch` also
  * permits one cached network query to AniSkip (used when probing gaps), and
  * finally the crowd-learned scrub median — the audit counts anything the
- * player would actually show. `confirmedNone` = the fleet verified there is
- * NO opening on this episode (the button is suppressed by design — not a
- * coverage gap).
+ * player would actually show. `confirmedNone` = a verified NO opening on
+ * this episode — the fleet's cross-match verdict, or the owner's watch-and-
+ * confirm override (Tier 0). The button is suppressed by design — not a
+ * coverage gap.
  */
 export interface SkipCoverage {
   intro?: SkipInterval;
   outro?: SkipInterval;
-  source: "scout" | "exact" | "consensus" | "skipdb" | "live" | "crowd";
+  source: "scout" | "exact" | "consensus" | "skipdb" | "live" | "crowd" | "owner";
   confirmedNone?: boolean;
 }
 
@@ -548,7 +585,10 @@ export async function skipCoverage(
   ep: number,
   opts: { allowLiveFetch?: boolean; episodeLengthMin?: number | null } = {},
 ): Promise<SkipCoverage | null> {
-  // scout tier first — what the player would actually use (see the priority
+  // Tier 0 first — the owner's watch-and-confirm verdict outranks every
+  // data tier (reported as an intentional suppression, not a gap)
+  if (ownerSaysNoIntro(malId, ep)) return { source: "owner", confirmedNone: true };
+  // scout tier next — what the player would actually use (see the priority
   // in withSkipDataLive). A confirmed-none yields to an exact dataset op row
   // for THIS episode (same precedence as the player merge).
   const scout = await scoutIntro(malId, ep);

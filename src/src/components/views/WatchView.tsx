@@ -1475,11 +1475,11 @@ export default function WatchView({
               seekTo(outroSkip!.end);
               showUi();
             }}
-            className={`absolute bottom-44 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
+            className={`absolute bottom-44 md:bottom-48 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] md:text-[14px] font-bold rounded-full px-4 md:px-5 py-2 md:py-2.5 transition-all duration-500 z-10 ${
               skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
-            <FastForward className="w-4 h-4 text-[#35d5bf]" /> Skip Ending
+            <FastForward className="w-4 h-4 md:w-5 md:h-5 text-[#35d5bf]" /> Skip Ending
           </button>
         ) : null}
         {showSkipIntro && !casting && !iframeFallback ? (
@@ -1494,11 +1494,11 @@ export default function WatchView({
               seekTo(Math.max(introSkip!.start, introSkip!.end - 3));
               showUi();
             }}
-            className={`absolute bottom-28 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition-all duration-500 z-10 ${
+            className={`absolute bottom-28 md:bottom-32 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] md:text-[14px] font-bold rounded-full px-4 md:px-5 py-2 md:py-2.5 transition-all duration-500 z-10 ${
               skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
-            <Zap className="w-4 h-4 text-[#35d5bf]" /> Skip Intro
+            <Zap className="w-4 h-4 md:w-5 md:h-5 text-[#35d5bf]" /> Skip Intro
           </button>
         ) : null}
 
@@ -1611,20 +1611,20 @@ export default function WatchView({
 
         {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
         <div
-          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 md:px-6 md:pb-4 md:pt-10 lg:px-10 lg:pb-5 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* controls stay readable on wide screens: cap their width, keep the
               gradient full-bleed */}
           <div className="mx-auto w-full md:max-w-[760px] lg:max-w-[1040px]">
           {!iframeFallback ? (
-            <div className="flex items-center gap-2">
-              <span className="text-[10.5px] text-gray-200 tabular-nums w-11 text-right shrink-0">{fmtTime(scrub ?? currentTime)}</span>
-              <div className="relative h-4 flex items-center flex-1">
-                <div className="absolute inset-x-0 h-[3px] bg-white/15 rounded-full overflow-hidden">
+            <div className="flex items-center gap-2 md:gap-3">
+              <span className="text-[10.5px] md:text-[12.5px] lg:text-[13.5px] text-gray-200 tabular-nums w-11 md:w-14 lg:w-16 text-right shrink-0">{fmtTime(scrub ?? currentTime)}</span>
+              <div className="relative h-4 md:h-5 flex items-center flex-1">
+                <div className="absolute inset-x-0 h-[3px] md:h-[5px] bg-white/15 rounded-full overflow-hidden">
                   <div className="h-full bg-white/25" style={{ width: `${bufPct}%` }} />
                 </div>
-                <div className="absolute h-[3px] bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
+                <div className="absolute h-[3px] md:h-[5px] bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
                 <input
                   ref={seekRef}
                   type="range"
@@ -1647,15 +1647,15 @@ export default function WatchView({
                     }
                   }}
                   onBlur={() => setScrub(null)}
-                  className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
+                  className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 md:h-5 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 md:[&::-webkit-slider-thumb]:w-4 md:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
                   aria-label="Seek"
                 />
               </div>
-              <span className="text-[10.5px] text-gray-200 tabular-nums w-11 shrink-0">{fmtTime(duration)}</span>
+              <span className="text-[10.5px] md:text-[12.5px] lg:text-[13.5px] text-gray-200 tabular-nums w-11 md:w-14 lg:w-16 shrink-0">{fmtTime(duration)}</span>
             </div>
           ) : null}
 
-      <div className="mt-1 flex items-center justify-between">
+      <div className="mt-1 md:mt-2.5 flex items-center justify-between">
         <ControlButton icon={SkipBack} label="Previous" onClick={() => go(episode - 1)} disabled={episode <= 1} />
         <ControlButton icon={Lock} label="Lock" onClick={() => setLocked(true)} />
         <ControlButton icon={SlidersHorizontal} label="Quality" onClick={() => setPanel("quality")} />
@@ -1883,15 +1883,16 @@ function ControlButton({
   disabled?: boolean;
   active?: boolean;
 }) {
-  // reference style: icon and label side-by-side in one row inside the player
+  // reference style: icon and label side-by-side in one row inside the player;
+  // desktop (md/lg) scales up so the row is readable across a fullscreen TV
   return (
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center gap-1 disabled:opacity-30 active:scale-95 transition px-0.5 py-1 ${active ? "text-[#ff5252]" : "text-gray-200 hover:text-white"}`}
+      className={`flex items-center gap-1 md:gap-1.5 disabled:opacity-30 active:scale-95 transition px-0.5 md:px-1.5 py-1 cursor-pointer ${active ? "text-[#ff5252]" : "text-gray-200 hover:text-white"}`}
     >
-      <Icon className="w-3 h-3 md:w-3.5 md:h-3.5 shrink-0" />
-      <span className="text-[10.5px] md:text-[11.5px] leading-none whitespace-nowrap">{label}</span>
+      <Icon className="w-3 h-3 md:w-[18px] md:h-[18px] lg:w-[22px] lg:h-[22px] shrink-0" />
+      <span className="text-[10.5px] md:text-[12.5px] lg:text-[14px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );
 }

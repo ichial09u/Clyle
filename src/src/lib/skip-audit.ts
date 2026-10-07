@@ -93,10 +93,13 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
       let source: SkipAuditEpisode["source"] = "uncovered";
       let introEnd: number | null = cov?.intro?.end ?? null;
       if (cov?.intro) {
-        source = cov.source;
+        // an "owner" row can never carry an intro today (it means the owner
+        // verified there IS no opening) — but if one ever does, count it as
+        // an intentional suppression, not a data source
+        source = cov.source === "owner" ? "na" : cov.source;
       } else if (cov?.confirmedNone) {
-        // the fleet watched this episode: there IS no opening — the button
-        // is suppressed on purpose, exactly as designed
+        // the fleet watched this episode (or the owner confirmed it): there
+        // IS no opening — the button is suppressed on purpose, as designed
         source = "na";
       } else if (
         // non-TV content (movies, music videos, ONA/OVA/special episodes)
@@ -130,6 +133,7 @@ export async function runSkipAudit(probe = false, probeBudget = 6): Promise<Skip
         if (e.source !== "uncovered") continue;
         const cov = await skipCoverage(row.malId, e.ep); // reads the warmed live cache
         if (cov?.intro) {
+          if (cov.source === "owner") continue; // owner suppression — not coverage
           e.source = cov.source;
           e.introEnd = cov.intro.end;
           row.ok = true;
