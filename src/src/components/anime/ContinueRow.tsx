@@ -62,7 +62,7 @@ export default function ContinueRow({
             <div key={item.malId} className="relative shrink-0 snap-start">
               <button
                 onClick={() => onResume(item)}
-                className="group relative block w-[150px] h-[212px] md:w-[172px] md:h-[243px] lg:w-[192px] lg:h-[271px] rounded-[12px] overflow-hidden bg-[#161616] active:scale-[0.97] transition"
+                className="group relative block w-[150px] h-[212px] md:w-[172px] md:h-[243px] lg:w-[192px] lg:h-[271px] rounded-[12px] overflow-hidden bg-[#161616] ring-1 ring-inset ring-white/[0.06] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:ring-white/30 hover:shadow-[0_10px_22px_rgba(0,0,0,0.55)] active:scale-[0.97]"
                 aria-label={`Resume ${item.title} episode ${item.episode}`}
               >
                 {item.image ? (

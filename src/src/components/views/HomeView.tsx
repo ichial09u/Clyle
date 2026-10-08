@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, Fragment } from "react";
 import type { AnimeLite, ContinueItem, HomePayload } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import Row from "@/components/anime/Row";
@@ -37,12 +37,15 @@ export default function HomeView({
   onWatch,
   onResume,
   onTop50,
+  onGenre,
 }: {
   onSelect: (a: AnimeLite) => void;
   onDetails: (a: AnimeLite) => void;
   onWatch: (a: AnimeLite) => void;
   onResume: (item: ContinueItem) => void;
   onTop50: () => void;
+  /** "See More" on a genre rail — opens the full genre grid */
+  onGenre: (genre: string) => void;
 }) {
   const [data, setData] = useState<HomePayload | null>(null);
   const [error, setError] = useState(false);
@@ -130,6 +133,21 @@ export default function HomeView({
     fetchArriving(fresh).then(setArriving).catch(() => undefined);
   }, []);
 
+  // Most Watched on Clyle — LIVE, REAL, GLOBAL. Every viewer's player
+  // heartbeats land in the server's WatchStat table (site + app combined);
+  // this rail fetches the all-time aggregate fresh on every open, on every
+  // foreground return, and on a 60s poll — no home-cache staleness, no
+  // per-device slice. Hidden entirely until people actually watch things.
+  const [watched, setWatched] = useState<AnimeLite[]>([]);
+  const refreshWatched = useCallback(() => {
+    fetch("/api/watchtime?all=1&limit=12", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { items?: Array<AnimeLite & { seconds: number }> }) => {
+        setWatched((d.items ?? []).filter((a) => a.seconds > 60));
+      })
+      .catch(() => undefined);
+  }, []);
+
   useEffect(() => {
     let followUp: ReturnType<typeof setTimeout> | null = null;
     const open = () => {
@@ -154,6 +172,22 @@ export default function HomeView({
       clearInterval(poll);
     };
   }, [refreshArriving]);
+
+  // Most Watched lifecycle: fresh on open + foreground return + 60s poll
+  useEffect(() => {
+    refreshWatched();
+    const onVis = () => {
+      if (document.visibilityState === "visible") refreshWatched();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    const poll = setInterval(() => {
+      if (document.visibilityState === "visible") refreshWatched();
+    }, 60_000);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      clearInterval(poll);
+    };
+  }, [refreshWatched]);
 
   useEffect(() => {
     let cancelled = false;
@@ -245,8 +279,24 @@ export default function HomeView({
             <p className="px-4 mt-2 text-[11px] text-gray-500">Catalog updated {timeAgo(data.lastSync.at)}</p>
           ) : null}
           {data.sections.map((s) => (
-            <Row key={s.key} title={s.title} items={s.items} onSelect={onSelect} />
+            <Fragment key={s.key}>
+              {/* Most Watched rides LIVE in the slot the cached payload used
+                  to fill (right before Top Airing) */}
+              {s.key === "top-airing" && watched.length ? (
+                <Row title="Most Watched on Clyle" items={watched} onSelect={onSelect} />
+              ) : null}
+              <Row
+                title={s.title}
+                items={s.items}
+                onSelect={onSelect}
+                onMore={s.key.startsWith("genre-") ? () => onGenre(s.title) : undefined}
+              />
+            </Fragment>
           ))}
+          {/* fallback slot — the rail still shows when Top Airing dropped */}
+          {!data.sections.some((s) => s.key === "top-airing") && watched.length ? (
+            <Row title="Most Watched on Clyle" items={watched} onSelect={onSelect} />
+          ) : null}
         </>
       ) : null}
 

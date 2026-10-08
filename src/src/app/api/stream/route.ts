@@ -13,6 +13,7 @@ import {
   type BackupServerId,
 } from "@/lib/backup-servers";
 import { withSkipDataLive } from "@/lib/skip-times";
+import { episodeHeights } from "@/lib/episode-quality";
 import { ZOKO_REFERER } from "@/lib/stream-proxy-registry";
 import { db } from "@/lib/db";
 import type { Lang, ServerId } from "@/lib/zoko";
@@ -69,7 +70,7 @@ export async function GET(req: Request) {
     // Zoko rotates CDN domains (aniwatchtv.uk -> 1embed.buzz -> next), and the
     // proxy's static allowlist can never keep up. With rf= present the proxy
     // accepts the master playlist, and every child inherits the same rf.
-    return respond(malId, ep, stream, backupWanted ? "zoko" : server, backupWanted ? "zoko" : server, ZOKO_REFERER);
+    return respond(malId, ep, lang, stream, backupWanted ? "zoko" : server, backupWanted ? "zoko" : server, ZOKO_REFERER);
   }
 
   // ---- explicit BACKUP DUB server request ("DUB AniNeko" button) --------
@@ -85,7 +86,7 @@ export async function GET(req: Request) {
     const title = animeRow?.titleEnglish?.trim() || animeRow?.title || null;
     const backup = await anivexaDubStream(malId, ep, { title, prefer: provider, maxAttempts: 1 }).catch(() => null);
     if (backup) {
-      return respond(malId, ep, { src: backup.src, subtitles: [] }, server, server, backup.referer);
+      return respond(malId, ep, lang, { src: backup.src, subtitles: [] }, server, server, backup.referer);
     }
     // else: fall through — better a real dub from another source than a 404
   }
@@ -104,7 +105,7 @@ export async function GET(req: Request) {
       // flix.src is already a proxy URL serving the stored synthesized master
       // (the raw JWT master is IP-bound, so it never reaches the player raw);
       // pk rides along for the child playlists the proxy fetches later
-      return respond(malId, ep, { src: flix.src, subtitles: flix.subtitles, skip: flix.skip }, server, "flix", FLIX_REFERER, flix.pk);
+      return respond(malId, ep, lang, { src: flix.src, subtitles: flix.subtitles, skip: flix.skip }, server, "flix", FLIX_REFERER, flix.pk);
     }
     return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
@@ -129,9 +130,9 @@ export async function GET(req: Request) {
   const pOther = resolveStream(malId, ep, "dub", other, { fresh }).catch(() => null);
 
   const requested = await pRequested;
-  if (requested) return respond(malId, ep, requested, mainServer, mainServer, ZOKO_REFERER);
+  if (requested) return respond(malId, ep, lang, requested, mainServer, mainServer, ZOKO_REFERER);
   const alt = await pOther;
-  if (alt) return respond(malId, ep, alt, other, other, ZOKO_REFERER);
+  if (alt) return respond(malId, ep, lang, alt, other, other, ZOKO_REFERER);
 
   // Phase B — the DUB backfill sources, all at once. SupaPlay only belongs
   // to Server #1 requests (its DUB source); megaplay/yenime is Server #2's,
@@ -151,11 +152,11 @@ export async function GET(req: Request) {
   })().catch(() => null);
 
   const supa = await pSupa;
-  if (supa) return respond(malId, ep, supa, mainServer, "supaplay");
+  if (supa) return respond(malId, ep, lang, supa, mainServer, "supaplay");
   const mega = await pMega;
-  if (mega) return respond(malId, ep, mega, mainServer, "yenime");
+  if (mega) return respond(malId, ep, lang, mega, mainServer, "yenime");
   const koto = await pKoto;
-  if (koto) return respond(malId, ep, koto, mainServer, "megaplay-embed");
+  if (koto) return respond(malId, ep, lang, koto, mainServer, "megaplay-embed");
 
   // Phase C — the Anivexa backup network, the final net. One provider
   // attempt here keeps the worst-case dub latency bounded; a provider that
@@ -165,7 +166,7 @@ export async function GET(req: Request) {
     maxAttempts: 1,
   }).catch(() => null);
   if (backup) {
-    return respond(malId, ep, { src: backup.src, subtitles: [] }, server, backupServerId(backup.provider), backup.referer);
+    return respond(malId, ep, lang, { src: backup.src, subtitles: [] }, server, backupServerId(backup.provider), backup.referer);
   }
 
   return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
@@ -175,6 +176,7 @@ export async function GET(req: Request) {
 async function respond(
   malId: number,
   ep: number,
+  lang: Lang,
   stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
   serverUsed: ServerId,
   provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | ServerId,
@@ -186,11 +188,20 @@ async function respond(
   // (the live query wants the episode's length in minutes for its filters)
   const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
   const enriched = await withSkipDataLive(malId, ep, stream, { episodeLengthMin: meta?.durationMin });
+  // the episode's REAL resolution ladder — fleet-measured or parsed from the
+  // master playlist now (persisted either way). Drives the download dialog's
+  // options: old shows list 360p only, never a 1080p that doesn't exist.
+  // Only resolvable for direct URLs (proxy-served synthesized masters are
+  // skipped — the fallback ladder applies there).
+  const heights = /^https?:\/\//i.test(stream.src)
+    ? await episodeHeights(malId, ep, lang, stream.src, referer).catch(() => null)
+    : null;
   return NextResponse.json(
     {
       ...enriched,
       serverUsed,
       provider,
+      ...(heights && heights.length ? { heights } : {}),
       // backup dub sources need their Referer riding along on every proxy
       // fetch (rf param) — the player forwards it on the first playlist call
       ...(referer ? { referer } : {}),

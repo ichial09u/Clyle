@@ -201,29 +201,33 @@ export async function GET() {
     }
   }
 
-  // Most Watched: 100% REAL — all-time WatchStat seconds (the player only
-  // records rows while a video actually plays). The smoke-bot scratch day
-  // (1970-01-01) is excluded. When nobody has genuinely watched anything yet,
-  // the section is OMITTED instead of faking a popularity clone.
-  const watchRows = await db.watchStat.groupBy({
-    by: ["malId"],
-    where: { day: { not: "1970-01-01" } },
-    _sum: { seconds: true },
-    orderBy: { _sum: { seconds: "desc" } },
-    take: 24,
-  });
-  const watchOrder = watchRows.map((w) => byId.get(w.malId)).filter((a): a is AnimeLite => !!a);
-  const mostWatched = watchOrder.length >= 4 ? claim(watchOrder, 12) : [];
+  // Most Watched moved OUT of this payload: the home cache (60s) + the CDN
+  // cache (s-maxage 60 + SWR 120) made it up to ~3 minutes stale. The client
+  // now renders it live from /api/watchtime?all=1 (no-store) — REAL all-time
+  // seconds from every viewer on the site + app combined, fresh on every
+  // open and every 60s poll.
 
   const sections: HomePayload["sections"] = [
     { key: "spotlight", title: "Spotlight", items: spotlight },
     { key: "trending", title: "Trending", items: trending.length ? trending : claim(byPop, 12) },
     { key: "most-popular", title: "Most Popular", items: mostPopular.length ? mostPopular : claim(byScore, 12) },
-    ...(mostWatched.length ? [{ key: "most-watched", title: "Most Watched", items: mostWatched }] : []),
     { key: "top-airing", title: "Top Airing", items: topAiring },
     { key: "most-favorite", title: "Most Favorite", items: mostFavorite },
     { key: "new-episodes", title: "New Episodes", items: newEpisodes.length ? newEpisodes : claim(byPop, 12) },
   ];
+
+  // GENRE rails — "See More" discovery for the big genres (owner ask: on PC
+  // there was no way to browse the rest of a genre from the home screen).
+  // Each rail claims titles the earlier rails didn't use; the key prefix
+  // `genre-` tells the client to attach the See More jump to /genre/{name}.
+  const GENRE_RAILS = ["Action", "Adventure", "Comedy", "Fantasy", "Sci-Fi", "Romance"];
+  for (const g of GENRE_RAILS) {
+    const inGenre = catalog
+      .filter((a) => a.genres.includes(g))
+      .sort((a, b) => (a.popularity ?? 999999) - (b.popularity ?? 999999));
+    const picked = claim(inGenre, 12);
+    if (picked.length >= 4) sections.push({ key: `genre-${g.toLowerCase()}`, title: g, items: picked });
+  }
   // Top 10 Today moved to /api/watchtime — it now ranks anime by how long
   // people ACTUALLY watch them per day, and stays empty until they do.
 

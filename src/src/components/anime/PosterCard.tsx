@@ -28,12 +28,12 @@ export default function PosterCard({
   return (
     <button
       onClick={onClick}
-      className={`relative shrink-0 overflow-hidden rounded-[6px] bg-[#161616] text-left active:scale-[0.97] hover:opacity-90 transition ${className}`}
+      className={`group relative shrink-0 overflow-hidden rounded-[6px] bg-[#161616] text-left ring-1 ring-inset ring-white/[0.06] transition-all duration-200 ease-out hover:-translate-y-0.5 hover:ring-1 hover:ring-inset hover:ring-white/30 hover:shadow-[0_10px_22px_rgba(0,0,0,0.55)] active:scale-[0.97] hover:opacity-100 ${className}`}
       aria-label={title}
       title={title}
     >
       {image ? (
-        <img src={image} alt={title} loading="lazy" className="w-full h-full object-cover" draggable={false} />
+        <img src={image} alt={title} loading="lazy" className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]" draggable={false} />
       ) : (
         <div className="w-full h-full flex items-end p-2">
           <span className="font-slab text-[12px] leading-tight text-gray-300 line-clamp-3">{title}</span>

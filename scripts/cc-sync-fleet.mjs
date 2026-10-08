@@ -29,7 +29,7 @@
  */
 import { execFile as _execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, writeFileSync, appendFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -368,32 +368,61 @@ async function measureEpisode(malId, ep, title) {
   }
   const good = results.filter((r) => r.d != null && r.d >= LAG_MIN && r.d <= LAG_MAX);
   const attempted = results.length;
-  let offsetMs = 0, confidence = 0, spreadMs = 0;
+  let offsetMs = 0, confidence = 0, spreadMs = 0, driftMsPerMin = 0, fitR2 = 0;
   if (good.length) {
     const ds = good.map((r) => r.d);
     const med = medianOf(ds);
     const spread = Math.max(...ds) - Math.min(...ds);
-    offsetMs = Math.round((med * 1000) / 100) * 100;
+
+    // ---- LINEAR DRIFT FIT (the scene-skew killer) ----
+    // A dub encode whose audio runs at a different effective speed than the
+    // sub-timed CC produces window lags that GROW through the episode: the
+    // median is then a compromise nobody experiences (Task 23 left exactly
+    // those episodes untouched). Fit lag(t) = a·t + b across the windows —
+    // with >=3 windows the slope is trustworthy, and R² says how linear the
+    // drift really is. slope=0 reduces to the old constant shift.
+    let slope = 0, intercept = med;
+    if (good.length >= 3) {
+      const n = good.length;
+      const mx = good.reduce((s, r) => s + r.w0, 0) / n;
+      const my = ds.reduce((s, d) => s + d, 0) / n;
+      let sxy = 0, sxx = 0;
+      for (const r of good) { sxy += (r.w0 - mx) * (r.d - my); sxx += (r.w0 - mx) ** 2; }
+      if (sxx > 1) {
+        slope = sxy / sxx;
+        intercept = my - slope * mx;
+        const ssTot = ds.reduce((s, d) => s + (d - my) ** 2, 0);
+        const ssRes = good.reduce((s, r) => s + (r.d - (intercept + slope * r.w0)) ** 2, 0);
+        fitR2 = ssTot > 1e-9 ? Math.max(0, Math.min(1, 1 - ssRes / ssTot)) : 1;
+      }
+    }
+    // only trust the linear term when the fit genuinely explains the windows
+    const slopeSignificant = Math.abs(slope * 60000) >= 500 && fitR2 >= 0.4;
+    if (!slopeSignificant) { slope = 0; intercept = med; fitR2 = 0; }
+    driftMsPerMin = Math.round(slope * 60000);
+    offsetMs = Math.round((intercept * 1000) / 100) * 100;
     spreadMs = Math.round(spread * 1000);
+
     const bestProm = Math.max(...good.map((r) => r.prominence ?? 0));
     const promFactor = bestProm >= 0.1 ? 1 : bestProm >= 0.06 ? 0.85 : bestProm >= 0.04 ? 0.7 : 0.5;
-    // MAD-style agreement: windows voting with the median (outliers rejected)
-    // beat a raw max-min spread — dub pacing scatters, one bad music lock
-    // shouldn't sink a 3-window consensus
-    const agreement = ds.filter((d) => Math.abs(d - med) <= 1.25).length / ds.length;
+    // agreement is measured against the MODEL (fit when drifting, median
+    // otherwise): windows voting with the model beat a raw max-min spread
+    const model = slopeSignificant ? (w) => intercept + slope * w : () => med;
+    const agreement = good.filter((r) => Math.abs(r.d - model(r.w0)) <= 1.25).length / good.length;
     const agreeFactor = agreement >= 0.75 ? 1 : agreement >= 0.5 ? 0.6 : 0.3;
     const countFactor = good.length >= 4 ? 1 : good.length === 3 ? 0.9 : good.length === 2 ? 0.7 : 0.45;
     confidence = Math.min(0.95, promFactor * agreeFactor * countFactor);
   }
   return {
     ep, status: "ok", server: resolved.server, offsetMs, confidence: +confidence.toFixed(2),
-    samples: good.length, attempted, spreadMs,
+    samples: good.length, attempted, spreadMs, driftMsPerMin, fitR2: +fitR2.toFixed(2),
     detail: JSON.stringify({
       windows: results.map((r) => ({ w0: +r.w0.toFixed(0), d: r.d == null ? null : +r.d.toFixed(2), score: r.score, prom: r.prominence, on: r.onBins, off: r.offBins, reason: r.reason })),
+      fit: { slopePerMin: driftMsPerMin, interceptS: +(offsetMs / 1000).toFixed(2), r2: +fitR2.toFixed(2) },
       ccIsSubTiming,
       track: (track.label || "").slice(0, 40),
       providerHost: new URL(resolved.src).hostname,
-    }).slice(0, 1200),
+    }).slice(0, 1400),
   };
 }
 
@@ -407,13 +436,15 @@ async function persist(malId, title, r) {
     where: { malId_ep_lang: { malId, ep: r.ep, lang: LANG } },
     create: {
       malId, ep: r.ep, lang: LANG, server: r.server || "", offsetMs: r.offsetMs,
+      driftMsPerMin: r.driftMsPerMin ?? 0, fitR2: r.fitR2 ?? 0,
       confidence: r.confidence, samples: r.samples, attempted: r.attempted,
       spreadMs: r.spreadMs, detail: r.detail, checkedAt: new Date(),
     },
     update: {
-      server: r.server || "", offsetMs: r.offsetMs, confidence: r.confidence,
-      samples: r.samples, attempted: r.attempted, spreadMs: r.spreadMs,
-      detail: r.detail, checkedAt: new Date(),
+      server: r.server || "", offsetMs: r.offsetMs,
+      driftMsPerMin: r.driftMsPerMin ?? 0, fitR2: r.fitR2 ?? 0,
+      confidence: r.confidence, samples: r.samples, attempted: r.attempted,
+      spreadMs: r.spreadMs, detail: r.detail, checkedAt: new Date(),
     },
   });
   appendFileSync(REPORT_JSONL, JSON.stringify({ at: new Date().toISOString(), malId, title, ...r }) + "\n");
@@ -480,7 +511,7 @@ async function bot(id) {
     try {
       if (!FORCE) {
         const existing = await db.captionSync.findUnique({ where: { malId_ep_lang: { malId, ep, lang: LANG } } }).catch(() => null);
-        if (existing && existing.confidence >= 0.6) {
+        if (existing && existing.confidence >= 0.6 && (existing.offsetMs !== 0 || existing.driftMsPerMin !== 0)) {
           log(`[bot${id}] ${title} ep${ep}: cached conf=${existing.confidence} offset=${existing.offsetMs}ms — skip`);
           progress.done++; progress.results.push({ malId, title, ep, offsetMs: existing.offsetMs, confidence: existing.confidence, samples: existing.samples, status: "cached" });
           saveProgress();
@@ -490,7 +521,7 @@ async function bot(id) {
       const r = await measureEpisode(malId, ep, title);
       await persist(malId, title, r);
       const pretty = r.status === "ok"
-        ? `offset=${(r.offsetMs / 1000).toFixed(2)}s conf=${r.confidence} (${r.samples}/${r.attempted} windows, spread=${(r.spreadMs / 1000).toFixed(2)}s)`
+        ? `offset=${(r.offsetMs / 1000).toFixed(2)}s drift=${((r.driftMsPerMin ?? 0) / 1000).toFixed(2)}s/min conf=${r.confidence} (${r.samples}/${r.attempted} windows, spread=${(r.spreadMs / 1000).toFixed(2)}s)`
         : r.status;
       log(`[bot${id}] ${title} ep${ep}: ${pretty}`);
       progress.done++; progress.results.push({ malId, title, ep, status: r.status, offsetMs: r.offsetMs ?? null, confidence: r.confidence ?? null, samples: r.samples ?? 0 });
@@ -504,6 +535,9 @@ async function bot(id) {
 }
 
 await Promise.all(Array.from({ length: Math.min(WORKERS, jobs.length) }, (_, i) => bot(i + 1)));
+// segment dumps are 10-70MB PER WINDOW — across a fleet run that is gigabytes;
+// several runs filled the sandbox disk to ENOSPC. Always clean the workdir.
+try { rmSync(WORK, { recursive: true, force: true }); } catch { /* best effort */ }
 const mins = ((Date.now() - t0) / 60000).toFixed(1);
 const measuredRows = progress.results.filter((r) => r.status === "ok" && r.offsetMs != null);
 const drifts = measuredRows.map((r) => r.offsetMs / 1000);

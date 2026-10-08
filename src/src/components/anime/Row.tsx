@@ -24,8 +24,9 @@ export default function Row({
       <div className="flex items-center justify-between px-4 mb-2.5">
         <h2 className="font-slab text-[21px] font-bold">{title}</h2>
         {onMore ? (
-          <button onClick={onMore} className="text-gray-400 hover:text-white transition" aria-label={`More ${title}`}>
-            <ChevronRight className="w-5 h-5" />
+          <button onClick={onMore} className="flex items-center gap-0.5 text-[12px] font-semibold text-gray-400 hover:text-white active:scale-95 transition pb-0.5" aria-label={`See more ${title}`}>
+            See More
+            <ChevronRight className="w-4 h-4" />
           </button>
         ) : null}
       </div>

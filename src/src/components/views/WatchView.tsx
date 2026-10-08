@@ -19,7 +19,7 @@ import { artUrl } from "@/lib/art";
 import { enqueueEpisodeSave, type SaveState } from "@/lib/offline-download";
 
 type Panel = null | "quality" | "speed" | "subs";
-type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null };
+type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[] };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -397,18 +397,61 @@ export default function WatchView({
     [showUi],
   );
 
-  /* -------- Escape closes any open panel (then the download dialog) -------- */
+  /* -------- desktop keyboard: Space = play/pause, ←/→ = skip ±10s,
+            Escape = close panel/dialog → leave fullscreen → exit player.
+            Ignored while typing in a field or when a real button/ control has
+            focus (Space on a focused button must stay a button press). */
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  const currentTimeRef = useRef(0);
+  currentTimeRef.current = currentTime;
+  const durationRef = useRef(0);
+  durationRef.current = duration;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
-      if (panelRef.current) {
-        setPanel(null);
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+
+      if (e.key === "Escape") {
+        if (panelRef.current) {
+          setPanel(null);
+          return;
+        }
+        if (downloadOpenRef.current) {
+          setDownloadOpen(false);
+          return;
+        }
+        // first Esc leaves fullscreen (explicit, so the SAME press can never
+        // also exit the player); the NEXT Esc exits the player entirely
+        if (typeof document !== "undefined" && document.fullscreenElement) {
+          void document.exitFullscreen().catch(() => undefined);
+          return;
+        }
+        onBackRef.current();
         return;
       }
-      if (downloadOpenRef.current) setDownloadOpen(false);
+
+      if (castStateRef.current === "casting") return; // the TV owns transport
+      if (e.key === " " || e.code === "Space") {
+        if (e.repeat) return;
+        e.preventDefault(); // don't scroll the page
+        togglePlay();
+        showUi();
+        return;
+      }
+      if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const base = currentTimeRef.current;
+        const target = e.key === "ArrowRight" ? base + 10 : base - 10;
+        seekTo(Math.max(0, Math.min(durationRef.current || target, target)));
+        showUi();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const total = anime.totalEpisodes || episode;
@@ -538,7 +581,7 @@ export default function WatchView({
         }
         const data = (await res.json()) as Resolved;
         if (!cancelled) {
-          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null });
+          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined });
           // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
           // network) kick in when neither Zoko nor Kiwi carries a real dub —
           // say so, it explains any minor differences (sub style, quality ladder)
@@ -1168,24 +1211,49 @@ export default function WatchView({
 
   // CC-SYNC FLEET: a provider's caption track can lag (or lead) the dub
   // audio — Soul Eater's dub CC ran seconds late. The cc-sync bots measure
-  // the exact drift per episode (ASR-align the dub audio to the cue text,
-  // median across sampled cues) and store it; here we fetch the verdict for
-  // THIS episode and shift every cue the browser materializes by -offset
-  // (positive offset = captions late -> cues move earlier). Below 250ms the
-  // drift is imperceptible, so untouched playback wins.
+  // the exact drift per episode (DSP cross-correlation of caption activity
+  // vs the voice-band loudness envelope, several windows per episode) and
+  // store two terms:
+  //   offsetMs      a CONSTANT lag (per-encode leading trim)
+  //   driftMsPerMin a LINEAR term — captions gain this many ms per playback
+  //                 minute (the dub audio runs at a different effective speed
+  //                 than the sub-timed track; skew GROWS through the episode,
+  //                 which is exactly the "captions vanish while they talk,
+  //                 come back later, sometimes never" report)
+  // Here we fetch the verdict for THIS episode and remap every cue with
+  //   t' = t·(1 - driftPerSec) - offsetSec
+  // (positive offset/drift = captions late → cues move earlier). Below the
+  // gates the drift is imperceptible, so untouched playback wins.
   const ccOffsetRef = useRef(0);
+  const ccDriftRef = useRef(0); // fraction of playback time gained per second
   useEffect(() => {
     let ok = true;
     ccOffsetRef.current = 0;
+    ccDriftRef.current = 0;
     if (offline || iframeFallback) return; // offline copies / iframe embeds carry their own timing
     fetch(`/api/captions?malId=${anime.malId}&ep=${episode}&lang=${lang}`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { measured?: boolean; offsetMs?: number; confidence?: number } | null) => {
-        if (!ok || !d?.measured || typeof d.offsetMs !== "number") return;
-        if (Math.abs(d.offsetMs) < 250 || (d.confidence ?? 0) < 0.4) return;
-        ccOffsetRef.current = d.offsetMs / 1000;
-        const s = d.offsetMs > 0 ? `-${(d.offsetMs / 1000).toFixed(1)}s` : `+${(-d.offsetMs / 1000).toFixed(1)}s`;
-        const msg = `Captions auto-synced (${s})`;
+      .then((d: { measured?: boolean; offsetMs?: number; driftMsPerMin?: number; fitR2?: number; confidence?: number } | null) => {
+        if (!ok || !d?.measured) return;
+        const offMs = typeof d.offsetMs === "number" ? d.offsetMs : 0;
+        const driftMs = typeof d.driftMsPerMin === "number" ? d.driftMsPerMin : 0;
+        const fitR2 = typeof d.fitR2 === "number" ? d.fitR2 : 0;
+        // the linear term only counts when the fit actually supports it
+        const useDrift = Math.abs(driftMs) >= 500 && fitR2 >= 0.4;
+        if (Math.abs(offMs) < 250 && !useDrift) return;
+        if ((d.confidence ?? 0) < 0.4) return;
+        ccOffsetRef.current = offMs / 1000;
+        ccDriftRef.current = useDrift ? driftMs / 60_000 : 0;
+        const parts: string[] = [];
+        if (Math.abs(offMs) >= 250) {
+          const s = offMs > 0 ? `-${(offMs / 1000).toFixed(1)}s` : `+${(-offMs / 1000).toFixed(1)}s`;
+          parts.push(s);
+        }
+        if (useDrift) {
+          const s = driftMs > 0 ? `-${(driftMs / 1000).toFixed(1)}s/min` : `+${(-driftMs / 1000).toFixed(1)}s/min`;
+          parts.push(s);
+        }
+        const msg = `Captions auto-synced (${parts.join(" ")})`;
         setPlayerMsg(msg);
         window.setTimeout(() => setPlayerMsg((m) => (m === msg ? null : m)), 5_000);
       })
@@ -1197,7 +1265,7 @@ export default function WatchView({
   }, [anime.malId, episode, lang, stream?.src, offline, iframeFallback]);
 
   // Apply the drift to the native text tracks: VTTCue objects materialize
-  // when the browser parses the <track>'s VTT, so poll briefly and shift
+  // when the browser parses the <track>'s VTT, so poll briefly and remap
   // every cue not yet marked. Cue objects are per-track-instance — a caption
   // language switch or episode change brings fresh unmarked cues, and this
   // effect re-runs with the new track's src.
@@ -1207,7 +1275,9 @@ export default function WatchView({
     const t0 = Date.now();
     const iv = window.setInterval(() => {
       const off = ccOffsetRef.current;
-      if (!off) return;
+      const dps = ccDriftRef.current; // per-second drift fraction
+      if (!off && !dps) return;
+      const remap = (u: number) => u * (1 - dps) - off;
       let touched = false;
       for (const track of Array.from(video.textTracks)) {
         if (track.mode === "disabled") continue;
@@ -1216,8 +1286,9 @@ export default function WatchView({
         for (let i = 0; i < cues.length; i++) {
           const cue = cues[i] as VTTCue & { __ccsync?: boolean };
           if (cue.__ccsync) continue;
-          cue.startTime = Math.max(0, cue.startTime - off);
-          cue.endTime = Math.max(0.05, cue.endTime - off);
+          const ns = Math.max(0, remap(cue.startTime));
+          cue.startTime = ns;
+          cue.endTime = Math.max(ns + 0.05, remap(cue.endTime));
           cue.__ccsync = true;
           touched = true;
         }
@@ -1586,7 +1657,7 @@ export default function WatchView({
                   setStream(null);
                   fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
                     .then((r) => (r.ok ? r.json() : null))
-                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null }))
+                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined }))
                     .catch(() => setStreamError(true));
                 }}
                 className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -1910,12 +1981,19 @@ export default function WatchView({
           >
             <div className="px-4 pt-3 pb-1 text-[13px] font-bold">Select Download Format</div>
             <div className="px-4 py-2 space-y-2.5">
-              {(["360p", "720p", "1080p"] as const).map((q, i) => (
-                <label key={q} className="flex items-center gap-3 text-[13px] cursor-pointer">
-                  <input type="radio" name="dlq" defaultChecked={i === 0} className="accent-[#00c853] w-4 h-4" onChange={() => undefined} />
-                  {q} ~ {estimateSizeMB(anime.durationMin, q).toFixed(2)} MB
-                </label>
-              ))}
+              {/* REAL resolutions only: the episode's actual ladder comes from
+                  the quality fleet / the master playlist (old shows list 360p,
+                  never a 1080p that doesn't exist). Falls back to the classic
+                  ladder when the source carries no resolution info. */}
+              {(stream?.heights?.length ? stream.heights : ([1080, 720, 360] as number[])).map((h) => {
+                const q: "360p" | "720p" | "1080p" = h <= 360 ? "360p" : h <= 720 ? "720p" : "1080p";
+                return (
+                  <label key={h} className="flex items-center gap-3 text-[13px] cursor-pointer">
+                    <input type="radio" name="dlq" defaultChecked={h === (stream?.heights?.length ? stream.heights[0] : 360)} className="accent-[#00c853] w-4 h-4" onChange={() => undefined} />
+                    {h}p ~ {estimateSizeMB(anime.durationMin, q).toFixed(2)} MB
+                  </label>
+                );
+              })}
             </div>
             <div className="flex justify-end gap-5 px-4 py-3">
               <a href={downloadUrl} target="_blank" rel="noreferrer" className="text-[#d32f2f] text-[12px] font-bold tracking-wide hover:opacity-80">

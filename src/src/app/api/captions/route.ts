@@ -12,10 +12,15 @@ export const dynamic = "force-dynamic";
  *
  *   offsetMs > 0  captions appear LATE — the player shifts cues earlier
  *   offsetMs < 0  captions appear EARLY — the player shifts cues later
+ *   driftMsPerMin LINEAR drift term: captions gain this many ms per playback
+ *                 minute (the player remaps cue times with it — this is what
+ *                 fixes skew that GROWS through the episode)
+ *   fitR2         0-1 quality of the linear fit across measurement windows
  *   measured:false  no fleet verdict yet — player plays captions untouched
  *
  * The player applies the shift only when |offsetMs| >= 250 (below that the
- * misalignment is imperceptible) and confidence >= 0.4.
+ * misalignment is imperceptible) or a significant linear drift was fitted,
+ * and confidence >= 0.4.
  */
 export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
@@ -34,6 +39,8 @@ export async function GET(req: Request) {
       ok: true,
       measured: true,
       offsetMs: row.offsetMs,
+      driftMsPerMin: row.driftMsPerMin,
+      fitR2: row.fitR2,
       confidence: row.confidence,
       samples: row.samples,
       attempted: row.attempted,

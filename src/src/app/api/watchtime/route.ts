@@ -29,15 +29,32 @@ export async function GET(req: Request) {
   const sp = new URL(req.url).searchParams;
   const day = sp.get("day") ?? new Date().toISOString().slice(0, 10);
   const limit = Math.min(25, Math.max(1, parseInt(sp.get("limit") ?? "10", 10) || 10));
-  if (!DAY_RE.test(day)) {
+  const all = sp.get("all") === "1";
+  if (!all && !DAY_RE.test(day)) {
     return NextResponse.json({ error: "bad day" }, { status: 400 });
   }
 
-  const rows = await db.watchStat.findMany({
-    where: { day },
-    orderBy: { seconds: "desc" },
-    take: limit,
-  });
+  let rows: Array<{ malId: number; seconds: number; title: string | null; image: string | null }>;
+  if (all) {
+    // ALL-TIME ranking across every viewer (site + app combined) — this feeds
+    // the home "Most Watched" rail, which must show REAL global results, not
+    // a per-day or per-device slice. The smoke-bot scratch day is excluded.
+    const grouped = await db.watchStat.groupBy({
+      by: ["malId"],
+      where: { day: { not: "1970-01-01" } },
+      _sum: { seconds: true, },
+      orderBy: { _sum: { seconds: "desc" } },
+      take: limit,
+    });
+    rows = grouped.map((g) => ({ malId: g.malId, seconds: g._sum.seconds ?? 0, title: null, image: null }));
+  } else {
+    const found = await db.watchStat.findMany({
+      where: { day },
+      orderBy: { seconds: "desc" },
+      take: limit,
+    });
+    rows = found.map((r) => ({ malId: r.malId, seconds: r.seconds, title: r.title, image: r.image }));
+  }
 
   // Notifications no longer ride watch-time (rank-change events come from the
   // TMDB-popularity Top 10 now); the streak metadata below stays for the API.

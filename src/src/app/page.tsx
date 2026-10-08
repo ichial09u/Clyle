@@ -178,6 +178,7 @@ export default function Page() {
             onWatch={(a) => push({ name: "episodes", anime: a })}
             onResume={resumeWatching}
             onTop50={() => push({ name: "top50" })}
+            onGenre={(genre) => push({ name: "genre", genre })}
           />
         );
       case "details":

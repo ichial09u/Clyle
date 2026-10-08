@@ -1097,10 +1097,50 @@ export const DEFAULT_SETTINGS: AppSettings = {
 };
 
 const SETTINGS_KEY = "animetest123.settings";
+/**
+ * The custom app icon lives under its OWN key — never inside the settings
+ * record. It is the one value that can be large (a data URL), and a settings
+ * write that silently exceeds the localStorage quota would make EVERY toggle
+ * on the Settings screen stop applying (the write fails, the store snapshot
+ * never changes, the UI shows nothing happening — the desktop "settings don't
+ * change" bug). Playback/subtitle/theme toggles are now ~300 bytes and cannot
+ * be poisoned by the icon.
+ */
+const SETTINGS_ICON_KEY = "animetest123.appicon";
 const SETTINGS_EVENT = "appsettings-changed";
 
+let iconMigrated = false;
+/**
+ * One-time per page load: older builds stored the (potentially huge) custom
+ * icon INSIDE the settings record — move it to its own slot so the settings
+ * toggles can never be poisoned by its size again.
+ */
+function migrateLegacyIcon(): void {
+  if (iconMigrated || typeof window === "undefined") return;
+  iconMigrated = true;
+  try {
+    if (window.localStorage.getItem(SETTINGS_ICON_KEY) != null) return;
+    const raw = window.localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw) as Partial<AppSettings>;
+    if (parsed.iconDataUrl) {
+      window.localStorage.setItem(SETTINGS_ICON_KEY, JSON.stringify(parsed.iconDataUrl));
+      const legacy = { ...parsed, iconDataUrl: undefined };
+      window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(legacy));
+    }
+  } catch {
+    /* best effort — the icon is cosmetic */
+  }
+}
+
 export function readAppSettings(): AppSettings {
-  return { ...DEFAULT_SETTINGS, ...readJson<Partial<AppSettings>>(SETTINGS_KEY, {}) };
+  migrateLegacyIcon();
+  return {
+    ...DEFAULT_SETTINGS,
+    ...readJson<Partial<AppSettings>>(SETTINGS_KEY, {}),
+    // the icon rides in its own slot (see SETTINGS_ICON_KEY)
+    iconDataUrl: readJson<string | null>(SETTINGS_ICON_KEY, null) ?? null,
+  };
 }
 
 function subscribeSettings(onChange: () => void) {
@@ -1123,12 +1163,27 @@ function getSettingsServerSnapshot(): string {
 /** Reactive settings for components (re-renders on every change). */
 export function useAppSettings(): AppSettings {
   const raw = useSyncExternalStore(subscribeSettings, getSettingsSnapshot, getSettingsServerSnapshot);
-  return { ...DEFAULT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<AppSettings>) : {}) };
+  const base = { ...DEFAULT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<AppSettings>) : {}) };
+  // merge the separately-stored icon reactively (it changes with the same event)
+  base.iconDataUrl = readJson<string | null>(SETTINGS_ICON_KEY, null) ?? null;
+  return base;
 }
 
 export function updateAppSettings(patch: Partial<AppSettings>): AppSettings {
-  const next = { ...readAppSettings(), ...patch };
-  writeJson(SETTINGS_KEY, next);
+  // icon moves are handled in their own storage slot — keep them OUT of the
+  // settings record so a big data URL can never blow the quota for a toggle
+  const { iconDataUrl: iconPatch, ...rest } = patch;
+  if (iconPatch !== undefined) {
+    try {
+      if (iconPatch == null) window.localStorage.removeItem(SETTINGS_ICON_KEY);
+      else window.localStorage.setItem(SETTINGS_ICON_KEY, JSON.stringify(iconPatch));
+    } catch {
+      /* icon storage full/blocked — the icon is cosmetic; everything else
+         below still applies and the UI still updates */
+    }
+  }
+  const next = { ...readAppSettings(), ...rest, iconDataUrl: iconPatch !== undefined ? iconPatch : readAppSettings().iconDataUrl };
+  writeJson(SETTINGS_KEY, { ...next, iconDataUrl: undefined });
   window.dispatchEvent(new Event(SETTINGS_EVENT));
   applySettingsToDocument(next);
   return next;
@@ -1213,4 +1268,43 @@ export function applySettingsToDocument(s: AppSettings): void {
   } catch {
     /* icon theming is cosmetic — never break the app over it */
   }
+}
+
+/**
+ * Turn a user-chosen image into a home-screen icon data URL, DOWNSCALED on a
+ * canvas so it can never blow the localStorage quota again (a full-res phone
+ * photo as a data URL is multiple MB — that used to be stored raw INSIDE the
+ * settings record, silently killing every settings write afterwards).
+ * PNG keeps its transparency at 384px; everything else becomes a 512px JPEG.
+ */
+export async function fileToAppIconDataUrl(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("Not an image");
+  if (file.size > 25_000_000) throw new Error("Image too large (max ~25 MB)");
+
+  const url = URL.createObjectURL(file);
+  let img: HTMLImageElement;
+  try {
+    img = await new Promise<HTMLImageElement>((res, rej) => {
+      const el = new Image();
+      el.onload = () => res(el);
+      el.onerror = () => rej(new Error("Could not read image"));
+      el.src = url;
+    });
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 5_000);
+  }
+
+  const png = file.type.includes("png");
+  const S = png ? 384 : 512; // covers the 192/512 manifest slots
+  const side = Math.min(img.naturalWidth || img.width, img.naturalHeight || img.height) || S;
+  const canvas = document.createElement("canvas");
+  canvas.width = S;
+  canvas.height = S;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas unavailable");
+  const sw = side, sh = side;
+  const sx = ((img.naturalWidth || img.width) - sw) / 2;
+  const sy = ((img.naturalHeight || img.height) - sh) / 2;
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, S, S);
+  return png ? canvas.toDataURL("image/png") : canvas.toDataURL("image/jpeg", 0.85);
 }

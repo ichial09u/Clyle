@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Bell, BellOff, BellRing, Check, Download, ImagePlus, RotateCcw, Trash2, Tv } from "lucide-react";
 import {
-  ACCENTS, SUB_COLORS, SUB_SIZES, updateAppSettings, useAppSettings,
+  ACCENTS, SUB_COLORS, SUB_SIZES, updateAppSettings, useAppSettings, fileToAppIconDataUrl,
   loadContinueItems, removeProgress, type AppSettings, type SubOutline, type SubSize,
 } from "@/lib/client-store";
 import { disablePush, enablePush, getPushEndpoint, pushPermission, pushSupported } from "@/lib/push-client";
@@ -165,14 +165,17 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
     setWatches((w) => w.filter((x) => x.malId !== malId));
   };
 
-  const pickIcon = (file: File) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      set({ iconDataUrl: String(reader.result) });
+  const pickIcon = async (file: File) => {
+    try {
+      // downscaled on-canvas (384px PNG / 512px JPEG) — a full-res photo data
+      // URL used to be stored raw and could choke the settings storage
+      const dataUrl = await fileToAppIconDataUrl(file);
+      set({ iconDataUrl: dataUrl });
       setIconFlash(true);
       setTimeout(() => setIconFlash(false), 1600);
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      /* unreadable image — leave the current icon alone */
+    }
   };
 
   const clearContinue = async () => {

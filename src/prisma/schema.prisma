@@ -82,6 +82,7 @@ model Episode {
   filler    Boolean  @default(false)
   recap     Boolean  @default(false)
   addedAt   DateTime @default(now())
+  qualities String?  // JSON array of REAL heights the Zoko encode carries, e.g. "[360,720]" — measured by the quality fleet bots (old shows are 360p even when players claim 1080p)
 
   anime Anime @relation(fields: [animeId], references: [malId], onDelete: Cascade)
 
@@ -383,7 +384,9 @@ model CaptionSync {
   ep         Int
   lang       String   @default("dub") // "dub" | "sub" — which audio the CC rides with
   server     String   @default("zoko") // provider the measurement was made on
-  offsetMs   Int      @default(0) // + = captions late; player shifts cues earlier
+  offsetMs   Int      @default(0) // + = captions late at t=0; player shifts cues earlier
+  driftMsPerMin Int   @default(0) // LINEAR drift term: captions gain this many ms per playback minute (fit across windows — fixes skew that grows through the episode)
+  fitR2      Float    @default(0) // 0-1 quality of the linear fit across windows (1 = perfectly linear drift)
   confidence Float    @default(0) // 0-1: matched cues x agreement
   samples    Int      @default(0) // cues successfully aligned
   attempted  Int      @default(0) // cues tried

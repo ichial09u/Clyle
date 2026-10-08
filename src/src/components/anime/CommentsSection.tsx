@@ -5,6 +5,7 @@ import { Heart, MessageSquare, MessageCircle, SendHorizonal, Trash2, ChevronDown
 import type { CommentItem } from "@/lib/types";
 import { timeAgo } from "@/lib/client-store";
 import { getUserId, useProfile } from "@/lib/profile-store";
+import { fetchSession } from "@/components/account/AccountSync";
 
 const MAX_LEN = 500;
 
@@ -68,7 +69,14 @@ function saveLikedIds(ids: Set<string>) {
 /** de-dupe key so a comment that already reached the server isn't shown twice */
 const fingerprint = (c: CommentItem) => `${c.userId ?? ""}|${c.parentId ?? ""}|${c.text}`;
 
-/** Community comments on an anime — likes, replies, delete-own; nickname + avatar from your profile. */
+/**
+ * Community comments on an anime — likes, replies, delete-own; nickname + avatar from your profile.
+ *
+ * COMMENTING REQUIRES SIGN-IN (owner ask): browsing and reading stay open to
+ * everyone, but the moment an anonymous viewer tries to post (comment or
+ * reply) a popup explains they need to sign in and shows the Google button
+ * right below. Likes stay open.
+ */
 export default function CommentsSection({ malId }: { malId: number }) {
   const { profile } = useProfile();
   const [comments, setComments] = useState<CommentItem[]>([]);
@@ -76,6 +84,11 @@ export default function CommentsSection({ malId }: { malId: number }) {
   const [text, setText] = useState("");
   const [posting, setPosting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // signed-in gate: null = still asking, false = anonymous (popup on post),
+  // true = the session user from /api/auth/me (google:<sub>)
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [showSignIn, setShowSignIn] = useState(false);
 
   const [myId, setMyId] = useState<string | null>(null);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
@@ -90,7 +103,21 @@ export default function CommentsSection({ malId }: { malId: number }) {
   useEffect(() => {
     setMyId(getUserId());
     setLikedIds(readLikedIds());
+    fetchSession()
+      .then((s) => setSignedIn(Boolean(s.configured && s.user)))
+      .catch(() => setSignedIn(false));
   }, []);
+
+  /** the gate: anonymous viewers get the sign-in popup instead of a post */
+  const requireSignIn = useCallback(() => {
+    if (signedIn === false) {
+      setShowSignIn(true);
+      return true;
+    }
+    // still resolving the session — optimistically let it through; the API
+    // record still carries the device identity
+    return false;
+  }, [signedIn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -130,6 +157,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
   const post = useCallback(async () => {
     const body = text.trim();
     if (!body || posting) return;
+    if (requireSignIn()) return; // anonymous → the sign-in popup instead
     setPosting(true);
     setError(null);
     const userId = getUserId(); // identity exists even if the request fails
@@ -170,12 +198,13 @@ export default function CommentsSection({ malId }: { malId: number }) {
     } finally {
       setPosting(false);
     }
-  }, [malId, posting, profile?.nickname, profile?.avatar, text]);
+  }, [malId, posting, profile?.nickname, profile?.avatar, text, requireSignIn]);
 
   const postReply = useCallback(
     async (parentId: string) => {
       const body = replyText.trim();
       if (!body || postingReply) return;
+      if (requireSignIn()) return; // anonymous → the sign-in popup instead
       setPostingReply(true);
       setError(null);
       const userId = getUserId();
@@ -221,7 +250,7 @@ export default function CommentsSection({ malId }: { malId: number }) {
         setPostingReply(false);
       }
     },
-    [malId, postingReply, profile?.nickname, profile?.avatar, replyText],
+    [malId, postingReply, profile?.nickname, profile?.avatar, replyText, requireSignIn],
   );
 
   const toggleLike = useCallback(
@@ -374,7 +403,15 @@ export default function CommentsSection({ malId }: { malId: number }) {
           {/* actions: like · reply · delete(own) */}
           <div className="flex items-center gap-4 mt-1.5">
             {likeRow(c)}
-            <button onClick={() => { setReplyTo(isReplying ? null : c.id); setReplyText(""); }} className={actionBtn} aria-label="Reply">
+            <button
+              onClick={() => {
+                if (requireSignIn()) return; // anonymous → sign-in popup
+                setReplyTo(isReplying ? null : c.id);
+                setReplyText("");
+              }}
+              className={actionBtn}
+              aria-label="Reply"
+            >
               <MessageCircle className="w-3.5 h-3.5" /> Reply
             </button>
             {c.userId && c.userId === myId ? (
@@ -513,6 +550,49 @@ export default function CommentsSection({ malId }: { malId: number }) {
       ) : (
         <ul className="mt-3 space-y-3.5">{tops.map(renderTop)}</ul>
       )}
+
+      {/* sign-in gate — pops the moment an anonymous viewer tries to comment */}
+      {showSignIn ? (
+        <div
+          className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm anim-backdrop flex items-end md:items-center justify-center px-4 pb-6 md:pb-0"
+          onClick={() => setShowSignIn(false)}
+          role="dialog"
+          aria-label="You need to sign in to comment"
+        >
+          <div
+            className="w-full max-w-[380px] rounded-2xl bg-[#141414] border border-white/10 shadow-2xl p-5 anim-sheet-up"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="font-slab text-[17px] font-bold leading-snug">You need to sign in to comment</h3>
+              <button onClick={() => setShowSignIn(false)} className="p-1 -mr-1 rounded-full text-gray-500 hover:text-white hover:bg-white/10 transition" aria-label="Close">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="mt-1.5 text-[12.5px] leading-relaxed text-gray-400">
+              Join the conversation with a Google account — one tap and your comments follow you on every device.
+            </p>
+            <a
+              href="/signin"
+              className="mt-4 flex h-11 items-center justify-center gap-2.5 rounded-xl bg-white px-4 text-[14px] font-semibold text-gray-900 transition hover:bg-gray-100 active:scale-[0.98]"
+            >
+              <svg viewBox="0 0 24 24" className="h-5 w-5 shrink-0" aria-hidden>
+                <path fill="#4285F4" d="M23.5 12.27c0-.85-.08-1.66-.22-2.45H12v4.64h6.45a5.52 5.52 0 0 1-2.39 3.62v3h3.87c2.26-2.09 3.57-5.16 3.57-8.81Z" />
+                <path fill="#34A853" d="M12 24c3.24 0 5.96-1.07 7.94-2.91l-3.87-3c-1.07.72-2.44 1.15-4.07 1.15-3.13 0-5.78-2.11-6.73-4.96H1.29v3.1A12 12 0 0 0 12 24Z" />
+                <path fill="#FBBC05" d="M5.27 14.28A7.2 7.2 0 0 1 4.89 12c0-.79.14-1.56.38-2.28v-3.1H1.29a12 12 0 0 0 0 10.76l3.98-3.1Z" />
+                <path fill="#EA4335" d="M12 4.76c1.76 0 3.34.6 4.58 1.8l3.44-3.44A11.98 11.98 0 0 0 12 0 12 12 0 0 0 1.29 6.62l3.98 3.1C6.22 6.87 8.87 4.76 12 4.76Z" />
+              </svg>
+              Sign in with Google
+            </a>
+            <button
+              onClick={() => setShowSignIn(false)}
+              className="mt-2.5 w-full h-10 rounded-xl text-[13px] font-semibold text-gray-400 hover:text-gray-200 hover:bg-white/5 transition"
+            >
+              Not now
+            </button>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
