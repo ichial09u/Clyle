@@ -1,0 +1,18 @@
+{
+  "totalAnime": 2262,
+  "alreadyCached": 2247,
+  "processed": 15,
+  "fetched": 14,
+  "diskHits": 0,
+  "failures": [
+    {
+      "malId": 20464,
+      "error": "Error: permanent HTTP 404"
+    },
+    {
+      "malId": 20464,
+      "error": "Error: permanent HTTP 404"
+    }
+  ],
+  "finishedAt": "2026-10-08T23:12:25.460Z"
+}
