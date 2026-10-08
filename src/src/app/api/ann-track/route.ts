@@ -81,8 +81,8 @@ async function annFetch(url: string): Promise<string | null> {
 }
 
 /** search report items — tolerate both field-element and attribute shapes */
-function parseSearchItems(xml: string): Array<{ id: number; name: string; type: string | null; precision: string | null }> {
-  const items: Array<{ id: number; name: string; type: string | null; precision: string | null }> = [];
+function parseSearchItems(xml: string): Array<{ id: number; name: string; type: string | null; precision: string | null; vintage: string | null }> {
+  const items: Array<{ id: number; name: string; type: string | null; precision: string | null; vintage: string | null }> = [];
   const blocks = xml.match(/<item[\s\S]*?<\/item>/g) ?? [];
   for (const b of blocks) {
     const id = Number(b.match(/<id>(\d+)<\/id>/)?.[1] ?? b.match(/\bid="(\d+)"/)?.[1] ?? NaN);
@@ -90,26 +90,43 @@ function parseSearchItems(xml: string): Array<{ id: number; name: string; type: 
     const name = b.match(/<name>([\s\S]*?)<\/name>/)?.[1] ?? b.match(/\bname="([^"]*)"/)?.[1] ?? "";
     const type = b.match(/<type>([^<]*)<\/type>/)?.[1] ?? b.match(/\btype="([^"]*)"/)?.[1] ?? null;
     const precision = b.match(/<precision>([^<]*)<\/precision>/)?.[1] ?? null;
-    items.push({ id, name: decode(name).trim(), type: type ? decode(type) : null, precision: precision ? decode(precision) : null });
+    const vintage = b.match(/<vintage>([^<]*)<\/vintage>/)?.[1] ?? null;
+    items.push({
+      id,
+      name: decode(name).trim(),
+      type: type ? decode(type) : null,
+      precision: precision ? decode(precision) : null,
+      vintage: vintage ? decode(vintage) : null,
+    });
   }
   return items;
+}
+
+/** "TV", "TV 2", "TV 3", "movie"… — the season ordinal matters for ranking */
+function seasonOf(precision: string | null, type: string | null): number {
+  const m = (precision ?? type ?? "").match(/(?:tv|oav|web)?\s*(\d+)/i);
+  return m ? Number(m[1]) : 1;
 }
 
 function pickBest(items: ReturnType<typeof parseSearchItems>, q: string) {
   if (!items.length) return null;
   const target = norm(q);
-  const scored = items.map((it) => {
+  // the encyclopedia report mixes in manga/novel entries — anime only
+  const animeOnly = items.filter((it) => !/manga|novel|manhwa|manhua|live-action|other/i.test(it.type ?? ""));
+  const pool = animeOnly.length ? animeOnly : items;
+  const scored = pool.map((it) => {
     const n = norm(it.name);
     let score = 0;
     if (n === target) score = 100;
     else if (n.startsWith(target) || target.startsWith(n)) score = 80;
     else if (n.includes(target) || target.includes(n)) score = 60;
-    // prefer TV series over movies/specials when otherwise tied
-    if (/tv/i.test(it.type ?? it.precision ?? "")) score += 4;
-    return { it, score };
+    return { it, score, season: seasonOf(it.precision, it.type) };
   });
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0].score > 0 ? scored[0].it : items[0]; // total no-match: first result is still a useful guess
+  scored.sort((a, b) => b.score - a.score || a.season - b.season);
+  const top = scored[0];
+  // the ANN engine matched the query against ITS titles (incl. romaji alts),
+  // so a zero name-score is still a real hit — but prefer its first season
+  return top.it;
 }
 
 function parseDetail(xml: string, annId: number, fallbackName: string, type: string | null, precision: string | null): AnnMatch {
@@ -133,8 +150,10 @@ function parseDetail(xml: string, annId: number, fallbackName: string, type: str
 }
 
 async function resolve(q: string): Promise<AnnApiPayload> {
+  // id=155's search parameter is `name` (verified against the live report —
+  // `q` is silently ignored and the report degrades to newest-additions)
   const searchXml = await annFetch(
-    `https://cdn.animenewsnetwork.com/encyclopedia/reports.xml?id=155&q=${encodeURIComponent(q)}&n=6`,
+    `https://cdn.animenewsnetwork.com/encyclopedia/reports.xml?id=155&name=${encodeURIComponent(q)}`,
   );
   if (!searchXml) return { found: false, error: "ANN search unavailable" };
   const best = pickBest(parseSearchItems(searchXml), q);
@@ -143,6 +162,8 @@ async function resolve(q: string): Promise<AnnApiPayload> {
   const detailXml = await annFetch(`https://cdn.animenewsnetwork.com/encyclopedia/api.xml?title=${best.id}`);
   if (!detailXml) return { found: false, error: "ANN detail unavailable" };
   const match = parseDetail(detailXml, best.id, best.name, best.type, best.precision);
+  // fall back to the report item's own vintage when the detail lacks one
+  if (!match.vintage && best.vintage) match.vintage = best.vintage;
   return { found: true, match };
 }
 

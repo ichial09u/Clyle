@@ -60,7 +60,8 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
 
   const load = useCallback(async () => {
     setPhase("loading");
-    const titles = Array.from(new Set([anime.title, anime.titleEnglish ?? ""].filter(Boolean)));
+    // ANN's main names are English — try the English title first, then romaji
+    const titles = Array.from(new Set([anime.titleEnglish ?? "", anime.title].filter(Boolean)));
     for (const q of titles) {
       try {
         const res = await fetch(`/api/ann-track?q=${encodeURIComponent(q)}&malId=${anime.malId}`);
