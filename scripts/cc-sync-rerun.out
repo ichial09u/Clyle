@@ -1,0 +1,151 @@
+cc-sync fleet: 51 episodes, 4 bots, lang=dub, windows=6 (dsp correlation, no ASR)
+[bot1] Soul Eater ep1: offset=1.80s drift=0.00s/min conf=0.3 (5/6 windows, spread=11.00s)
+[bot2] Soul Eater ep2: offset=2.40s drift=0.00s/min conf=0.3 (6/6 windows, spread=11.75s)
+[bot3] Soul Eater ep3: offset=-2.50s drift=0.00s/min conf=0.6 (6/6 windows, spread=7.00s)
+[bot4] Soul Eater ep6: offset=0.40s drift=0.00s/min conf=0.3 (6/6 windows, spread=14.50s)
+[bot1] Soul Eater ep4: offset=1.30s drift=0.00s/min conf=0.3 (5/6 windows, spread=8.25s)
+[bot2] Soul Eater ep5: offset=-3.50s drift=0.00s/min conf=0.3 (5/6 windows, spread=11.00s)
+[bot3] Soul Eater ep7: offset=0.60s drift=0.00s/min conf=0.3 (6/6 windows, spread=15.75s)
+[bot1] Soul Eater ep9: offset=-0.60s drift=0.00s/min conf=0.3 (6/6 windows, spread=13.75s)
+[bot4] Soul Eater ep8: offset=-4.00s drift=0.00s/min conf=0.3 (6/6 windows, spread=8.00s)
+[bot2] Soul Eater ep10: offset=4.10s drift=0.00s/min conf=0.3 (6/6 windows, spread=15.00s)
+[bot1] Soul Eater ep12: offset=-0.70s drift=0.00s/min conf=0.95 (5/6 windows, spread=5.00s)
+cc-sync fleet: 51 episodes, 4 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+cc-sync fleet: 51 episodes, 4 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+cc-sync fleet: 51 episodes, 4 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+[bot1] Soul Eater ep1: offset=-12.10s drift=1.01s/min conf=0.3 (4/4 windows, spread=9.75s)
+[bot2] Soul Eater ep2: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.25s)
+[bot1] Soul Eater ep3: offset=2.90s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.75s)
+[bot3] Soul Eater ep4: offset=14.40s drift=-0.93s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot2] Soul Eater ep5: offset=-7.70s drift=0.64s/min conf=0.9 (3/4 windows, spread=4.00s)
+[bot1] Soul Eater ep6: offset=-7.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.00s)
+[bot4] Soul Eater ep7: offset=-12.00s drift=1.22s/min conf=0.6 (4/4 windows, spread=12.50s)
+[bot3] Soul Eater ep8: offset=-4.40s drift=0.00s/min conf=0.3 (4/4 windows, spread=11.75s)
+[bot2] Soul Eater ep9: offset=-1.10s drift=0.00s/min conf=0.6 (4/4 windows, spread=15.00s)
+[bot1] Soul Eater ep10: offset=-11.00s drift=1.26s/min conf=0.3 (4/4 windows, spread=15.50s)
+[bot1] Soul Eater ep14: cached conf=0.95 offset=7000ms — skip
+[bot4] Soul Eater ep11: offset=1.50s drift=0.00s/min conf=0.3 (4/4 windows, spread=15.75s)
+[bot4] Soul Eater ep16: cached conf=0.6 offset=-2900ms — skip
+[bot3] Soul Eater ep12: offset=1.80s drift=0.00s/min conf=0.21 (2/4 windows, spread=4.00s)
+[bot2] Soul Eater ep13: offset=6.30s drift=0.00s/min conf=0.54 (3/4 windows, spread=7.50s)
+[bot1] Soul Eater ep15: offset=-13.80s drift=1.23s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot4] Soul Eater ep17: offset=-5.20s drift=0.00s/min conf=0.21 (2/3 windows, spread=4.50s)
+[bot2] Soul Eater ep19: offset=1.90s drift=0.00s/min conf=0.3 (4/4 windows, spread=12.25s)
+[bot3] Soul Eater ep18: offset=-1.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=7.75s)
+[bot1] Soul Eater ep20: offset=-1.40s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.50s)
+[bot1] Soul Eater ep24: cached conf=0.6 offset=-3900ms — skip
+[bot4] Soul Eater ep21: offset=-13.00s drift=1.17s/min conf=0.3 (4/4 windows, spread=14.75s)
+[bot3] Soul Eater ep23: offset=2.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=11.75s)
+[bot3] Soul Eater ep27: cached conf=0.6 offset=-1000ms — skip
+[bot1] Soul Eater ep25: offset=1.60s drift=0.00s/min conf=0.21 (2/4 windows, spread=7.25s)
+[bot1] Soul Eater ep29: cached conf=0.6 offset=1100ms — skip
+[bot1] Soul Eater ep30: cached conf=0.6 offset=-1700ms — skip
+[bot2] Soul Eater ep22: offset=-14.30s drift=1.47s/min conf=0.54 (3/4 windows, spread=14.25s)
+[bot1] Soul Eater ep31: offset=-17.70s drift=1.40s/min conf=0.54 (3/4 windows, spread=12.50s)
+[bot3] Soul Eater ep28: offset=0.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=10.50s)
+[bot3] Soul Eater ep34: cached conf=0.6 offset=4400ms — skip
+[bot3] Soul Eater ep35: cached conf=0.6 offset=300ms — skip
+[bot4] Soul Eater ep26: offset=3.30s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.50s)
+[bot2] Soul Eater ep32: offset=-0.20s drift=0.00s/min conf=0.27 (3/4 windows, spread=6.75s)
+  ep36 window1: ENOSPC: no space left on device, write
+  ep38 window2: ENOSPC: no space left on device, write
+  ep37 window2: ENOSPC: no space left on device, write
+  ep36 window2: ENOSPC: no space left on device, write
+  ep38 window3: ENOSPC: no space left on device, write
+[bot2] Soul Eater ep38: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+[bot2] Soul Eater ep39: cached conf=0.6 offset=-2500ms — skip
+  ep33 window3: ENOSPC: no space left on device, write
+[bot1] Soul Eater ep33: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+  ep37 window3: ENOSPC: no space left on device, write
+[bot4] Soul Eater ep37: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+  ep36 window3: ENOSPC: no space left on device, write
+[bot3] Soul Eater ep36: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+  ep40 window0: ENOSPC: no space left on device, write
+  ep42 window0: ENOSPC: no space left on device, write
+  ep40 window1: ENOSPC: no space left on device, write
+  ep43 window0: ENOSPC: no space left on device, write
+  ep42 window1: ENOSPC: no space left on device, write
+  ep41 window0: ENOSPC: no space left on device, write
+  ep40 window2: ENOSPC: no space left on device, write
+  ep43 window1: ENOSPC: no space left on device, write
+  ep42 window2: ENOSPC: no space left on device, write
+  ep41 window1: ENOSPC: no space left on device, write
+  ep40 window3: ENOSPC: no space left on device, write
+[bot2] Soul Eater ep40: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+[bot2] Soul Eater ep44: cached conf=0.95 offset=5900ms — skip
+[bot2] Soul Eater ep45: cached conf=0.6 offset=-500ms — skip
+  ep43 window2: ENOSPC: no space left on device, write
+  ep42 window3: ENOSPC: no space left on device, write
+[bot4] Soul Eater ep42: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+  ep41 window2: ENOSPC: no space left on device, write
+  ep43 window3: ENOSPC: no space left on device, write
+[bot3] Soul Eater ep43: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+[bot3] Soul Eater ep48: cached conf=0.95 offset=3300ms — skip
+[bot3] Soul Eater ep49: cached conf=0.6 offset=-500ms — skip
+[bot3] Soul Eater ep50: cached conf=0.95 offset=-7600ms — skip
+[bot3] Soul Eater ep51: cached conf=0.6 offset=1300ms — skip
+  ep41 window3: ENOSPC: no space left on device, write
+[bot1] Soul Eater ep41: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+  ep46 window0: ENOSPC: no space left on device, write
+  ep47 window0: ENOSPC: no space left on device, write
+  ep46 window1: ENOSPC: no space left on device, write
+  ep47 window1: ENOSPC: no space left on device, write
+  ep46 window2: ENOSPC: no space left on device, write
+  ep47 window2: ENOSPC: no space left on device, write
+[bot4] Soul Eater ep47: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+  ep46 window3: ENOSPC: no space left on device, write
+[bot2] Soul Eater ep46: ERROR 
+Invalid `prisma.captionSync.upsert()` invocation:
+
+
+Error occurred during query execution:
+ConnectorError(ConnectorErro
+
+fleet done in 1.3min — 51/51 episodes, 26 measured
+drift s: min=-17.70 median=-1.10 max=14.40
+episodes with captions >=0.5s LATE: 9/26
