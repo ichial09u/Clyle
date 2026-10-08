@@ -251,8 +251,34 @@ const noEpisodeList = new Set<number>();
  * "Episode 24: Episode 24" in the player — the plain numbered fallback
  * label is strictly better).
  */
+/** Decode the HTML entities upstream titles ship with ("I&#039;m" -> "I'm").
+ *  Numeric forms first, then the common named set, single pass so a literal
+ *  "&amp;" in a title becomes "&" exactly once. */
+export function decodeHtmlEntities(s: string): string {
+  if (!s.includes("&")) return s;
+  return s
+    .replace(/&#x([0-9a-f]+);/gi, (_m, h) => safeCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_m, d) => safeCodePoint(parseInt(d, 10)))
+    .replace(/&(amp|quot|lt|gt|apos|nbsp|#39);/g, (_m, n) => {
+      if (n === "amp") return "&";
+      if (n === "quot") return '"';
+      if (n === "lt") return "<";
+      if (n === "gt") return ">";
+      if (n === "apos" || n === "#39") return "'";
+      return "\u00a0";
+    });
+}
+function safeCodePoint(cp: number): string {
+  if (!Number.isFinite(cp) || cp < 1 || cp > 0x10ffff) return "";
+  try {
+    return String.fromCodePoint(cp);
+  } catch {
+    return "";
+  }
+}
+
 export function cleanEpisodeTitle(raw: string | null | undefined): string | null {
-  const t = raw?.trim();
+  const t = decodeHtmlEntities(raw ?? "").trim();
   if (!t) return null;
   // bare placeholder: "Episode 12", "Ep. 12", "Episode 12 End" — nothing else
   if (/^ep(isode)?\.?\s*\d+(\s*(end|final))?$/i.test(t)) return null;

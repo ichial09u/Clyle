@@ -19,6 +19,8 @@ const ALLOWED_HOSTS = new Set([
   "firebasestorage.googleapis.com",
   "img.youtube.com",
   "i.ytimg.com",
+  // TMDB poster art — the catalog's primary poster source since Task 23
+  "image.tmdb.org",
 ]);
 
 export const dynamic = "force-dynamic";

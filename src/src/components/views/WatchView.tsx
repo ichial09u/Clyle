@@ -639,6 +639,9 @@ export default function WatchView({
 
   /* -------- figure out where to resume (local first, server fallback) -------- */
   useEffect(() => {
+    // the exit-animation copy must not run this — an unguarded run here used
+    // to flash a bogus "Resumed at …" pill inside the throwaway fade copy
+    if (shellRef.current?.closest('[data-leaving="true"]')) return;
     let cancelled = false;
     resumeAtRef.current = 0;
     setResumedFrom(null);
@@ -1935,58 +1938,86 @@ export default function WatchView({
           </div>
         ) : null}
 
-        {/* ---- in-player TOP bar: back / title / download ---- */}
+        {/* ---- in-player TOP bar: back / title / [SUB|DUB] / download ---- */}
         <div
           className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 player-safe-top pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
-          <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Back">
+          <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition shrink-0" aria-label="Back">
             <ChevronLeft className="w-6 h-6" />
           </button>
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (lang === "sub" && epHasDub === false) {
-                // main chain can't dub this episode — but a BACKUP server
-                // might carry it (Anivexa network): jump straight there
-                const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
-                if (b) {
-                  stageSpot(); // resume exactly here after the backup jump
-                  showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
-                  onEpisodeChange(episode, "dub", b.server as ServerId);
-                  return;
-                }
-                showPlayerMsg(
-                  epDubThru === 0
-                    ? "No English DUB available for this title yet"
-                    : epDubThru != null
-                      ? dubMissing.includes(episode)
-                        ? "No English DUB for this episode yet"
-                        : "The English DUB hasn't reached this episode yet"
-                      : "No English DUB available for this title yet",
-                );
-                return;
-              }
-              const next: Lang = lang === "sub" ? "dub" : "sub";
-              if (next === "dub" && dubServers && dubServers.length > 0 && !dubServers.includes(server)) {
-                // this title's dub lives on the other server — jump there
-                const target = dubServers[0];
-                stageSpot(); // resume exactly here after the server jump
-                showPlayerMsg(`DUB is on ${target === "kiwi" ? "Kiwi" : "Zoko"} for this title — switched server`);
-                onEpisodeChange(episode, next, target);
-                return;
-              }
-              stageSpot(); // SUB↔DUB on the same server re-resolves the stream
-              setLang(next);
-            }}
-            className="font-slab text-[16px] font-bold truncate"
-            title={epHasDub === false ? "No DUB for this episode — tap does nothing" : "Toggle SUB/DUB"}
-          >
+          {/* PLAIN TITLE — the title used to be a hidden SUB↔DUB toggle button
+              sitting right next to the Back arrow: a thumb aiming for exit
+              hit the title and silently swapped + re-resolved the stream (the
+              "exiting the player reloads the episode" report — the reload was
+              the language flip re-fetching the source). Language moves to the
+              visible [SUB|DUB] segmented control on the right. */}
+          <span className="font-slab text-[16px] font-bold truncate pointer-events-none" title={playerTitle}>
             {playerTitle}
-          </button>
+          </span>
           <div className="flex-1" />
+          {/* explicit language control — the toggle the title used to hide */}
+          {!iframeFallback && !casting ? (
+            <div className="flex items-center rounded-full bg-black/45 border border-white/15 p-0.5 shrink-0" role="group" aria-label="Audio language">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (lang !== "sub") {
+                    stageSpot();
+                    setLang("sub");
+                  }
+                }}
+                aria-pressed={lang === "sub"}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "sub" ? "bg-white text-black" : "text-gray-300"}`}
+              >
+                SUB
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (lang === "dub") return;
+                  if (epHasDub === false) {
+                    // main chain can't dub this episode — but a BACKUP server
+                    // might carry it (Anivexa network): jump straight there
+                    const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
+                    if (b) {
+                      stageSpot(); // resume exactly here after the backup jump
+                      showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
+                      onEpisodeChange(episode, "dub", b.server as ServerId);
+                      return;
+                    }
+                    showPlayerMsg(
+                      epDubThru === 0
+                        ? "No English DUB available for this title yet"
+                        : epDubThru != null
+                          ? dubMissing.includes(episode)
+                            ? "No English DUB for this episode yet"
+                            : "The English DUB hasn't reached this episode yet"
+                          : "No English DUB available for this title yet",
+                    );
+                    return;
+                  }
+                  if (dubServers && dubServers.length > 0 && !dubServers.includes(server)) {
+                    // this title's dub lives on the other server — jump there
+                    const target = dubServers[0];
+                    stageSpot(); // resume exactly here after the server jump
+                    showPlayerMsg(`DUB is on ${target === "kiwi" ? "Kiwi" : "Zoko"} for this title — switched server`);
+                    onEpisodeChange(episode, "dub", target);
+                    return;
+                  }
+                  stageSpot(); // SUB↔DUB on the same server re-resolves the stream
+                  setLang("dub");
+                }}
+                aria-pressed={lang === "dub"}
+                title={epHasDub === false ? "No DUB for this episode — tap for details" : "Switch to English DUB"}
+                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "dub" ? "bg-white text-black" : "text-gray-300"}`}
+              >
+                DUB
+              </button>
+            </div>
+          ) : null}
           {!isBackupServer(server) ? (
-            <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Download">
+            <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition shrink-0" aria-label="Download">
               <Download className="w-5 h-5" />
             </button>
           ) : null}

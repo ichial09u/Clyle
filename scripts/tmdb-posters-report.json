@@ -1,0 +1,233 @@
+{
+ "matched": 57,
+ "kept": 695,
+ "noPoster": 0,
+ "errors": 0,
+ "samples": [
+  {
+   "malId": 966,
+   "title": "Shin Chan",
+   "type": "TV",
+   "year": 1992,
+   "hit": "Shin Chan",
+   "hitYear": 1992,
+   "sim": 1
+  },
+  {
+   "malId": 20583,
+   "title": "HAIKYU!!",
+   "type": "TV",
+   "year": 2014,
+   "hit": "Haikyu!!",
+   "hitYear": 2014,
+   "sim": 1
+  },
+  {
+   "malId": 32182,
+   "title": "Mob Psycho 100",
+   "type": "TV",
+   "year": 2016,
+   "hit": "Mob Psycho 100",
+   "hitYear": 2016,
+   "sim": 1
+  },
+  {
+   "malId": 50668,
+   "title": "Witch on the Holy Night",
+   "type": "Movie",
+   "year": 2026,
+   "hit": "Witch on the Holy Night",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 54250,
+   "title": "Made in Abyss: Mezameru Shinpi",
+   "type": "Movie",
+   "year": 2026,
+   "hit": "Made in Abyss: Mezameru Shinpi",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 60636,
+   "title": "BLEACH: Thousand-Year Blood War - The Calamity",
+   "type": "TV",
+   "year": 2026,
+   "hit": "Bleach: Thousand-Year Blood War - The Calamity",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 62582,
+   "title": "Rascal Does Not Dream of a Dear Friend",
+   "type": "Movie",
+   "year": 2026,
+   "hit": "Rascal Does Not Dream of a Dear Friend",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 62844,
+   "title": "The Apothecary Diaries: The Late Lady’s Treasure",
+   "type": "Movie",
+   "year": 2026,
+   "hit": "The Apothecary Diaries: The Late Lady's Treasure",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 63293,
+   "title": "Firefly Wedding",
+   "type": "TV",
+   "year": 2026,
+   "hit": "Firefly Wedding",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 64459,
+   "title": "Fool Night",
+   "type": "ONA",
+   "year": 2026,
+   "hit": "Fool Night",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 16498,
+   "title": "Attack on Titan",
+   "type": "TV",
+   "year": 2013,
+   "hit": "Attack on Titan",
+   "hitYear": 2013,
+   "sim": 1
+  },
+  {
+   "malId": 59741,
+   "title": "The Exiled Heavy Knight Knows How to Game the System",
+   "type": "TV",
+   "year": 2026,
+   "hit": "The Exiled Heavy Knight Knows How to Game the System",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 1535,
+   "title": "Death Note",
+   "type": "TV",
+   "year": 2006,
+   "hit": "Death Note",
+   "hitYear": 2006,
+   "sim": 1
+  },
+  {
+   "malId": 5114,
+   "title": "Fullmetal Alchemist: Brotherhood",
+   "type": "TV",
+   "year": 2009,
+   "hit": "Fullmetal Alchemist: Brotherhood",
+   "hitYear": 2009,
+   "sim": 1
+  },
+  {
+   "malId": 30276,
+   "title": "One-Punch Man",
+   "type": "TV",
+   "year": 2015,
+   "hit": "One-Punch Man",
+   "hitYear": 2015,
+   "sim": 1
+  },
+  {
+   "malId": 63337,
+   "title": "FX Fighter Kurumi-chan",
+   "type": "TV",
+   "year": 2026,
+   "hit": "FX Fighter Kurumi-chan",
+   "hitYear": 2026,
+   "sim": 1
+  },
+  {
+   "malId": 38000,
+   "title": "Demon Slayer: Kimetsu no Yaiba",
+   "type": "TV",
+   "year": 2019,
+   "hit": "Demon Slayer: Kimetsu no Yaiba",
+   "hitYear": 2019,
+   "sim": 1
+  },
+  {
+   "malId": 31964,
+   "title": "My Hero Academia",
+   "type": "TV",
+   "year": 2016,
+   "hit": "My Hero Academia",
+   "hitYear": 2016,
+   "sim": 1
+  },
+  {
+   "malId": 34572,
+   "title": "Black Clover",
+   "type": "TV",
+   "year": 2017,
+   "hit": "Black Clover",
+   "hitYear": 2017,
+   "sim": 1
+  },
+  {
+   "malId": 11757,
+   "title": "Sword Art Online",
+   "type": "TV",
+   "year": 2012,
+   "hit": "Sword Art Online",
+   "hitYear": 2012,
+   "sim": 1
+  },
+  {
+   "malId": 11061,
+   "title": "Hunter x Hunter (2011)",
+   "type": "TV",
+   "year": 2011,
+   "hit": "Hunter x Hunter",
+   "hitYear": 2011,
+   "sim": 0.848
+  },
+  {
+   "malId": 20,
+   "title": "Naruto",
+   "type": "TV",
+   "year": 2002,
+   "hit": "Naruto",
+   "hitYear": 2002,
+   "sim": 1
+  },
+  {
+   "malId": 269,
+   "title": "Bleach",
+   "type": "TV",
+   "year": 2004,
+   "hit": "Bleach",
+   "hitYear": 2004,
+   "sim": 1
+  },
+  {
+   "malId": 22319,
+   "title": "Tokyo Ghoul",
+   "type": "TV",
+   "year": 2014,
+   "hit": "Tokyo Ghoul",
+   "hitYear": 2014,
+   "sim": 1
+  },
+  {
+   "malId": 40748,
+   "title": "JUJUTSU KAISEN",
+   "type": "TV",
+   "year": 2020,
+   "hit": "JUJUTSU KAISEN",
+   "hitYear": 2020,
+   "sim": 1
+  }
+ ]
+}

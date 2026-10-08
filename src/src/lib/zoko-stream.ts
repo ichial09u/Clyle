@@ -17,7 +17,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { zokoStreamPageUrl, type Lang, type ServerId } from "@/lib/zoko";
 import { db } from "@/lib/db";
-import { getDubAudioVerdict } from "@/lib/dub-audio";
+import { getDubAudioVerdict, storeDubAudioVerdict } from "@/lib/dub-audio";
 
 /** Zoko answered with a definitive "this page doesn't exist" (HTTP 404/410). */
 export class ZokoNoPageError extends Error {
@@ -212,8 +212,17 @@ const DUB_CHECK_TTL_MS = 24 * 3600 * 1000;
 type DubVerdictEntry = { data: boolean; expires: number };
 const dubVerdicts = new Map<string, DubVerdictEntry>(); // true = REAL dub
 
-function dubCheckKey(malId: number, ep: number, server: ServerId): string {
-  return `dubcheck/${malId}/${ep}/${server}`;
+function dubCheckKey(malId: number, ep: number, server: ServerId, srcScope?: string): string {
+  // SOURCE-SCOPED keys: Zoko re-uploads files under the same DUB slot (the
+  // Pokémon Concierge case — a byte-identical sub re-upload replaced a real
+  // dub AFTER the fleet had verified it). A verdict tied only to
+  // (malId, ep, server) goes stale the moment the file changes; hashing the
+  // stream PATH (query tokens stripped) into the key re-detects a swap on
+  // the very next resolve while staying cache-hit instant for the same file.
+  if (!srcScope) return `dubcheck/${malId}/${ep}/${server}`;
+  const path = srcScope.split("?")[0] || srcScope;
+  const sig = createHash("sha1").update(path).digest("hex").slice(0, 12);
+  return `dubcheck/${malId}/${ep}/${server}/${sig}`;
 }
 
 async function cacheDubVerdict(key: string, verdict: boolean): Promise<void> {
@@ -290,8 +299,13 @@ async function segmentDigest(url: string): Promise<string | null> {
  *           it. (Caching a transient failure used to mark real-dub shows as
  *           "no dub" for a day — that's how DUB vanished app-wide.)
  */
-export async function verifyRealDub(malId: number, ep: number, server: ServerId): Promise<boolean | null> {
-  const key = dubCheckKey(malId, ep, server);
+export async function verifyRealDub(
+  malId: number,
+  ep: number,
+  server: ServerId,
+  srcScope?: string,
+): Promise<boolean | null> {
+  const key = dubCheckKey(malId, ep, server, srcScope);
   const mem = dubVerdicts.get(key);
   if (mem && mem.expires > Date.now()) return mem.data;
   const disk = (await diskRead(key)) as unknown as DubVerdictEntry | null;
@@ -434,6 +448,28 @@ export async function resolveStream(
   const audio = await getDubAudioVerdict(malId, ep, server);
   if (audio === "fake") return null;
   if (audio === "real") return data;
+
+  // SOURCE-SCOPED segment compare — the fleet verdicts and the anime-level
+  // columns describe the file that existed WHEN THE FLEET RAN. Zoko swaps
+  // files under the same DUB slot (Pokémon Concierge ep1: a byte-identical
+  // sub re-upload replaced the real dub; hasDub stayed true and the fake
+  // played as "DUB"). Keying the verdict by the stream path re-detects a
+  // swap on the next resolve, and is cache-hit instant for the same file.
+  const scoped = await verifyRealDub(malId, ep, server, data.src);
+  if (scoped === false) {
+    // definitive per-EPISODE proof — pin it so future plays of this exact file
+    // skip the network entirely (the DubAudio row is the first thing the
+    // resolve fast-path consults). The anime-level hasDub columns stay the
+    // FLEET's domain: flipping them from the live route hides the DUB buttons
+    // app-wide, which would also bury the OTHER episodes' real dubs (Concierge
+    // eps 2-4 measured byte-different). Play-time validation is per-episode
+    // by design — an honest 404 + sub fallback is the right scope.
+    void storeDubAudioVerdict(malId, ep, server, "fake", "segment-digest", "resolved dub byte-equal to sub").catch(
+      () => undefined,
+    );
+    return null;
+  }
+  if (scoped === true) return data;
 
   const verdict = await dubVerdictFor(malId, server);
   if (verdict === true) return data;

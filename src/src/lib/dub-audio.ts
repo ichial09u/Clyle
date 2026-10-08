@@ -39,13 +39,15 @@ export async function getDubAudioVerdict(
   }
 }
 
-/** Persist a fleet-measured verdict (upsert; keeps the latest method/detail). */
+/** Persist a fleet-measured verdict (upsert; keeps the latest method/detail).
+ *  "segment-digest" = the live resolve path's byte-compare (zoko-stream), the
+ *  third evidence source besides the fleet's audio-md5 and ASR probes. */
 export async function storeDubAudioVerdict(
   malId: number,
   ep: number,
   server: string,
   verdict: DubAudioVerdict,
-  method: "audio-md5" | "asr-en" = "audio-md5",
+  method: "audio-md5" | "asr-en" | "segment-digest" = "audio-md5",
   detail?: string | null,
 ): Promise<void> {
   await db.dubAudio.upsert({
