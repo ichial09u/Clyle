@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { jikan, type JikanAnime } from "@/lib/jikan";
 import { anilistToJikan, homeFeed, mediaByMal, type AniListMedia } from "@/lib/anilist";
 import { upsertAnime, upsertAniListMedia, lastSync } from "@/lib/sync";
 import { lite, type AnimeLite, type HomePayload } from "@/lib/serialize";
+import { maybeRunAnnNewsSweep } from "@/lib/ann-news";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,11 @@ function dedup(items: AnimeLite[]): AnimeLite[] {
  * AniList), and finally the local catalog ordering.
  */
 export async function GET() {
+  // lazy hourly ANN news sweep — Vercel Hobby only allows daily crons, so
+  // organic home traffic keeps the (claim-first, concurrency-safe) sweep
+  // cadence at ~hourly; runs after the response, never blocks the payload
+  after(() => maybeRunAnnNewsSweep());
+
   // 0) cache hit — serve the built payload instantly (this is the path every
   //    return-to-home takes; the hero must snap in, not rebuild the world)
   if (homeCache && Date.now() - homeCache.at < HOME_CACHE_MS) {
