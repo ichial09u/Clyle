@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { harvest, logAnnSub } from "@/lib/global-log";
 
 /**
  * ANN Tracking — server proxy for the AnimeNewsNetwork Encyclopedia API.

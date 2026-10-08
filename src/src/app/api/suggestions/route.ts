@@ -38,8 +38,9 @@ export const dynamic = "force-dynamic";
  */
 
 const INDEX_TTL_MS = 30 * 60 * 1000;
-const ECHO_SHOWS = 4; // how many non-anchor recent watches contribute
-const ECHO_WEIGHT = 0.22; // first echo's weight (halves per step back)
+const ECHO_SHOWS = 8; // how many non-anchor recent watches contribute
+const ECHO_WEIGHT = 0.3; // first echo's weight (halves per step back)
+const GENRE_PRIOR = 0.35; // boost for sharing the user's own top genres
 
 interface IndexRow {
   malId: number;
@@ -241,12 +242,34 @@ export async function GET(req: Request) {
     .map((id, i) => ({ row: idx.byId.get(id), w: ECHO_WEIGHT * Math.pow(0.5, i) }))
     .filter((e): e is { row: IndexRow; w: number } => !!e.row);
 
+  // the user's OWN genre fingerprint: every recent watch votes its genres,
+  // weighted by recency — the "goes off what you watch" signal. Distinctive
+  // genres already carry big IDF² weights; the prior keeps candidates that
+  // share the viewer's actual genre mix afloat even when the anchor alone
+  // would rank them out.
+  const genrePrior = new Map<string, number>();
+  watchingIds.slice(0, 20).forEach((id, i) => {
+    const row = idx.byId.get(id);
+    if (!row) return;
+    const w = 1 / (1 + i * 0.5);
+    for (const g of row.genres) genrePrior.set(g, (genrePrior.get(g) ?? 0) + w);
+  });
+  const topGenres = new Set(
+    [...genrePrior.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([g]) => g),
+  );
+
   const candidates = idx.rows.filter((r) => !watchingIds.includes(r.malId));
   const scored = candidates
     .map((c) => {
       const text = textOf(c);
       let score = simTo(idx, c, text, c.title.toLowerCase(), anchor!);
       for (const e of echoes) score += e.w * simTo(idx, c, text, c.title.toLowerCase(), e.row);
+      // personal genre prior: share the viewer's own top genre mix
+      const shared = c.genres.filter((g) => topGenres.has(g)).length;
+      if (shared) score += GENRE_PRIOR * Math.min(shared, 3);
       return { c, score };
     })
     .filter((s) => s.score > 0.5)

@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { lite } from "@/lib/serialize";
 import type { AnimeLite } from "@/lib/types";
 import { streaksForDay } from "@/lib/top10";
+import { harvest, logWatchDelta } from "@/lib/global-log";
 
 export const dynamic = "force-dynamic";
 
@@ -39,6 +40,10 @@ export async function GET(req: Request) {
     // ALL-TIME ranking across every viewer (site + app combined) — this feeds
     // the home "Most Watched" rail, which must show REAL global results, not
     // a per-day or per-device slice. The smoke-bot scratch day is excluded.
+    // Harvest first: replay every OTHER instance's watch deltas from the
+    // global log into this instance's SQLite, so the aggregate below is the
+    // SAME on every instance (identical list for app + site, everywhere).
+    await harvest();
     const grouped = await db.watchStat.groupBy({
       by: ["malId"],
       where: { day: { not: "1970-01-01" } },
@@ -142,6 +147,10 @@ export async function POST(req: Request) {
     },
     create: { day, malId, seconds: inc, title, image },
   });
+
+  // ALSO append to the global log (coalesced) so every other instance's
+  // "Most Watched" aggregate converges on this watch within ~seconds
+  logWatchDelta(day, malId, inc, title, image);
 
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

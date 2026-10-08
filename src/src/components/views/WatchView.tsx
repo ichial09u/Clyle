@@ -248,18 +248,13 @@ export default function WatchView({
   }, []);
 
   /* -------- auto-fullscreen on open (like the reference app): picking an
-     episode + server drops you straight into fullscreen playback. On leave,
-     EVERY exit path (back button, hardware back, tab switch) drops fullscreen
-     and the rotation lock again.
-
-     PHONES/TABLETS ONLY. Desktop never enters real fullscreen: the player
-     shell is already a full-viewport overlay ("automatically full screen"),
-     so the browser has no fullscreen state to leave first and Escape exits
-     the player in ONE press (owner request). -------- */
+     episode + server drops you straight into fullscreen playback — DESKTOP
+     TOO (owner: the browser bar and the taskbar must not show). On leave,
+     EVERY exit path (back button, Esc, tab switch) drops fullscreen and the
+     rotation lock again. -------- */
   useEffect(() => {
     const shell = shellRef.current;
     if (!shell) return;
-    if (!window.matchMedia?.("(pointer: coarse)")?.matches) return; // desktop: overlay only
     // the leaving pane renders a throwaway copy of this view for the exit
     // animation — it must not (re-)enter fullscreen
     if (shell.closest('[data-leaving="true"]')) return;
@@ -295,6 +290,7 @@ export default function WatchView({
     }
 
     return () => {
+      exitingRef.current = true; // our own teardown — the bridge must not fire
       try {
         screen.orientation?.unlock?.();
       } catch {
@@ -407,12 +403,16 @@ export default function WatchView({
 
   /* -------- desktop keyboard: Space = play/pause, ←/→ = skip ±10s,
             ↑/↓ = volume, Escape = close panel/dialog → exit player in ONE
-            press (no fullscreen hop — desktop never enters real fullscreen,
-            the shell is the fullscreen). Ignored while typing in a field or
-            when a real button/ control has focus (Space on a focused button
-            must stay a button press). */
+            press (when real fullscreen is up, the browser itself consumes
+            the first Esc — the fullscreenchange bridge below turns that
+            exact same press into the exit, so it still stays one press).
+            Ignored while typing in a field or when a real button/ control
+            has focus (Space on a focused button must stay a button press). */
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
+  // set when WE initiate a fullscreen exit (Esc keydown / unmount cleanup) so
+  // the fullscreenchange bridge ignores our own transitions
+  const exitingRef = useRef(false);
   const currentTimeRef = useRef(0);
   currentTimeRef.current = currentTime;
   const durationRef = useRef(0);
@@ -433,9 +433,13 @@ export default function WatchView({
           setDownloadOpen(false);
           return;
         }
-        // ONE press leaves the player — no fullscreen hop (desktop never
-        // enters real fullscreen; the shell overlay IS the fullscreen), and
-        // the unmount cleanup drops fullscreen on devices that had it
+        // ONE press leaves the player. If real fullscreen is somehow still up
+        // AND the browser delivered the key to us (rare), drop it too — the
+        // exitingRef guard keeps the fullscreenchange bridge from re-firing.
+        if (typeof document !== "undefined" && document.fullscreenElement) {
+          exitingRef.current = true;
+          void document.exitFullscreen().catch(() => undefined);
+        }
         onBackRef.current();
         return;
       }
@@ -480,6 +484,33 @@ export default function WatchView({
     const t = window.setTimeout(() => setVolumePct(null), 1_400);
     return () => window.clearTimeout(t);
   }, [volumePct]);
+
+  /* -------- fullscreenchange bridge (desktop): with REAL fullscreen on PC,
+     the browser itself consumes the first Esc — the keydown handler above
+     never fires. When fullscreen drops while the player is still mounted and
+     WE didn't initiate the drop, that WAS the user's Esc press: apply the
+     exact same one-press semantics (panel → dialog → leave the player).
+     Phones keep their own flow (no Esc key there). -------- */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
+    const onFsChange = () => {
+      if (document.fullscreenElement) return; // fullscreen ENTERED — not an exit
+      if (exitingRef.current) return; // our own exit (keydown path / teardown)
+      if (panelRef.current) {
+        setPanel(null);
+        return;
+      }
+      if (downloadOpenRef.current) {
+        setDownloadOpen(false);
+        return;
+      }
+      exitingRef.current = true;
+      onBackRef.current();
+    };
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
 
   const total = anime.totalEpisodes || episode;
   // Settings screen preferences — read reactively where the render needs them

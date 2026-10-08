@@ -67,6 +67,26 @@ export async function getPushEndpoint(): Promise<string | null> {
   }
 }
 
+/**
+ * The FULL subscription (endpoint + p256dh/auth keys) — needed by the ANN
+ * news tracking, whose toggle must converge the push keys onto EVERY server
+ * instance (instances that never saw the original subscribe call still have
+ * to be able to encrypt to this device). Null when push is off/unsupported.
+ */
+export async function getPushSubscriptionJson(): Promise<{ endpoint: string; keys: { p256dh: string; auth: string } } | null> {
+  if (!pushSupported()) return null;
+  try {
+    const reg = await navigator.serviceWorker.getRegistration("/");
+    const sub = await reg?.pushManager.getSubscription();
+    if (!sub) return null;
+    const json = sub.toJSON() as { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
+    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return null;
+    return { endpoint: json.endpoint, keys: { p256dh: json.keys.p256dh, auth: json.keys.auth } };
+  } catch {
+    return null;
+  }
+}
+
 async function swRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (!pushSupported()) return null;
   // RegisterSW registers in production; ensurePushRegistration covers dev/tests

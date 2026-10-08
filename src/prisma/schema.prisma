@@ -474,3 +474,29 @@ model AnimeNotify {
   @@unique([endpoint, malId])
   @@index([malId])
 }
+
+// ANN news tracking — "track this anime" server half. The tracking button's
+// per-device switch stays local; this table (converged across instances via
+// the global log) is what the hourly ANN news sweep reads: every tracked
+// (endpoint, anime) pair gets a push when ANN publishes news matching the
+// anime's ANN title. Push keys live in PushSub (endpoint join).
+model AnnTrackSub {
+  id        Int      @id @default(autoincrement())
+  endpoint  String // the PushSub endpoint this device receives pushes through
+  malId     Int
+  annId     Int? // ANN encyclopedia id (when a match was found)
+  annName   String? // ANN title used for news matching
+  title     String? // denormalized for future settings list
+  image     String?
+  createdAt DateTime @default(now())
+
+  @@unique([endpoint, malId])
+  @@index([malId])
+}
+
+// Per-instance runtime bookkeeping that must survive restarts (currently the
+// global-log harvest cursor — the last ntfy message id applied locally).
+model GlobalMeta {
+  key   String @id
+  value String
+}

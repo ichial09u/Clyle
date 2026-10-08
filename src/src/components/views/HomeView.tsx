@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, Fragment } from "react";
-import type { AnimeLite, ContinueItem, HomePayload } from "@/lib/types";
+import type { AnimeLite, ContinueItem, HomePayload, GenreInfo } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import Row from "@/components/anime/Row";
 import PosterCard from "@/components/anime/PosterCard";
@@ -139,6 +139,15 @@ export default function HomeView({
   // foreground return, and on a 60s poll — no home-cache staleness, no
   // per-device slice. Hidden entirely until people actually watch things.
   const [watched, setWatched] = useState<AnimeLite[]>([]);
+  // the full genre list (from the catalog) — drives the Browse Genres strip
+  // so every genre is reachable from the homepage, not just the ones with rails
+  const [genres, setGenres] = useState<GenreInfo[]>([]);
+  useEffect(() => {
+    fetch("/api/genres", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d: { genres?: GenreInfo[] }) => setGenres(d.genres ?? []))
+      .catch(() => undefined);
+  }, []);
   const refreshWatched = useCallback(() => {
     fetch("/api/watchtime?all=1&limit=12", { cache: "no-store" })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
@@ -259,6 +268,12 @@ export default function HomeView({
           with tags and live countdowns), right under the personal rows */}
       <ArrivingRail items={arriving} onSelect={onSelect} />
 
+      {/* Browse Genres — every catalog genre as a chip strip, so PC users can
+          reach ALL genres from the homepage (the rails below only carry a
+          few). ‹ › arrow buttons scroll the strip on pointer devices; touch
+          swipes it natively. Tapping a chip opens that genre's grid. */}
+      {genres.length ? <GenreStrip genres={genres} onGenre={onGenre} /> : null}
+
       {error ? (
         <p className="px-4 mt-8 text-center text-gray-400 text-sm">
           Could not reach the catalog. MAL API may be busy — pull to retry in a moment.
@@ -346,5 +361,74 @@ export default function HomeView({
         </section>
       ) : null}
     </div>
+  );
+}
+
+/* ---------------- Browse Genres strip ----------------
+   Every catalog genre as horizontally-scrollable chips with ‹ › arrow
+   buttons for pointer devices (mouse wheel doesn't scroll sideways) —
+   tapping a chip opens the genre's full grid, same as the Genres tab. */
+function GenreStrip({ genres, onGenre }: { genres: GenreInfo[]; onGenre: (g: string) => void }) {
+  const stripRef = useRef<HTMLDivElement>(null);
+  const [canLeft, setCanLeft] = useState(false);
+  const [canRight, setCanRight] = useState(false);
+
+  const measure = useCallback(() => {
+    const el = stripRef.current;
+    if (!el) return;
+    setCanLeft(el.scrollLeft > 4);
+    setCanRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 4);
+  }, []);
+
+  useEffect(() => {
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [measure, genres.length]);
+
+  const nudge = (dir: 1 | -1) => {
+    stripRef.current?.scrollBy({ left: dir * Math.round((stripRef.current.clientWidth || 400) * 0.75), behavior: "smooth" });
+  };
+
+  const arrowCls = (on: boolean) =>
+    `shrink-0 w-8 h-8 rounded-full bg-black/50 backdrop-blur-sm border border-white/15 flex items-center justify-center transition active:scale-95 ${
+      on ? "opacity-100 hover:bg-black/70" : "opacity-30 pointer-events-none"
+    }`;
+
+  return (
+    <section className="mt-6">
+      <div className="flex items-center justify-between px-4 mb-2.5">
+        <h2 className="font-slab text-[21px] font-bold">Browse Genres</h2>
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => nudge(-1)} aria-label="Scroll genres left" className={arrowCls(canLeft)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m15 18-6-6 6-6" />
+            </svg>
+          </button>
+          <button onClick={() => nudge(1)} aria-label="Scroll genres right" className={arrowCls(canRight)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="m9 18 6-6-6-6" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div
+        ref={stripRef}
+        onScroll={measure}
+        className="flex gap-2 overflow-x-auto no-scrollbar px-4 pb-1 scroll-smooth"
+      >
+        {genres.map((g) => (
+          <button
+            key={g.name}
+            onClick={() => onGenre(g.name)}
+            aria-label={`Open ${g.name} genre`}
+            className="shrink-0 h-9 rounded-full px-3.5 flex items-center gap-1.5 bg-[#1d1d1d] ring-1 ring-inset ring-white/10 hover:bg-[#282828] hover:ring-white/25 active:scale-95 transition"
+          >
+            <span className="text-[13px] font-semibold text-gray-100 whitespace-nowrap">{g.name}</span>
+            <span className="text-[10.5px] font-bold text-gray-500 tabular-nums">{g.count}</span>
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }

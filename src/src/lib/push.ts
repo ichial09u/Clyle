@@ -146,6 +146,44 @@ export async function pushOnce(key: string, payload: PushPayload, opts: { onlyAn
   return true;
 }
 
+/**
+ * Targeted send to a RAW endpoint set (the ANN news sweep — subscribers come
+ * from the converged AnnTrackSub table, not animeNotify). Returns the
+ * endpoints that answered 404/410 so the caller can prune them from the
+ * global log. Never throws; respects MAX_SUBS_PER_SEND.
+ */
+export async function sendPushToEndpoints(payload: PushPayload, endpoints: Iterable<string>): Promise<{ sent: number; dead: string[] }> {
+  if (!ensureVapid()) return { sent: 0, dead: [] };
+  const targets = [...new Set(endpoints)].slice(0, MAX_SUBS_PER_SEND);
+  if (!targets.length) return { sent: 0, dead: [] };
+  let keys: Array<{ endpoint: string; p256dh: string; auth: string }>;
+  try {
+    keys = await db.pushSub.findMany({
+      where: { endpoint: { in: targets } },
+      select: { endpoint: true, p256dh: true, auth: true },
+    });
+  } catch {
+    return { sent: 0, dead: [] };
+  }
+  const json = JSON.stringify(payload);
+  const dead: string[] = [];
+  let sent = 0;
+  for (const s of keys) {
+    try {
+      await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, json, {
+        TTL: 3 * 24 * 3600,
+        headers: { Urgency: "high" },
+      });
+      sent++;
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode;
+      if (status === 404 || status === 410) dead.push(s.endpoint);
+      else console.error(`[push] ann-news send failed (${status ?? "no-status"}):`, err instanceof Error ? err.message.slice(0, 120) : err);
+    }
+  }
+  return { sent, dead };
+}
+
 /* ---------------- trigger helpers (called from sync / cron / top10) ---------------- */
 
 /**

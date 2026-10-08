@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
+import { enablePush, getPushSubscriptionJson, pushSupported } from "@/lib/push-client";
 
 /**
  * ANN Tracking — the small circular button on the details page (same size and
@@ -42,6 +43,7 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
   const [phase, setPhase] = useState<"idle" | "loading" | "found" | "none" | "error">("idle");
   const [match, setMatch] = useState<AnnMatch | null>(null);
   const [tracked, setTracked] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -84,7 +86,7 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
     if (next && phase === "idle") void load();
   };
 
-  const toggleTracked = (on: boolean) => {
+  const toggleTracked = async (on: boolean) => {
     const map = readTracked();
     if (on) map[String(anime.malId)] = true;
     else delete map[String(anime.malId)];
@@ -94,6 +96,37 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
       /* storage full/blocked — the session state still flips */
     }
     setTracked(on);
+
+    // server half: the ANN news sweep needs (endpoint, anime) pairs globally
+    if (!pushSupported()) {
+      if (on) setNote("Tracked on this device — news alerts need notifications (add the app to your Home Screen on iOS).");
+      else setNote(null);
+      return;
+    }
+    try {
+      let sub = await getPushSubscriptionJson();
+      if (on && !sub) {
+        const r = await enablePush();
+        if (r.ok) sub = await getPushSubscriptionJson();
+        else setNote(r.reason === "denied" ? "Tracked on this device — allow notifications in your browser to also get ANN news alerts." : "Tracked on this device — notifications are unavailable here.");
+      }
+      if (sub) {
+        const res = await fetch("/api/ann-track", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint: sub.endpoint,
+            keys: sub.keys,
+            on,
+            ann: { malId: anime.malId, annId: match?.annId ?? null, annName: match?.name ?? anime.title, title: anime.titleEnglish || anime.title, image: anime.image },
+          }),
+        });
+        if (on && res.ok) setNote("Tracking — you'll get a notification when ANN publishes news about this anime.");
+        else if (!on) setNote(null);
+      }
+    } catch {
+      /* local tracking already saved — the server sync is best-effort */
+    }
   };
 
   return (
@@ -170,10 +203,11 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
           <div className="mt-3 pt-3 border-t border-white/10 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[12.5px] font-bold text-gray-200">Track this anime</p>
-              <p className="text-[10.5px] text-gray-500 leading-snug">Saved on this device</p>
+              <p className="text-[10.5px] text-gray-500 leading-snug">ANN news alerts on this device</p>
             </div>
-            <Switch checked={tracked} onCheckedChange={toggleTracked} />
+            <Switch checked={tracked} onCheckedChange={(v) => void toggleTracked(v)} />
           </div>
+          {note ? <p className="mt-2 text-[10.5px] text-gray-400 leading-snug">{note}</p> : null}
         </div>
       ) : null}
     </div>
