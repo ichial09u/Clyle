@@ -138,6 +138,9 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
                 {match.type ? (
                   <span className="text-[10.5px] font-bold text-gray-300 bg-[#1f1f1f] border border-white/10 rounded-full px-2 py-0.5">{match.type}</span>
                 ) : null}
+                {anime.airing ? (
+                  <span className="text-[10.5px] font-bold text-gray-200 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">Airing</span>
+                ) : null}
                 {tracked ? (
                   <span className="text-[10.5px] font-bold text-[#35d5bf] bg-[#35d5bf]/10 border border-[#35d5bf]/30 rounded-full px-2 py-0.5">Tracking</span>
                 ) : null}

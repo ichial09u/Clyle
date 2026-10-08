@@ -120,9 +120,16 @@ function pickBest(items: ReturnType<typeof parseSearchItems>, q: string) {
     if (n === target) score = 100;
     else if (n.startsWith(target) || target.startsWith(n)) score = 80;
     else if (n.includes(target) || target.includes(n)) score = 60;
-    return { it, score, season: seasonOf(it.precision, it.type) };
+    return {
+      it,
+      score,
+      season: seasonOf(it.precision, it.type),
+      // "Naruto" matches the TV series, its OAV and its movies equally by
+      // name — the TV series itself must win the tie (then lowest season)
+      isTv: /^tv(\s*\d+)?$/i.test(it.precision ?? it.type ?? ""),
+    };
   });
-  scored.sort((a, b) => b.score - a.score || a.season - b.season);
+  scored.sort((a, b) => b.score - a.score || (b.isTv ? 1 : 0) - (a.isTv ? 1 : 0) || a.season - b.season);
   const top = scored[0];
   // the ANN engine matched the query against ITS titles (incl. romaji alts),
   // so a zero name-score is still a real hit — but prefer its first season
