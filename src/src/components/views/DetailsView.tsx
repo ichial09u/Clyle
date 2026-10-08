@@ -6,6 +6,7 @@ import HeroBanner from "@/components/anime/HeroBanner";
 import PosterCard from "@/components/anime/PosterCard";
 import CommentsSection from "@/components/anime/CommentsSection";
 import NotifyNextToggle from "@/components/anime/NotifyNextToggle";
+import TrackButton from "@/components/anime/TrackButton";
 import { useMyList, minimalLite } from "@/lib/client-store";
 
 export default function DetailsView({
@@ -115,6 +116,12 @@ export default function DetailsView({
             <path d="M19 12H5M12 19l-7-7 7-7" />
           </svg>
         </button>
+
+        {/* ANN tracking — the small circular chart-climb button (same shell as
+            the floating notification bell), opens the AnimeNewsNetwork panel */}
+        <div className="absolute right-3 top-3">
+          <TrackButton anime={anime} />
+        </div>
       </div>
 
       <HeroBanner
