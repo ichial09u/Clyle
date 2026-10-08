@@ -98,6 +98,8 @@ export default function WatchView({
   const [offline, setOffline] = useState(false);
   // offline-save progress ("Saving for offline · 43%" pill)
   const [saveState, setSaveState] = useState<SaveState | null>(null);
+  // desktop ↑/↓ volume pill — percent shown for ~1.4s after a press, else hidden
+  const [volumePct, setVolumePct] = useState<number | null>(null);
 
   // per-episode DUB availability for the CURRENT episode: the highest proven
   // boundary across both chains (either chain can serve the dub via fallback)
@@ -248,10 +250,16 @@ export default function WatchView({
   /* -------- auto-fullscreen on open (like the reference app): picking an
      episode + server drops you straight into fullscreen playback. On leave,
      EVERY exit path (back button, hardware back, tab switch) drops fullscreen
-     and the rotation lock again. -------- */
+     and the rotation lock again.
+
+     PHONES/TABLETS ONLY. Desktop never enters real fullscreen: the player
+     shell is already a full-viewport overlay ("automatically full screen"),
+     so the browser has no fullscreen state to leave first and Escape exits
+     the player in ONE press (owner request). -------- */
   useEffect(() => {
     const shell = shellRef.current;
     if (!shell) return;
+    if (!window.matchMedia?.("(pointer: coarse)")?.matches) return; // desktop: overlay only
     // the leaving pane renders a throwaway copy of this view for the exit
     // animation — it must not (re-)enter fullscreen
     if (shell.closest('[data-leaving="true"]')) return;
@@ -398,9 +406,11 @@ export default function WatchView({
   );
 
   /* -------- desktop keyboard: Space = play/pause, ←/→ = skip ±10s,
-            Escape = close panel/dialog → leave fullscreen → exit player.
-            Ignored while typing in a field or when a real button/ control has
-            focus (Space on a focused button must stay a button press). */
+            ↑/↓ = volume, Escape = close panel/dialog → exit player in ONE
+            press (no fullscreen hop — desktop never enters real fullscreen,
+            the shell is the fullscreen). Ignored while typing in a field or
+            when a real button/ control has focus (Space on a focused button
+            must stay a button press). */
   const onBackRef = useRef(onBack);
   onBackRef.current = onBack;
   const currentTimeRef = useRef(0);
@@ -423,12 +433,9 @@ export default function WatchView({
           setDownloadOpen(false);
           return;
         }
-        // first Esc leaves fullscreen (explicit, so the SAME press can never
-        // also exit the player); the NEXT Esc exits the player entirely
-        if (typeof document !== "undefined" && document.fullscreenElement) {
-          void document.exitFullscreen().catch(() => undefined);
-          return;
-        }
+        // ONE press leaves the player — no fullscreen hop (desktop never
+        // enters real fullscreen; the shell overlay IS the fullscreen), and
+        // the unmount cleanup drops fullscreen on devices that had it
         onBackRef.current();
         return;
       }
@@ -447,12 +454,32 @@ export default function WatchView({
         const target = e.key === "ArrowRight" ? base + 10 : base - 10;
         seekTo(Math.max(0, Math.min(durationRef.current || target, target)));
         showUi();
+        return;
+      }
+      // ↑/↓ = volume in 10% steps (hold to ramp) with a brief on-screen pill,
+      // so the change is visible even though the player has no volume slider
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        const video = videoRef.current;
+        if (!video) return;
+        e.preventDefault(); // don't scroll the page
+        const step = e.key === "ArrowUp" ? 0.1 : -0.1;
+        video.muted = false;
+        video.volume = Math.max(0, Math.min(1, Math.round((video.volume + step) * 10) / 10));
+        setVolumePct(Math.round(video.volume * 100));
+        showUi();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // the volume pill clears itself shortly after the last ↑/↓ press
+  useEffect(() => {
+    if (volumePct === null) return;
+    const t = window.setTimeout(() => setVolumePct(null), 1_400);
+    return () => window.clearTimeout(t);
+  }, [volumePct]);
 
   const total = anime.totalEpisodes || episode;
   // Settings screen preferences — read reactively where the render needs them
@@ -1639,6 +1666,34 @@ export default function WatchView({
         {castMsg || playerMsg ? (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center">
             {castMsg ?? playerMsg}
+          </div>
+        ) : null}
+
+        {/* desktop ↑/↓ volume OSD — mirrors the keyboard press so the change
+            is visible even without a volume slider */}
+        {volumePct !== null ? (
+          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-black/80 rounded-2xl px-3.5 py-1.5 pointer-events-none">
+            <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor" aria-hidden>
+              <path d="M3 9v6h4l5 5V4L7 9H3z" />
+              {volumePct > 0 ? (
+                <path
+                  d={
+                    volumePct >= 50
+                      ? "M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13"
+                      : "M16 8a5 5 0 0 1 0 8"
+                  }
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              ) : (
+                <path d="M16 9l6 6m0-6l-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              )}
+            </svg>
+            <span className="text-[11.5px] text-gray-200 font-semibold tabular-nums">
+              {volumePct === 0 ? "Muted" : `Volume ${volumePct}%`}
+            </span>
           </div>
         ) : null}
 
