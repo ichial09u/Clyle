@@ -16,19 +16,28 @@ import { sendPushToEndpoints } from "@/lib/push";
  * Never throws.
  */
 
+/**
+ * In-flight coalescing: a burst of /api/home requests fires N after()
+ * callbacks — they all await ONE sweep instead of racing N RSS fetches.
+ */
+let sweepInFlight: Promise<unknown> | null = null;
+
 export async function maybeRunAnnNewsSweep(): Promise<void> {
   try {
-    const meta = await db.globalMeta.findUnique({ where: { key: "annnews:lastsweep" } });
-    if (meta && Date.now() - new Date(meta.value).getTime() < SWEEP_MIN_GAP_MS) return;
-    // optimistic claim — a failed sweep just waits for the next window
-    await db.globalMeta
-      .upsert({
-        where: { key: "annnews:lastsweep" },
-        create: { key: "annnews:lastsweep", value: new Date().toISOString() },
-        update: { value: new Date().toISOString() },
-      })
-      .catch(() => undefined);
-    await runAnnNewsSweep();
+    if (sweepInFlight) {
+      await sweepInFlight.catch(() => undefined);
+      return;
+    }
+    // runAnnNewsSweep self-claims (60-min gap) — the old wrapper pre-claim
+    // wrote annnews:lastsweep BEFORE the sweep, whose own throttle then read
+    // that fresh timestamp and bailed: the hourly lazy kick was a no-op and
+    // even the daily cron got throttled by traffic-refreshed timestamps.
+    sweepInFlight = runAnnNewsSweep();
+    try {
+      await sweepInFlight;
+    } finally {
+      sweepInFlight = null;
+    }
   } catch {
     /* background nicety — never break the caller */
   }
@@ -46,19 +55,35 @@ export async function runAnnNewsSweep(): Promise<{
 }> {
   // move the 60-min claim INTO the sweep itself — the old split let a manual
   // GET /api/ann-news bypass the throttle entirely and force RSS + push
-  // hammering at will
+  // hammering at will. The claim is a compare-and-swap on the stored stamp so
+  // concurrent instances (cron + lazy kick on another lambda) cannot both win.
+  const stamp = new Date().toISOString();
   try {
     const meta = await db.globalMeta.findUnique({ where: { key: "annnews:lastsweep" } });
     if (meta && Date.now() - new Date(meta.value).getTime() < SWEEP_MIN_GAP_MS) {
       return { ok: true, subs: 0, items: 0, matched: 0, sent: 0, note: "swept within the last hour — throttled" };
     }
-    await db.globalMeta
-      .upsert({
-        where: { key: "annnews:lastsweep" },
-        create: { key: "annnews:lastsweep", value: new Date().toISOString() },
-        update: { value: new Date().toISOString() },
-      })
-      .catch(() => undefined);
+    if (meta) {
+      // CAS: only the first writer whose read is still current proceeds
+      const cas = await db.globalMeta.updateMany({
+        where: { key: "annnews:lastsweep", value: meta.value },
+        data: { value: stamp },
+      });
+      if (cas.count === 0) {
+        return { ok: true, subs: 0, items: 0, matched: 0, sent: 0, note: "another instance claimed the sweep" };
+      }
+    } else {
+      const created = await db.globalMeta
+        .create({ data: { key: "annnews:lastsweep", value: stamp } })
+        .catch(() => null);
+      if (!created) {
+        const re = await db.globalMeta.findUnique({ where: { key: "annnews:lastsweep" } });
+        if (re && Date.now() - new Date(re.value).getTime() < SWEEP_MIN_GAP_MS) {
+          return { ok: true, subs: 0, items: 0, matched: 0, sent: 0, note: "another instance claimed the sweep" };
+        }
+        await db.globalMeta.update({ where: { key: "annnews:lastsweep" }, data: { value: stamp } }).catch(() => undefined);
+      }
+    }
   } catch (err) {
     console.warn("[ann-news] claim failed:", err instanceof Error ? err.message : err);
   }
@@ -110,7 +135,15 @@ async function sweepInner(): Promise<{
     return { ok: true, subs: subs.length, items: 0, matched: 0, sent: 0, note: "ANN newsroom RSS unreachable" };
   }
 
-  const items = parseRss(rss).slice(0, 40);
+  const items = parseRss(rss)
+    // pubDate guard: a fresh instance must not re-push 2-day-old RSS entries
+    // (the marker replay through the global log only covers ~12h)
+    .filter((i) => {
+      if (!i.publishedAt) return true; // no date — keep (claim dedupe still applies)
+      const t = Date.parse(i.publishedAt);
+      return !Number.isFinite(t) || t >= Date.now() - 25 * 60 * 60 * 1000;
+    })
+    .slice(0, 40);
   let matched = 0;
   let sent = 0;
   const dead = new Set<string>();
@@ -128,6 +161,8 @@ async function sweepInner(): Promise<{
       } catch {
         continue; // already claimed here (or a marker came through the log)
       }
+      // matched news also lands in the in-app bell feed (GET /api/ann-news)
+      await rememberFeedItem({ guid, headline: item.title.slice(0, 200), link: item.link || "/", malId: g.malId, anime: titleCase(nameKey) });
       const res = await sendPushToEndpoints(
         {
           t: `ANN News — ${titleCase(nameKey)}`,
@@ -143,7 +178,14 @@ async function sweepInner(): Promise<{
       );
       sent += res.sent;
       for (const d of res.dead) dead.add(d);
-      logNewsSent(claim); // other instances must not resend this one
+      if (res.sent > 0 || res.dead.length > 0) {
+        // delivered (or every endpoint is gone — nothing worth retrying):
+        // other instances must not resend this one
+        logNewsSent(claim); // other instances must not resend this one
+      } else {
+        // transient send failure — release the claim so the next window retries
+        await db.pushLog.delete({ where: { key: claim } }).catch(() => undefined);
+      }
       matched++;
     }
   }
@@ -202,19 +244,73 @@ function pick(block: string, tag: string): string {
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)))
+    .replace(/&#(\d+);/g, (_, d: string) => {
+      // bounds-checked decode — a malformed entity (&#999999999;) must not
+      // throw a RangeError and kill the whole sweep
+      const n = Number(d);
+      return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : " ";
+    })
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function parseRss(xml: string): Array<{ title: string; link: string; guid: string; description: string }> {
+function parseRss(xml: string): Array<{ title: string; link: string; guid: string; description: string; publishedAt: string }> {
   const blocks = xml.match(/<item>[\s\S]*?<\/item>/g) ?? [];
   return blocks.map((b) => ({
     title: pick(b, "title"),
     link: pick(b, "link"),
     guid: pick(b, "guid"),
     description: pick(b, "description"),
+    publishedAt: pick(b, "pubDate"),
   }));
+}
+
+/* ---------------- in-app news feed (the bell's ANN News section) ---------------- */
+
+export interface AnnNewsFeedItem {
+  guid: string;
+  headline: string;
+  link: string;
+  malId: number;
+  anime: string;
+  at: string;
+}
+
+const FEED_KEY = "annnews:feed";
+const FEED_CAP = 30;
+
+async function rememberFeedItem(item: Omit<AnnNewsFeedItem, "at">): Promise<void> {
+  try {
+    const row = await db.globalMeta.findUnique({ where: { key: FEED_KEY } });
+    let feed: AnnNewsFeedItem[] = [];
+    try {
+      const parsed = JSON.parse(row?.value ?? "[]") as AnnNewsFeedItem[];
+      if (Array.isArray(parsed)) feed = parsed;
+    } catch {
+      feed = [];
+    }
+    feed = feed.filter((f) => !(f.guid === item.guid && f.malId === item.malId));
+    feed.unshift({ ...item, at: new Date().toISOString() });
+    await db.globalMeta
+      .upsert({
+        where: { key: FEED_KEY },
+        create: { key: FEED_KEY, value: JSON.stringify(feed.slice(0, FEED_CAP)) },
+        update: { value: JSON.stringify(feed.slice(0, FEED_CAP)) },
+      })
+      .catch(() => undefined);
+  } catch {
+    /* feed is a nicety — never break the sweep */
+  }
+}
+
+export async function annNewsFeed(): Promise<AnnNewsFeedItem[]> {
+  try {
+    const row = await db.globalMeta.findUnique({ where: { key: FEED_KEY } });
+    const parsed = JSON.parse(row?.value ?? "[]") as AnnNewsFeedItem[];
+    return Array.isArray(parsed) ? parsed.slice(0, FEED_CAP) : [];
+  } catch {
+    return [];
+  }
 }
 
 /** word-boundary-ish headline match on the normalized ANN title */

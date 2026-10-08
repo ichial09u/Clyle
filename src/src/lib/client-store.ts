@@ -767,14 +767,16 @@ export type Top10MonthEntry = AnimeLite & {
  * rail re-grounds itself on every open. The plain variant (60s poll) stays
  * TTL-gated and free.
  */
-export async function fetchTop10Month(fresh = false): Promise<Top10MonthEntry[]> {
+export async function fetchTop10Month(fresh = false): Promise<Top10MonthEntry[] | null> {
   try {
     const res = await fetch("/api/top10" + (fresh ? "?fresh=1" : ""));
-    if (!res.ok) return [];
+    // null on failure — callers keep the previous list instead of blinking a
+    // populated rail away on one failed 60s poll ([] means "honestly empty")
+    if (!res.ok) return null;
     const data = (await res.json()) as { items?: Top10MonthEntry[] };
     return (data.items ?? []).filter((it) => Number.isFinite(it?.malId));
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -794,14 +796,15 @@ export type ArrivingEntry = AnimeLite & {
  * answers from its snapshot instantly and schedules a forced re-check via
  * after(); the plain variant (60s poll) stays TTL-gated and free.
  */
-export async function fetchArriving(fresh = false): Promise<ArrivingEntry[]> {
+export async function fetchArriving(fresh = false): Promise<ArrivingEntry[] | null> {
   try {
     const res = await fetch("/api/arriving" + (fresh ? "?fresh=1" : ""));
-    if (!res.ok) return [];
+    // null on failure — a transient error must not wipe the loaded rail
+    if (!res.ok) return null;
     const data = (await res.json()) as { items?: ArrivingEntry[] };
     return (data.items ?? []).filter((it) => Number.isFinite(it?.malId));
   } catch {
-    return [];
+    return null;
   }
 }
 

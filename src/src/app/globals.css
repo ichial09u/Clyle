@@ -165,6 +165,12 @@
     font-family: var(--font-roboto), system-ui, sans-serif;
     -webkit-tap-highlight-color: transparent;
   }
+  /* keyboard focus must be VISIBLE on the all-black shell — the outline-ring
+     color alone painted a near-invisible #3f3f3f ring on every custom control */
+  :focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--app-accent) 70%, white 30%);
+    outline-offset: 2px;
+  }
 }
 
 /* ---------- app helpers ---------- */

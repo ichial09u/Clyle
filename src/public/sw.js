@@ -25,7 +25,7 @@
  * The push / notificationclick handlers at the bottom are untouched.
  */
 
-const VERSION = "v1";
+const VERSION = "v2"; // bump with every SW behavior/cache change — activate() purges v1
 const SHELL = `clyle-shell-${VERSION}`;
 const STATIC = `clyle-static-${VERSION}`;
 const API = `clyle-api-${VERSION}`;

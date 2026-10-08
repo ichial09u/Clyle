@@ -20,7 +20,15 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
-  const genre = decodeURIComponent(name);
+  // Next already decodes route params; this second decode is for doubly-
+  // encoded chips — but a param containing a bare "%" throws URIError, so
+  // fall back to the raw param instead of a raw 500
+  let genre = name;
+  try {
+    genre = decodeURIComponent(name);
+  } catch {
+    /* keep raw */
+  }
 
   if (genre.toUpperCase() === OG_GENRE) {
     const rows = await db.anime.findMany({

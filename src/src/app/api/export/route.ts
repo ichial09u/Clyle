@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { isOwnerRequest, OWNER_HEADER } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -13,10 +14,17 @@ export const dynamic = "force-dynamic";
  *   would silently unsubscribe the lock-screen notifications until each
  *   browser happened to reopen the app).
  *
- * Everything here is already public through the app (no progress/identity
- * secrets). Used by scripts/merge-comments.mjs via scripts/deploy-vercel.mjs.
+ * Owner-only: the dump carries per-user watch history and Web Push keys, so
+ * it requires the x-clyle-owner header (CLYLE_OWNER_TOKEN). The local merge
+ * scripts send it; everyone else gets a 403.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  if (!isOwnerRequest(req)) {
+    return NextResponse.json(
+      { error: "owner only" },
+      { status: 403, headers: { "Cache-Control": "no-store" } },
+    );
+  }
   const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, introScout, scoutRef, dubProbe, pushSubs] =
     await Promise.all([
       db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),

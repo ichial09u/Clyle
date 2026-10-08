@@ -16,6 +16,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
   const [data, setData] = useState<{ for: string; payload: GenrePayload } | null>(null);
   const [failed, setFailed] = useState(false); // fetch error ≠ empty genre — don't lie to the user
   const [imported, setImported] = useState<Set<number>>(new Set());
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,7 +34,7 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
     return () => {
       cancelled = true;
     };
-  }, [genre]);
+  }, [genre, reloadKey]);
 
   const view = data?.for === genre ? data.payload : null;
 
@@ -73,6 +74,8 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
             onClick={() => {
               setData(null);
               setFailed(false);
+              setReloadKey((k) => k + 1); // re-run the fetch effect — the old
+              // "Try again" only cleared state, so the skeleton spun forever
             }}
             className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
           >

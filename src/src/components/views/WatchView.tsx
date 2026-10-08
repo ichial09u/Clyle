@@ -7,7 +7,7 @@ import {
   Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
-import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupProviderOf } from "@/lib/zoko";
+import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer } from "@/lib/zoko";
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
@@ -16,7 +16,7 @@ import {
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
-import { enqueueEpisodeSave, type SaveState } from "@/lib/offline-download";
+import { enqueueEpisodeSave, getSavedEpisode, type SaveState } from "@/lib/offline-download";
 
 type Panel = null | "quality" | "speed" | "subs";
 type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[] };
@@ -68,6 +68,10 @@ export default function WatchView({
   const [stream, setStream] = useState<Resolved | null>(null);
   const [streamError, setStreamError] = useState(false);
   const [iframeFallback, setIframeFallback] = useState(false);
+  // ref mirror for long-lived listeners (the fullscreenchange bridge + Esc
+  // handler must know the embedded Zoko player is up without re-binding)
+  const iframeFallbackRef = useRef(false);
+  iframeFallbackRef.current = iframeFallback;
   // does this title have a REAL English dub? (null = still asking).
   // The server /api/stream also validates every dub play, so a stale value
   // can never put Japanese audio under a DUB label — this only drives the UI.
@@ -123,6 +127,8 @@ export default function WatchView({
     epDubThru != null ? episode <= epDubThru && !dubMissing.includes(episode) : hasDub;
 
   useEffect(() => {
+    // the exit-animation copy must not fire network effects
+    if (shellRef.current?.closest('[data-leaving="true"]')) return;
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
@@ -145,10 +151,34 @@ export default function WatchView({
     };
   }, [anime.malId]);
 
+  // toast timers must not outlive the player — the 12s cast-failure pill and
+  // friends used to fire after unmount
+  const toastTimersRef = useRef<number[]>([]);
+  useEffect(
+    () => () => {
+      for (const t of toastTimersRef.current) window.clearTimeout(t);
+    },
+    [],
+  );
+  const trackToastTimer = (id: number) => {
+    toastTimersRef.current.push(id);
+    if (toastTimersRef.current.length > 12) toastTimersRef.current = toastTimersRef.current.slice(-12);
+  };
+
   const showPlayerMsg = (text: string, ms = 6_000) => {
     setPlayerMsg(text);
-    window.setTimeout(() => setPlayerMsg((m) => (m === text ? null : m)), ms);
+    trackToastTimer(window.setTimeout(() => setPlayerMsg((m) => (m === text ? null : m)), ms));
   };
+
+  // player-open flag for global surfaces (sign-in nudge, offline popup):
+  // they read body[data-player-open] so a modal can never drop over the
+  // running player
+  useEffect(() => {
+    document.body.dataset.playerOpen = "1";
+    return () => {
+      delete document.body.dataset.playerOpen;
+    };
+  }, []);
 
   // one auto language-fallback per (malId, episode) — no dub->sub->dub ping-pong
   const fallbackTriedRef = useRef<string>("");
@@ -202,6 +232,9 @@ export default function WatchView({
   // set when the user switches stream server mid-play so the new source
   // resumes at the exact second instead of restarting
   const pendingSeekRef = useRef<number | null>(null);
+  // which (malId, episode) the staged spot belongs to — a staged seek must
+  // never leak into a DIFFERENT episode's playback
+  const stagedForRef = useRef<string>("");
   const castStateRef = useRef<CastState>(getCastState());
   const castMediaUrlRef = useRef("");
   const hideTimerRef = useRef<number | null>(null);
@@ -442,6 +475,10 @@ export default function WatchView({
         tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable ||
         (tag === "INPUT" && (t as HTMLInputElement).type !== "range");
       if (textlike) return;
+      // Space on a focused real button must stay a button press — the global
+      // handler would preventDefault it and toggle playback instead (e.g.
+      // Space on a focused "Next episode" button used to PAUSE the video)
+      if (tag === "BUTTON" && (e.key === " " || e.code === "Space")) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key === "Escape") {
@@ -458,6 +495,9 @@ export default function WatchView({
         // AND the browser delivered the key to us (rare), drop it too — the
         // exitingRef guard keeps the fullscreenchange bridge from re-firing.
         if (typeof document !== "undefined" && document.fullscreenElement) {
+          // the embedded Zoko player's own fullscreen is its business — the
+          // browser exits it; our bridge deliberately ignores that transition
+          if (iframeFallbackRef.current) return;
           exitingRef.current = true;
           void document.exitFullscreen().catch(() => undefined);
         }
@@ -526,6 +566,10 @@ export default function WatchView({
         exitingRef.current = false; // (re-)entered — our guards start fresh
         return;
       }
+      // the embedded Zoko player's fullscreen button makes the IFRAME the
+      // fullscreen element — exiting IT is the iframe's own flow, not the
+      // user's Esc-to-leave-the-player (this used to dump the viewer home)
+      if (iframeFallbackRef.current) return;
       if (exitingRef.current) return; // our own exit (keydown path / teardown)
       if (panelRef.current) {
         setPanel(null);
@@ -646,6 +690,28 @@ export default function WatchView({
 
   /* -------- resolve the direct stream -------- */
   useEffect(() => {
+    // the exit-animation copy of this view must not fire network effects
+    if (shellRef.current?.closest('[data-leaving="true"]')) return;
+    // OFFLINE FALLBACK (plays-a-minute-then-buffers / next-episode-while-
+    // offline): when offline, the SW-cached /api/stream resolve carries a
+    // STALE tokenized src (Zoko rotates tokens on every fresh resolve) whose
+    // segments are not in the media cache. The saved registry's playlist URL
+    // is the EXACT url that was downloaded — that is the only playable src.
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      const saved = getSavedEpisode(`${anime.malId}:${episode}:${lang}:${server}`);
+      if (saved) {
+        setStream({ src: saved.url, subtitles: [], skip: undefined, referer: null, pk: null });
+        setReady(false);
+        return;
+      }
+    }
+    // a staged seek is only valid for the episode it was staged on — without
+    // this guard a failed SUB↔DUB toggle left the spot staged and pressing
+    // Next resumed the NEW episode at the OLD episode's position
+    if (stagedForRef.current && stagedForRef.current !== `${anime.malId}:${episode}`) {
+      pendingSeekRef.current = null;
+      stagedForRef.current = "";
+    }
     let cancelled = false;
     setStream(null);
     setStreamError(false);
@@ -909,10 +975,10 @@ export default function WatchView({
           imageUrl: anime.image,
           startTime: pendingSeekRef.current ?? resumeAtRef.current,
           captions: cap ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(cap.src)}`, label: cap.label || "English" } : undefined,
-        }).then((ok) => {
-          if (!ok) {
+        }).then((ok2) => {
+          if (!ok2) {
             setCastMsg("Couldn't load this episode on the TV — Stop casting, then cast again");
-            window.setTimeout(() => setCastMsg(null), 12_000);
+            trackToastTimer(window.setTimeout(() => setCastMsg(null), 12_000));
           }
         });
         pendingSeekRef.current = null;
@@ -949,6 +1015,7 @@ export default function WatchView({
       });
       hlsRef.current = hls;
       let netRetries = 0; // fatal-network recoveries before we give up honestly
+      let mediaRetries = 0; // fatal-media recoveries before the honest Retry UI
       hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer, stream.pk));
       hls.attachMedia(video);
       // dual-audio masters (the FlixCloud dub embeds carry Japanese + English
@@ -979,6 +1046,14 @@ export default function WatchView({
           }
           hls.startLoad();
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+          // recoverMediaError() loops spun forever on a corrupt rendition —
+          // cap it, then surface the honest Retry UI like the network path
+          mediaRetries += 1;
+          if (mediaRetries > 3) {
+            hls.stopLoad();
+            if (!destroyed) setStreamError(true);
+            return;
+          }
           hls.recoverMediaError();
         } else if (!destroyed) {
           setStreamError(true);
@@ -1027,7 +1102,9 @@ export default function WatchView({
     const onPause = () => {
       setPlaying(false);
       lastActiveRef.current = Date.now(); // paused — don't count idle time
-      saveNow();
+      // 'ended' also fires 'pause' — the completed save belongs to onEnded
+      // alone (double-POSTing the same row was benign but chatty)
+      if (!video.ended) saveNow();
     };
     const onEnded = () => {
       setPlaying(false);
@@ -1112,9 +1189,10 @@ export default function WatchView({
   }, [ready, stream, iframeFallback, offline, saveKey, episode, total, anime.malId, lang, server]);
 
   // the "Saved for offline ✓" pill clears itself a few seconds after landing
+  // (and a failed save's hidden error state clears itself too)
   useEffect(() => {
-    if (saveState?.phase !== "done") return;
-    const t = window.setTimeout(() => setSaveState(null), 5_000);
+    if (saveState?.phase !== "done" && saveState?.phase !== "error") return;
+    const t = window.setTimeout(() => setSaveState(null), saveState.phase === "error" ? 4_000 : 5_000);
     return () => window.clearTimeout(t);
   }, [saveState]);
 
@@ -1132,7 +1210,9 @@ export default function WatchView({
   const seekTo = (s: number) => {
     const video = videoRef.current;
     if (!video || castStateRef.current === "casting") return;
-    video.currentTime = Math.max(0, Math.min(duration || s, s));
+    // durationRef (not the stale closure's `duration`) — the keydown handler
+    // bound this function once, before any metadata ever arrived
+    video.currentTime = Math.max(0, Math.min(durationRef.current || s, s));
     lastPosRef.current = video.currentTime; // seek + instant exit must still save HERE
     setCurrentTime(video.currentTime);
   };
@@ -1179,6 +1259,7 @@ export default function WatchView({
     const pos = videoRef.current?.currentTime ?? 0;
     saveNow();
     pendingSeekRef.current = pos;
+    stagedForRef.current = `${anime.malId}:${episode}`;
   };
 
   /** Switch stream server mid-playback without losing the spot. */
@@ -1359,6 +1440,8 @@ export default function WatchView({
     ccOffsetRef.current = 0;
     ccDriftRef.current = 0;
     if (offline || iframeFallback) return; // offline copies / iframe embeds carry their own timing
+    // the exit-animation copy must not fire network effects
+    if (shellRef.current?.closest('[data-leaving="true"]')) return;
     fetch(`/api/captions?malId=${anime.malId}&ep=${episode}&lang=${lang}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { measured?: boolean; offsetMs?: number; driftMsPerMin?: number; fitR2?: number; confidence?: number } | null) => {
@@ -1383,7 +1466,7 @@ export default function WatchView({
         }
         const msg = `Captions auto-synced (${parts.join(" ")})`;
         setPlayerMsg(msg);
-        window.setTimeout(() => setPlayerMsg((m) => (m === msg ? null : m)), 5_000);
+        trackToastTimer(window.setTimeout(() => setPlayerMsg((m) => (m === msg ? null : m)), 5_000));
       })
       .catch(() => undefined);
     return () => {
@@ -1707,7 +1790,7 @@ export default function WatchView({
           >
             {saveState.phase === "download" ? (
               <>
-                <Download className="w-3.5 h-3.5 text-[#35d5bf] animate-pulse" />
+                <Download className="w-3.5 h-3.5 text-(--app-accent) animate-pulse" />
                 <span className="text-[11px] text-gray-200 whitespace-nowrap">
                   {saveState.key === saveKey ? "Saving for offline" : "Saving next episode"}
                   {saveState.total ? ` · ${Math.round((saveState.done / saveState.total) * 100)}%` : ""}
@@ -1715,7 +1798,7 @@ export default function WatchView({
               </>
             ) : (
               <>
-                <Check className="w-3.5 h-3.5 text-[#35d5bf]" />
+                <Check className="w-3.5 h-3.5 text-(--app-accent)" />
                 <span className="text-[11px] text-gray-200 whitespace-nowrap">
                   {saveState.key === saveKey
                     ? "Saved for offline"
@@ -1740,7 +1823,7 @@ export default function WatchView({
               skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
-            <FastForward className="w-4 h-4 md:w-5 md:h-5 text-[#35d5bf]" /> Skip Ending
+            <FastForward className="w-4 h-4 md:w-5 md:h-5 text-(--app-accent)" /> Skip Ending
           </button>
         ) : null}
         {showSkipIntro && !casting && !iframeFallback ? (
@@ -1759,7 +1842,7 @@ export default function WatchView({
               skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
             }`}
           >
-            <Zap className="w-4 h-4 md:w-5 md:h-5 text-[#35d5bf]" /> Skip Intro
+            <Zap className="w-4 h-4 md:w-5 md:h-5 text-(--app-accent)" /> Skip Intro
           </button>
         ) : null}
 
@@ -1813,7 +1896,15 @@ export default function WatchView({
                   setStream(null);
                   fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
                     .then((r) => (r.ok ? r.json() : null))
-                    .then((d) => d && setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined }))
+                    .then((d) => {
+                      // same payload validation as the main resolve path — a
+                      // 200-with-no-src used to rebuild the u=undefined playlist
+                      if (d && typeof d.src === "string" && d.src) {
+                        setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined });
+                      } else {
+                        setStreamError(true);
+                      }
+                    })
                     .catch(() => setStreamError(true));
                 }}
                 className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2146,23 +2237,14 @@ export default function WatchView({
             className="w-full max-w-[340px] md:max-w-[400px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden anim-sheet-up"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
-            aria-label="Select Download Format"
+            aria-label="Download episode"
           >
-            <div className="px-4 pt-3 pb-1 text-[13px] font-bold">Select Download Format</div>
-            <div className="px-4 py-2 space-y-2.5">
-              {/* REAL resolutions only: the episode's actual ladder comes from
-                  the quality fleet / the master playlist (old shows list 360p,
-                  never a 1080p that doesn't exist). Falls back to the classic
-                  ladder when the source carries no resolution info. */}
-              {(stream?.heights?.length ? stream.heights : ([1080, 720, 360] as number[])).map((h) => {
-                const q: "360p" | "720p" | "1080p" = h <= 360 ? "360p" : h <= 720 ? "720p" : "1080p";
-                return (
-                  <label key={h} className="flex items-center gap-3 text-[13px] cursor-pointer">
-                    <input type="radio" name="dlq" defaultChecked={h === (stream?.heights?.length ? stream.heights[0] : 360)} className="accent-[#00c853] w-4 h-4" onChange={() => undefined} />
-                    {h}p ~ {estimateSizeMB(anime.durationMin, q).toFixed(2)} MB
-                  </label>
-                );
-              })}
+            <div className="px-4 pt-3 pb-1 text-[13px] font-bold">Download episode</div>
+            <div className="px-4 py-2 text-[12.5px] text-gray-300 leading-relaxed">
+              MP4 · about {estimateSizeMB(anime.durationMin, "720p")} MB
+              <span className="block text-[11px] text-gray-500 mt-0.5">
+                The Zoko downloader serves one format per episode.
+              </span>
             </div>
             <div className="flex justify-end gap-5 px-4 py-3">
               <a href={downloadUrl} target="_blank" rel="noreferrer" className="text-[#d32f2f] text-[12px] font-bold tracking-wide hover:opacity-80">

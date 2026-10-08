@@ -25,7 +25,9 @@ export default function Top50View({ onBack, onSelect }: { onBack: () => void; on
     lastFetch.current = Date.now();
     fetchTop10Month(fresh)
       .then((list) => {
-        setItems(list);
+        // null = fetch failure — a populated Top 50 must not collapse to the
+        // error card on one failed poll; [] (honest empty) still replaces
+        if (list) setItems(list);
         setLoadedAt(Date.now());
         setGotFirst(true);
       })

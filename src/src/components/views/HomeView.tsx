@@ -58,6 +58,7 @@ export default function HomeView({
   const [arriving, setArriving] = useState<ArrivingEntry[]>([]);
   const progressVersion = useProgressVersion();
   const lastTop10Fetch = useRef(0);
+  const lastArrivingFetch = useRef(0);
 
   const refreshContinue = useCallback(() => {
     // heal any removal whose DELETE request was lost — re-fired BEFORE the
@@ -100,7 +101,8 @@ export default function HomeView({
   // plain (server-side TTL-gated) so background tab time stays free.
   const refreshTop10 = useCallback((fresh = false) => {
     lastTop10Fetch.current = Date.now();
-    fetchTop10Month(fresh).then(setTop10).catch(() => undefined);
+    // null = fetch failure — keep the loaded list instead of blinking away
+    fetchTop10Month(fresh).then((rows) => { if (rows) setTop10(rows); }).catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -131,8 +133,12 @@ export default function HomeView({
   // Arriving — the Netflix-style coming-soon rail. Same live discipline as
   // the Top 10 rail: fresh on every open / PWA foreground return, a +5s
   // follow-up, and a 60s poll; the server TTL-gates the real work.
+  // (The visibility handler carries the same 15s guard as Top 10 — it used
+  // to fire on EVERY visibilitychange, even rapid app switches.)
   const refreshArriving = useCallback((fresh = false) => {
-    fetchArriving(fresh).then(setArriving).catch(() => undefined);
+    lastArrivingFetch.current = Date.now();
+    // null = fetch failure — keep the loaded list instead of blinking away
+    fetchArriving(fresh).then((rows) => { if (rows) setArriving(rows); }).catch(() => undefined);
   }, []);
 
   // Most Watched on Clyle — LIVE, REAL, GLOBAL. Every viewer's player
@@ -171,7 +177,8 @@ export default function HomeView({
     };
     open();
     const onVis = () => {
-      if (document.visibilityState === "visible") refreshArriving(true);
+      // same 15s guard as Top 10 — this used to fire on EVERY visibilitychange
+      if (document.visibilityState === "visible" && Date.now() - lastArrivingFetch.current > 15_000) refreshArriving(true);
     };
     document.addEventListener("visibilitychange", onVis);
     const poll = setInterval(() => {
@@ -412,12 +419,12 @@ function GenreStrip({ genres, onGenre }: { genres: GenreInfo[]; onGenre: (g: str
       <div className="flex items-center justify-between px-4 mb-2.5">
         <h2 className="font-slab text-[21px] font-bold">Browse Genres</h2>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => nudge(-1)} aria-label="Scroll genres left" className={arrowCls(canLeft)}>
+          <button onClick={() => nudge(-1)} aria-label="Scroll genres left" aria-disabled={!canLeft} className={arrowCls(canLeft)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m15 18-6-6 6-6" />
             </svg>
           </button>
-          <button onClick={() => nudge(1)} aria-label="Scroll genres right" className={arrowCls(canRight)}>
+          <button onClick={() => nudge(1)} aria-label="Scroll genres right" aria-disabled={!canRight} className={arrowCls(canRight)}>
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="m9 18 6-6-6-6" />
             </svg>

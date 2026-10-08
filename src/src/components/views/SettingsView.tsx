@@ -187,13 +187,23 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
 
   const clearHistory = async () => {
     // the old version only deleted two localStorage keys — the SERVER rows
-    // (via /api/continue) resurrected the history on the next home load, so
-    // the wipe never stuck. Route through removeProgress() per item (tombstone
-    // + DELETE /api/progress, same as clearContinue) and also drop the
-    // watch-time stats the description promises to erase.
+    // (via /api/continue) resurrected the history on the next home load, and
+    // even the Batch-B fix missed fully-watched shows (they never appear in
+    // /api/continue). The bulk endpoint wipes EVERY progress row for this
+    // identity, then the device-local caches follow.
     try {
-      const items = await loadContinueItems();
-      for (const it of items) removeProgress(it.malId);
+      let userId: string | null = null;
+      try {
+        const raw = localStorage.getItem("animetest123.user");
+        userId = raw ? ((JSON.parse(raw) as { id?: string }).id ?? null) : null;
+      } catch {
+        userId = null;
+      }
+      if (userId) {
+        await fetch(`/api/progress?userId=${encodeURIComponent(userId)}&all=1`, { method: "DELETE" }).catch(
+          () => undefined,
+        );
+      }
       localStorage.removeItem("animetest123.watchtime");
       localStorage.removeItem("animetest123.epprogress");
       localStorage.removeItem("animetest123.progress");

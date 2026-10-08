@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { ExternalLink, Loader2, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
@@ -45,6 +46,12 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
   const [tracked, setTracked] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+  // the panel is portaled to body at z-[60] — an absolute panel inside the
+  // details bar's z-30 stacking context could never paint above root overlays
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [panelPos, setPanelPos] = useState<{ top: number; right: number } | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
   useEffect(() => {
     setTracked(!!readTracked()[String(anime.malId)]);
@@ -81,11 +88,15 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
     };
   }, [anime.malId, anime.title, anime.titleEnglish, anime.image]);
 
-  // tap outside the panel closes it
+  // tap outside the panel closes it (the portaled panel is outside rootRef,
+  // so it must be excluded explicitly)
   useEffect(() => {
     if (!open) return;
     const onDoc = (e: PointerEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (rootRef.current?.contains(t)) return;
+      if (panelRef.current?.contains(t)) return;
+      setOpen(false);
     };
     document.addEventListener("pointerdown", onDoc);
     return () => document.removeEventListener("pointerdown", onDoc);
@@ -113,6 +124,13 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
 
   const onToggleOpen = () => {
     const next = !open;
+    if (next && rootRef.current) {
+      const r = rootRef.current.getBoundingClientRect();
+      setPanelPos({
+        top: Math.min(r.bottom + 8, Math.max(8, window.innerHeight - 300)),
+        right: Math.max(8, window.innerWidth - r.right),
+      });
+    }
     setOpen(next);
     if (next && phase === "idle") void load();
   };
@@ -170,15 +188,20 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
         aria-label="Track this anime via AnimeNewsNetwork"
         aria-pressed={tracked}
         className={`block w-10 h-10 rounded-full overflow-hidden bg-black/45 backdrop-blur-sm border border-white/15 active:scale-95 transition shadow-lg ${
-          tracked ? "ring-2 ring-[#35d5bf] ring-offset-2 ring-offset-black/60" : ""
+          tracked ? "ring-2 ring-(--app-accent) ring-offset-2 ring-offset-black/60" : ""
         }`}
       >
         {/* owner-supplied artwork: climbing the chart = tracking progress */}
         <img src="/ann-track.png" alt="" draggable={false} className="w-full h-full object-cover" />
       </button>
 
-      {open ? (
-        <div className="absolute right-0 top-12 w-[292px] max-w-[calc(100vw-24px)] rounded-2xl bg-[#141414] border border-white/10 shadow-2xl p-3.5 z-40">
+      {open && mounted && panelPos
+        ? createPortal(
+            <div
+              ref={panelRef}
+              className="fixed z-[60] w-[292px] max-w-[calc(100vw-24px)] rounded-2xl bg-[#141414] border border-white/10 shadow-2xl p-3.5"
+              style={{ top: panelPos.top, right: panelPos.right }}
+            >
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="text-[12.5px] font-bold text-white">ANN Tracking</p>
             <button onClick={() => setOpen(false)} aria-label="Close" className="w-6 h-6 rounded-full bg-[#1f1f1f] border border-white/10 flex items-center justify-center hover:bg-[#282828] transition">
@@ -209,7 +232,7 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
                   <span className="text-[10.5px] font-bold text-gray-200 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">Airing</span>
                 ) : null}
                 {tracked ? (
-                  <span className="text-[10.5px] font-bold text-[#35d5bf] bg-[#35d5bf]/10 border border-[#35d5bf]/30 rounded-full px-2 py-0.5">Tracking</span>
+                  <span className="text-[10.5px] font-bold text-(--app-accent) bg-(--app-accent)/10 border border-(--app-accent)/30 rounded-full px-2 py-0.5">Tracking</span>
                 ) : null}
               </div>
               {match.vintage ? (
@@ -242,8 +265,10 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
             <Switch checked={tracked} onCheckedChange={(v) => void toggleTracked(v)} />
           </div>
           {note ? <p className="mt-2 text-[10.5px] text-gray-400 leading-snug">{note}</p> : null}
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

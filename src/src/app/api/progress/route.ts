@@ -30,6 +30,7 @@ interface ProgressBody {
   duration?: number;
   completed?: boolean;
   resume?: boolean; // deliberate playback — clears a removal tombstone
+  updatedAt?: string; // merge path: the source row's timestamp (newer-wins)
 }
 
 export async function GET(req: Request) {
@@ -82,7 +83,9 @@ export async function POST(req: Request) {
   const position = Number(b.position);
   const duration = Number(b.duration) || 0;
 
-  if (!userId || !Number.isFinite(malId)) {
+  // userId cap mirrors /api/profile; malId must be an Int (the Prisma column
+  // is Int — a fractional value used to blow up in the upsert as a raw 500)
+  if (!userId || userId.length > 64 || !Number.isInteger(malId)) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
 
@@ -96,7 +99,7 @@ export async function POST(req: Request) {
     }
   }
 
-  if (!Number.isFinite(episode) || !Number.isFinite(position)) {
+  if (!Number.isInteger(episode) || !Number.isFinite(position)) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
   if (position < 5) {
@@ -121,6 +124,21 @@ export async function POST(req: Request) {
 
   // the User row must exist first (WatchProgress.userId is a foreign key to it)
   await db.user.upsert({ where: { id: userId }, update: {}, create: { id: userId } });
+
+  // NEWER-WINS: the sign-in merge re-POSTs rows copied from another device —
+  // a blind upsert let OLD device rows clobber NEWER account rows. When the
+  // body carries an explicit timestamp (the merge path does), an existing
+  // row newer than it stays untouched.
+  const incomingAt = typeof b.updatedAt === "string" ? Date.parse(b.updatedAt) : NaN;
+  if (Number.isFinite(incomingAt)) {
+    const existing = await db.watchProgress.findUnique({
+      where: { userId_malId_episode: { userId, malId, episode } },
+      select: { updatedAt: true },
+    });
+    if (existing && existing.updatedAt.getTime() > incomingAt + 1_000) {
+      return NextResponse.json({ ok: true, skipped: "newer" }, { headers: { "Cache-Control": "no-store" } });
+    }
+  }
 
   await db.watchProgress.upsert({
     where: { userId_malId_episode: { userId, malId, episode } },
@@ -153,8 +171,19 @@ export async function POST(req: Request) {
 export async function DELETE(req: Request) {
   const sp = new URL(req.url).searchParams;
   const userId = sp.get("userId");
+  if (!userId) {
+    return NextResponse.json({ error: "bad params" }, { status: 400 });
+  }
+  if (sp.get("all") === "1") {
+    // full history wipe (Settings → Clear watch history): EVERY progress row
+    // — /api/continue only surfaces the uncompleted ones, so the per-item
+    // path left fully-watched shows behind — plus this device's tombstones
+    await db.watchProgress.deleteMany({ where: { userId } });
+    await db.removedProgress.deleteMany({ where: { userId } });
+    return NextResponse.json({ ok: true, wiped: true });
+  }
   const malId = parseInt(sp.get("malId") ?? "", 10);
-  if (!userId || !Number.isFinite(malId)) {
+  if (!Number.isFinite(malId)) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
   await db.watchProgress.deleteMany({ where: { userId, malId } });

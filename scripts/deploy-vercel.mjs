@@ -43,7 +43,10 @@ const api = async (path, init = {}) => {
 const PROD_URL = process.env.PROD_URL || "https://temporary-spry-granite-1f0h7ae.vercel.app";
 try {
   console.log(`preserving live data: fetching ${PROD_URL}/api/export ...`);
-  const res = await fetch(`${PROD_URL}/api/export`, { signal: AbortSignal.timeout(30_000) });
+  const res = await fetch(`${PROD_URL}/api/export`, {
+    signal: AbortSignal.timeout(30_000),
+    headers: { "x-clyle-owner": process.env.CLYLE_OWNER_TOKEN || "clyle-owner-4f8e2d1c9b7a6f3e" },
+  });
   if (!res.ok) throw new Error(`status ${res.status}`);
   const data = await res.json();
   const total = (data.comments?.length ?? 0) + (data.watchStats?.length ?? 0);

@@ -1,5 +1,6 @@
 import webpush from "web-push";
 import { db } from "@/lib/db";
+import { harvest } from "@/lib/global-log";
 
 /**
  * Web Push — "actual notifications that pop up when you're not in the app".
@@ -219,6 +220,9 @@ function episodeLabel(type: string | null): string {
  */
 export async function notifySyncResult(result: { episodesAdded: number; animeAdded: number; newEpisodes: Array<{ malId: number; ep: number }>; newAnimeIds?: number[] }): Promise<void> {
   try {
+    // converge first — this instance's PushSub/AnimeNotify rows may be stale
+    // (subscriptions created on other lambdas arrive through the global log)
+    await harvest().catch(() => undefined);
     // ---- new episodes: the highest fresh number per anime is the headline
     const byAnime = new Map<number, number>();
     for (const n of result.newEpisodes) {
@@ -280,6 +284,8 @@ export async function notifySyncResult(result: { episodesAdded: number; animeAdd
  */
 export async function notifyTop10Changes(day: string, events: Array<{ type: string; rank: number | null; prevRank: number | null; title: string }>): Promise<void> {
   try {
+    // converge first (same reason as notifySyncResult)
+    await harvest().catch(() => undefined);
     const notable = events.filter((e) => (e.rank != null && e.rank <= 10) || (e.prevRank != null && e.prevRank <= 10));
     if (!notable.length) return;
     const star = notable.find((e) => e.rank === 1) ?? notable[0];

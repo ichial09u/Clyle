@@ -51,15 +51,23 @@ function restoreAnonProfile(): void {
   replaceProfile(null); // no backup — mint a fresh anonymous identity
 }
 
-/** Copy the anonymous device rows onto the signed-in identity. */
-async function copyProgressRows(fromId: string, toId: string): Promise<number> {
+/** Copy the anonymous device rows onto the signed-in identity.
+ *  Returns { copied, total } so the caller can tell a FULL merge from a
+ *  partial one — marking the sync done after a partial copy stranded rows
+ *  with no retry until the next sign-out/sign-in. */
+async function copyProgressRows(fromId: string, toId: string): Promise<{ copied: number; total: number }> {
   let copied = 0;
+  let total = 0;
   try {
     const res = await fetch(`/api/progress/all?userId=${encodeURIComponent(fromId)}`, { cache: "no-store" });
     const data = (await res.json()) as {
-      rows?: Array<{ malId: number; episode: number; lang: string; server: string; position: number; duration: number; completed: boolean; title?: string | null; image?: string | null }>;
+      rows?: Array<{ malId: number; episode: number; lang: string; server: string; position: number; duration: number; completed: boolean; title?: string | null; image?: string | null; updatedAt?: string }>;
     };
-    for (const row of data.rows ?? []) {
+    const rows = data.rows ?? [];
+    total = rows.length;
+    for (const row of rows) {
+      // updatedAt rides along — the server's newer-wins guard keeps this from
+      // clobbering rows the account already advanced past on another device
       const r = await fetch("/api/progress", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -71,7 +79,7 @@ async function copyProgressRows(fromId: string, toId: string): Promise<number> {
     /* network hiccup — the rows stay under the anon id and will re-merge on
        the next sign-in on this device */
   }
-  return copied;
+  return { copied, total };
 }
 
 /**
@@ -113,8 +121,10 @@ export async function syncAccountOnSignIn(user: { id: string; nickname: string; 
     anonId = active.id;
   }
 
+  let mergeComplete = true;
   if (anonId && anonId !== user.id && !alreadySynced) {
-    await copyProgressRows(anonId, user.id);
+    const { copied, total } = await copyProgressRows(anonId, user.id);
+    mergeComplete = copied >= total; // a partial copy must stay eligible for retry
   }
 
   // Flip the active record + remember the merge for this account.
@@ -123,14 +133,27 @@ export async function syncAccountOnSignIn(user: { id: string; nickname: string; 
     nickname: user.nickname || active?.nickname || "Username",
     avatar: user.avatar ?? active?.avatar ?? null,
   });
-  try {
-    window.localStorage.setItem(SYNCED_FLAG, user.id);
-  } catch {
-    /* storage blocked */
+  if (mergeComplete) {
+    try {
+      window.localStorage.setItem(SYNCED_FLAG, user.id);
+    } catch {
+      /* storage blocked */
+    }
   }
 
-  // One reload so every mounted view refetches under the cloud identity.
-  if (!alreadySynced) window.location.reload();
+  // One reload so every mounted view refetches under the cloud identity —
+  // guarded so a storage-blocked browser (where the flag can never persist)
+  // cannot loop reloads forever.
+  if (!alreadySynced) {
+    try {
+      if (!window.sessionStorage.getItem("clyle:sync-reload")) {
+        window.sessionStorage.setItem("clyle:sync-reload", "1");
+        window.location.reload();
+      }
+    } catch {
+      /* sessionStorage blocked — skip the reload entirely (no loop) */
+    }
+  }
 }
 
 /** Called on sign-out: hand the device back to its anonymous identity. */

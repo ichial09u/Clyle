@@ -1,7 +1,31 @@
 "use client";
 
+import { useState } from "react";
 import { useAiringNow } from "@/lib/airing-tick";
 import type { ArrivingEntry } from "@/lib/client-store";
+
+/** Poster art with a title-block fallback when the CDN URL is dead —
+ *  a broken-image glyph used to paint straight onto the rail cards. */
+function RailArt({ src, title }: { src: string | null; title: string }) {
+  const [broken, setBroken] = useState(false);
+  if (src && !broken) {
+    return (
+      <img
+        src={src}
+        alt={title}
+        loading="lazy"
+        draggable={false}
+        className="w-full h-full object-cover"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <div className="w-full h-full flex items-end p-2">
+      <span className="font-slab text-[12px] leading-tight text-gray-300 line-clamp-3">{title}</span>
+    </div>
+  );
+}
 
 /**
  * "Arriving" — the Netflix-style coming-soon rail.
@@ -83,19 +107,7 @@ export default function ArrivingRail({
                 title={a.title}
                 className={`relative block w-full ${CARD_H} overflow-hidden rounded-[6px] bg-[#161616] text-left active:scale-[0.97] hover:opacity-90 transition`}
               >
-                {a.image ? (
-                  <img
-                    src={a.image}
-                    alt={a.title}
-                    loading="lazy"
-                    draggable={false}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-end p-2">
-                    <span className="font-slab text-[12px] leading-tight text-gray-300 line-clamp-3">{a.title}</span>
-                  </div>
-                )}
+                <RailArt src={a.image} title={a.title} />
                 <span className={`absolute top-1 left-1 text-[9px] font-bold px-1.5 py-[2px] rounded ${TAG_COLORS[a.kind]}`}>
                   {tagLabel(a)}
                 </span>

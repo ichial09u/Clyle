@@ -128,7 +128,8 @@ export async function POST(req: Request) {
   }
 
   const malId = Number(b.malId);
-  let day = (b.day ?? "").trim();
+  // typeof guard: {"day":123} used to TypeError on .trim() → raw 500
+  let day = typeof b.day === "string" ? b.day.trim() : "";
   // clamp: heartbeats arrive ~10s apart; 120s ceiling absorbs throttled
   // background tabs without letting a wild clock inject hours in one POST
   const delta = Math.round(Number(b.delta));

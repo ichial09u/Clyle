@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { rateLimit, clientIp } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,10 @@ export async function POST(req: Request) {
   const userId = (body.userId ?? "").trim();
   if (!commentId || !userId) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
+  }
+  // like-flood gate (toggle is idempotent but the write is not free)
+  if (!rateLimit(`cmt-like:${userId}:${clientIp(req)}`, 40, 60_000)) {
+    return NextResponse.json({ error: "slow down" }, { status: 429 });
   }
 
   const comment = await db.comment.findUnique({ where: { id: commentId } });

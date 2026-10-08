@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   }
   const endpoint = body.endpoint;
   const malId = Number(body.malId);
-  if (!endpoint || !/^https:\/\//.test(endpoint) || !Number.isFinite(malId) || malId <= 0) {
+  if (!endpoint || !/^https:\/\//.test(endpoint) || !Number.isInteger(malId) || malId <= 0) {
     return NextResponse.json({ ok: false, error: "endpoint and malId required" }, { status: 400 });
   }
 
@@ -54,12 +54,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true, on: false });
   }
 
-  const title = (body.title ?? "").slice(0, 200) || null;
+  // type-safe fields: a non-string title used to TypeError on .slice(), an
+  // oversized image row used to be stored unchecked (ann-track/subs caps 2000)
+  const title = typeof body.title === "string" ? body.title.slice(0, 200) || null : null;
+  const image = typeof body.image === "string" && body.image.length <= 2000 ? body.image : null;
   const row = await db.animeNotify.upsert({
     where: { endpoint_malId: { endpoint, malId } },
-    create: { endpoint, malId, title, image: body.image ?? null },
-    update: { title, image: body.image ?? null },
+    create: { endpoint, malId, title, image },
+    update: { title, image },
   });
-  logAnimeNotify(endpoint, malId, title, body.image ?? null, true);
+  logAnimeNotify(endpoint, malId, title, image, true);
   return NextResponse.json({ ok: true, on: true, id: row.id });
 }

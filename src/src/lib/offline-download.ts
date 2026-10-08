@@ -66,6 +66,10 @@ function registry(): Record<string, { url: string; segs: number; at: number }> {
 
 function remember(key: string, url: string, segs: number) {
   try {
+    // first save: ask for persistent storage — Cache API entries are
+    // otherwise evictable under device pressure (the "my download vanished"
+    // class of bug)
+    void navigator.storage?.persist?.().catch(() => undefined);
     const reg = registry();
     reg[key] = { url, segs, at: Date.now() };
     const entries = Object.entries(reg)
@@ -81,6 +85,16 @@ export function isEpisodeSaved(key: string, playlistUrl?: string): boolean {
   const hit = registry()[key];
   if (!hit) return false;
   return playlistUrl ? hit.url === playlistUrl : true;
+}
+
+/** The saved playlist URL for a key — the ONLY reliable src for offline
+ *  playback. Token rotation (Zoko re-resolves mint fresh tokened URLs) makes
+ *  the newest /api/stream resolve's src unplayable offline: the SW media
+ *  cache is keyed by the EXACT url that was downloaded, so offline playback
+ *  must re-use the saved one, not the fresh resolve. */
+export function getSavedEpisode(key: string): { url: string } | null {
+  const hit = registry()[key];
+  return hit ? { url: hit.url } : null;
 }
 
 function emit(job: Job, done: number, total: number, phase: SavePhase) {
@@ -144,19 +158,26 @@ function parseTagUris(text: string, tag: string): string[] {
   return [...new Set(out)];
 }
 
-/** Ordered concurrency pool; reports progress after each completion. */
-async function pool(urls: string[], onOne: () => void): Promise<boolean> {
+/** Ordered concurrency pool; reports progress after each completion.
+ *  Returns the number of HOLES (segments that failed both attempts) — 0
+ *  means the set is fully stashed. A hole-free run is the ONLY thing that
+ *  may mark an episode saved: silent holes used to be recorded as success
+ *  and the episode then died mid-playback offline (Ranma 2024 dual-audio). */
+async function pool(urls: string[], onOne: () => void): Promise<number> {
+  let holes = 0;
   let fails = 0;
   let i = 0;
   const workers = Array.from({ length: Math.min(SEGMENT_CONCURRENCY, urls.length) }, async () => {
     while (i < urls.length) {
       if (netOffline) throw new Error("offline");
       const url = urls[i++];
+      let landed = false;
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const res = await fetch(url);
           if (!res.ok) throw new Error(String(res.status));
           await res.arrayBuffer(); // drain — the SW stashed it already
+          landed = true;
           fails = 0;
           break;
         } catch (e) {
@@ -169,14 +190,15 @@ async function pool(urls: string[], onOne: () => void): Promise<boolean> {
           }
         }
       }
+      if (!landed) holes++; // the piece is missing — the save is INCOMPLETE
       onOne();
     }
   });
   try {
     await Promise.all(workers);
-    return true;
+    return holes;
   } catch {
-    return false; // partial save — missing pieces re-download next time
+    return Infinity; // aborted (offline / too many failures) — unrepairable this run
   }
 }
 
@@ -189,6 +211,7 @@ async function runJob(job: Job): Promise<boolean> {
   if (head == null) return false;
 
   let mediaPlaylistUrl = job.playlistUrl;
+  let renditionHoles = 0;
   if (looksHls) {
     const master = parseMaster(head);
     if (master) {
@@ -197,16 +220,18 @@ async function runJob(job: Job): Promise<boolean> {
       await Promise.all(master.variants.map((v) => fetchTextSafe(v.url).catch(() => null)));
       const best = master.variants.reduce((a, b) => (b.bandwidth > a.bandwidth ? b : a));
       mediaPlaylistUrl = best.url;
-      // dual-audio renditions: playlist + their segments must land too
+      // dual-audio renditions: playlist + their segments must land too —
+      // holes here are exactly the "downloaded but cannot play" divergence
       for (const aud of master.audio) {
         try {
           const t = await fetchText(aud);
           const segs = parseSegmentLines(t).slice(0, MAX_SEGMENTS);
           const keys = parseTagUris(t, "EXT-X-KEY");
           const maps = parseTagUris(t, "EXT-X-MAP");
-          await pool([...keys, ...maps, ...segs], () => undefined);
+          const holes = await pool([...keys, ...maps, ...segs], () => undefined);
+          if (holes > 0) renditionHoles += holes;
         } catch {
-          /* rendition failed — the SW filter drops it offline */
+          renditionHoles += 1; // the rendition playlist itself failed
         }
       }
     }
@@ -220,11 +245,11 @@ async function runJob(job: Job): Promise<boolean> {
     const total = segs.length + keys.length + maps.length;
     let done = 0;
     if (keys.length + maps.length) {
-      const okKeys = await pool([...keys, ...maps], () => undefined);
-      if (!okKeys) return false;
+      const keyHoles = await pool([...keys, ...maps], () => undefined);
+      if (keyHoles > 0) return false; // AES keys/maps missing — unplayable offline
     }
-    const ok = await pool(segs, () => emit(job, ++done, total, "download"));
-    if (!ok) return false;
+    const segHoles = await pool(segs, () => emit(job, ++done, total, "download"));
+    if (segHoles > 0) return false; // holey save must NOT be remembered
     emit(job, total, total, "download");
   } else {
     // single progressive file — one fetch through the proxy stashes it
@@ -243,6 +268,7 @@ async function runJob(job: Job): Promise<boolean> {
     await Promise.allSettled(job.subtitles.map((u) => fetch(u).then((r) => r.arrayBuffer())));
   }
 
+  if (renditionHoles > 0) return false; // dual-audio incomplete — don't fake success
   remember(job.key, job.playlistUrl, 1);
   emit(job, 1, 1, "done");
   return true;
@@ -267,7 +293,13 @@ async function pump(): Promise<void> {
       active = job;
       const ok = await runJob(job);
       active = null;
-      if (ok) await resolveAndEnqueueNext(job);
+      if (ok) {
+        await resolveAndEnqueueNext(job);
+      } else {
+        // the UI used to freeze on "Saving for offline · X%" forever —
+        // surface the failure (the pill auto-clears; a retry re-enqueues)
+        emit(job, 0, 0, "error");
+      }
     }
   } finally {
     pumping = false;

@@ -17,8 +17,13 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
       // the SW offline fallback answers 503 {error:"offline"} — blindly
       // trusting the shape used to crash on `updates.map` (white screen)
       const payload = (await res.json()) as { updates?: LatestUpdate[]; lastSync?: string | null; syncing?: boolean };
+      if (!res.ok) {
+        // a transient failure must not erase the loaded list
+        setFailed(true);
+        return;
+      }
       setData({ updates: payload.updates ?? [], lastSync: payload.lastSync ?? null, syncing: !!payload.syncing });
-      setFailed(!res.ok);
+      setFailed(false);
     } catch {
       setFailed(true);
     }
@@ -82,7 +87,7 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
         </div>
       ) : null}
 
-      {!data ? (
+      {!data && !failed ? (
         <div className="mt-4 space-y-3 px-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex gap-3">
@@ -94,7 +99,14 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
             </div>
           ))}
         </div>
-      ) : (
+      ) : data && data.updates.length === 0 ? (
+        <div className="px-4 py-12 text-center">
+          <p className="text-[14px] text-gray-300 font-semibold">No updates yet</p>
+          <p className="mt-1.5 text-[12px] text-gray-500 leading-relaxed">
+            New episodes land here the moment the catalog imports them — try "Sync now".
+          </p>
+        </div>
+      ) : data ? (
         <ul className="mt-4 divide-y divide-[#161616]">
           {data.updates.map((u) => {
             const hasNew = u.latest > u.total;
@@ -102,7 +114,17 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
               <li key={u.anime.malId}>
                 <button onClick={() => onSelect(u.anime)} className="w-full flex gap-3 px-4 py-3 hover:bg-[#0f0f0f] active:bg-[#161616] transition text-left">
                   {u.anime.image ? (
-                    <img src={u.anime.image} alt="" className="w-[74px] h-[104px] rounded-[6px] object-cover bg-[#161616]" loading="lazy" />
+                    <img
+                      src={u.anime.image}
+                      alt=""
+                      className="w-[74px] h-[104px] rounded-[6px] object-cover bg-[#161616]"
+                      loading="lazy"
+                      onError={(e) => {
+                        // broken CDN URL: collapse into the gray placeholder
+                        // instead of the browser's broken-image glyph
+                        e.currentTarget.style.opacity = "0";
+                      }}
+                    />
                   ) : (
                     <div className="w-[74px] h-[104px] rounded-[6px] bg-[#161616]" />
                   )}
@@ -125,7 +147,7 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
             );
           })}
         </ul>
-      )}
+      ) : null}
     </div>
   );
 }

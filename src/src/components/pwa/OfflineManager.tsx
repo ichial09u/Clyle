@@ -149,12 +149,16 @@ export default function OfflineManager() {
     };
   }, [goOnline, goOffline]);
 
-  // heartbeat: browsers (esp. iOS PWA) can miss the online event entirely
+  // heartbeat: browsers (esp. iOS PWA) can miss the online event entirely.
+  // HEAD on purpose — the service worker only intercepts GET, so a cached
+  // GET answer used to "prove" connectivity while still offline (a lying
+  // Back-online toast every 15s); HEAD always hits the real network.
   useEffect(() => {
     if (!offline || beatRef.current) return;
     const probe = async () => {
       try {
         const res = await fetch("/manifest.webmanifest", {
+          method: "HEAD",
           cache: "no-store",
           signal: AbortSignal.timeout(5_000),
         });
@@ -174,10 +178,16 @@ export default function OfflineManager() {
 
   if (!mounted) return null;
 
+  // mid-playback the player owns the screen — its own offline copy handles
+  // the message there; a modal dropping over the controls once per drop
+  // (and never in fullscreen, where this component is hidden anyway) was
+  // pure interruption
+  const playerOpen = typeof document !== "undefined" && document.body.dataset.playerOpen === "1";
+
   return (
     <>
-      {/* ---- offline popup (once per drop) ---- */}
-      {popup ? (
+      {/* ---- offline popup (once per drop, never over the player) ---- */}
+      {popup && !playerOpen ? (
         <div
           className="fixed inset-0 z-[90] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
           role="dialog"
@@ -206,7 +216,7 @@ export default function OfflineManager() {
 
       {/* ---- offline pill (hidden in fullscreen + dismissible) ---- */}
       {offline && !popup && !pillHidden && !fullscreen ? (
-        <div className="fixed bottom-[76px] left-1/2 z-[45] -translate-x-1/2">
+        <div className="fixed bottom-[76px] left-1/2 z-[45] -translate-x-1/2 lg:bottom-6 lg:left-[92px] lg:translate-x-0">
           <div className="flex items-center gap-2 rounded-full border border-white/10 bg-[#141418]/95 px-4 py-2 shadow-lg backdrop-blur">
             <WifiOff className="h-3.5 w-3.5 text-[#ff6b6b]" />
             <span className="text-xs text-white/70">Offline — saved episodes still play</span>
@@ -223,7 +233,7 @@ export default function OfflineManager() {
 
       {/* ---- reconnect / sync toast ---- */}
       {toast ? (
-        <div className="fixed bottom-[76px] left-1/2 z-[46] -translate-x-1/2">
+        <div className="fixed bottom-[76px] left-1/2 z-[46] -translate-x-1/2 lg:bottom-6 lg:left-[92px] lg:translate-x-0">
           <div className="flex items-center gap-2 rounded-full bg-white px-4 py-2 shadow-xl">
             {offline ? (
               <WifiOff className="h-3.5 w-3.5 text-[#d32f2f]" />

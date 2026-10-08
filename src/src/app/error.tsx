@@ -10,6 +10,8 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // production client stacks otherwise vanish beyond the digest line
+  if (typeof console !== "undefined") console.error("[Clyle] render error:", error);
   return (
     <main className="min-h-dvh bg-black text-white flex flex-col items-center justify-center px-6 text-center">
       <div className="w-14 h-14 rounded-2xl bg-[#141414] border border-white/10 flex items-center justify-center mb-4">

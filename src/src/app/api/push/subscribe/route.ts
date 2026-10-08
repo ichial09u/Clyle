@@ -29,6 +29,12 @@ export async function POST(req: Request) {
   if (!endpoint || !p256dh || !auth) {
     return NextResponse.json({ ok: false, error: "endpoint + keys required" }, { status: 400 });
   }
+  // push endpoints are always https — a garbage endpoint row would otherwise
+  // sit at the head of the updatedAt-ordered broadcast list, crowding real
+  // devices out of the MAX_SUBS_PER_SEND window
+  if (!/^https:\/\//i.test(endpoint)) {
+    return NextResponse.json({ ok: false, error: "endpoint must be https" }, { status: 400 });
+  }
   if (endpoint.length > 2000 || p256dh.length > 400 || auth.length > 400) {
     return NextResponse.json({ ok: false, error: "implausible sizes" }, { status: 400 });
   }

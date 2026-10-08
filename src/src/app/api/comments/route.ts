@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { sessionFromRequest } from "@/lib/auth";
+import { rateLimit, clientIp } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,31 @@ function decorate(c: CommentRow, me: string | null) {
     likes: liked.length,
     likedByMe: me ? liked.includes(me) : false,
   };
+}
+
+/**
+ * Identity resolution — the server never trusts a client-claimed identity
+ * for google: users. A valid session cookie owns its google:<sub> id
+ * (nickname/avatar come from the session, not the body); anonymous devices
+ * keep their localStorage uuid. Returns null when a body tries to forge a
+ * google identity without the matching session.
+ */
+function identityFrom(
+  req: Request,
+  bodyUserId: string,
+): { id: string; nickname: string | null; avatar: string | null } | null {
+  const session = sessionFromRequest(req);
+  if (session) return { id: session.id, nickname: session.nickname, avatar: session.avatar };
+  if (bodyUserId.startsWith("google:")) return null; // forgery attempt
+  return { id: bodyUserId, nickname: null, avatar: null };
+}
+
+/** Avatar sanitizer: small data URL or an https picture URL. */
+function sanitizeAvatar(avatar: unknown): string | null {
+  if (typeof avatar !== "string") return null;
+  if (avatar.startsWith("data:image/") && avatar.length <= 400_000) return avatar;
+  if (avatar.startsWith("https://") && avatar.length <= 2_000) return avatar;
+  return null;
 }
 
 export async function GET(req: Request) {
@@ -91,17 +118,25 @@ export async function POST(req: Request) {
   }
 
   const malId = Number(body.malId);
-  const userId = (body.userId ?? "").trim();
   const text = (body.text ?? "").replace(/\s+/g, " ").trim().slice(0, 500);
-  const nickname = (body.nickname ?? "Username").replace(/\s+/g, " ").trim().slice(0, 24) || "Username";
-  const avatar =
-    typeof body.avatar === "string" && body.avatar.startsWith("data:image/") && body.avatar.length <= 400_000
-      ? body.avatar
-      : null;
+  const fallbackNickname = (body.nickname ?? "Username").replace(/\s+/g, " ").trim().slice(0, 24) || "Username";
+  const avatar = sanitizeAvatar(body.avatar);
 
-  if (!Number.isFinite(malId) || !userId || !text) {
+  if (!Number.isFinite(malId) || !body.userId?.trim() || !text) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
+
+  const identity = identityFrom(req, body.userId.trim());
+  if (!identity) {
+    return NextResponse.json({ error: "sign in to post as this identity" }, { status: 403 });
+  }
+  const userId = identity.id;
+  // spam gate: 8 posts / minute per identity+ip (per instance)
+  if (!rateLimit(`cmt:${userId}:${clientIp(req)}`, 8, 60_000)) {
+    return NextResponse.json({ error: "slow down" }, { status: 429 });
+  }
+  const nickname = identity.nickname ?? fallbackNickname;
+  const finalAvatar = identity.avatar ?? avatar;
 
   // Replies are one level deep: replying to a reply attaches to the root instead.
   let parentId: string | null = null;
@@ -115,10 +150,10 @@ export async function POST(req: Request) {
   }
 
   // make sure the author exists (progress POSTs usually already created it)
-  await db.user.upsert({ where: { id: userId }, update: {}, create: { id: userId, nickname, avatar } });
+  await db.user.upsert({ where: { id: userId }, update: {}, create: { id: userId, nickname, avatar: finalAvatar } });
 
   const comment = await db.comment.create({
-    data: { malId, userId, nickname, avatar, text, parentId },
+    data: { malId, userId, nickname, avatar: finalAvatar, text, parentId },
     select: {
       id: true,
       nickname: true,
@@ -150,12 +185,19 @@ export async function DELETE(req: Request) {
   if (!id || !userId) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
+  if (!rateLimit(`cmt-del:${clientIp(req)}`, 20, 60_000)) {
+    return NextResponse.json({ error: "slow down" }, { status: 429 });
+  }
 
   const comment = await db.comment.findUnique({ where: { id } });
   if (!comment) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  if (comment.userId !== userId) {
+  // author-only delete: google: authors must prove the session; device ids
+  // match on the body uuid (which cannot be a google: id — see identityFrom)
+  const session = sessionFromRequest(req);
+  const claimed = session?.id ?? (userId.startsWith("google:") ? null : userId);
+  if (!claimed || comment.userId !== claimed) {
     return NextResponse.json({ error: "not yours" }, { status: 403 });
   }
 

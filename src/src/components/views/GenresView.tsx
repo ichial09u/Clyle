@@ -20,6 +20,7 @@ import type { GenreInfo } from "@/lib/types";
 export default function GenresView({ onSelect }: { onSelect: (genre: string) => void }) {
   const [genres, setGenres] = useState<GenreInfo[] | null>(null);
   const [failed, setFailed] = useState(false); // fetch error must not masquerade as an empty tab
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -37,7 +38,7 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   return (
     <div className="pb-24 lg:max-w-[1000px] lg:mx-auto">
@@ -49,6 +50,8 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
             onClick={() => {
               setGenres(null);
               setFailed(false);
+              setReloadKey((k) => k + 1); // re-run the fetch effect — the old
+              // "Try again" only cleared state, so the skeleton spun forever
             }}
             className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
           >

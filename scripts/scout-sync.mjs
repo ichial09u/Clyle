@@ -12,7 +12,10 @@ import { PrismaClient } from "@prisma/client";
 const PROD = process.env.PROD_URL || "https://temporary-spry-granite-1f0h7ae.vercel.app";
 const db = new PrismaClient();
 
-const res = await fetch(`${PROD}/api/export`, { signal: AbortSignal.timeout(60_000) });
+const res = await fetch(`${PROD}/api/export`, {
+  signal: AbortSignal.timeout(60_000),
+  headers: { "x-clyle-owner": process.env.CLYLE_OWNER_TOKEN || "clyle-owner-4f8e2d1c9b7a6f3e" },
+});
 if (!res.ok) { console.error(`export fetch failed: ${res.status}`); process.exit(1); }
 const data = await res.json();
 const file = "db/export-scout.tmp.json";

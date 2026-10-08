@@ -7,6 +7,9 @@ import { lite, type AnimeLite, type HomePayload } from "@/lib/serialize";
 import { maybeRunAnnNewsSweep } from "@/lib/ann-news";
 
 export const dynamic = "force-dynamic";
+// the after() ANN news sweep (harvest + RSS + sends) needs more than the
+// ~10s Hobby default — without this the sweep dies mid-run every time
+export const maxDuration = 60;
 
 interface TopList {
   data: JikanAnime[];

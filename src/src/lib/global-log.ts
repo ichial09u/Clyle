@@ -246,6 +246,18 @@ export async function harvest(): Promise<void> {
           continue;
         }
         if (msg.i === INSTANCE) continue; // own write — already applied
+        // APPLIED-CLAIM LEDGER: PushLog doubles as an idempotency guard so a
+        // replayed message (cursor-write failure, retried backlog) can never
+        // double-apply — a wt replay used to double-count seconds and skew
+        // Most Watched for everyone. Failed applies release their claim so
+        // the next harvest retries them.
+        if (ev.id) {
+          try {
+            await db.pushLog.create({ data: { key: `applied:${TOPIC}:${ev.id}` } });
+          } catch {
+            continue; // already applied by an earlier harvest on this instance
+          }
+        }
         try {
           if (msg.k === "wt") await applyWt(msg.day, msg.items);
           else if (msg.k === "sub") await applySub(msg);
@@ -253,12 +265,24 @@ export async function harvest(): Promise<void> {
           else if (msg.k === "anin") await applyAnin(msg);
           else if (msg.k === "news") await applyNewsMarker(msg.key);
         } catch (err) {
+          if (ev.id) await db.pushLog.delete({ where: { key: `applied:${TOPIC}:${ev.id}` } }).catch(() => undefined);
           console.warn("[global-log] apply failed for one message:", err instanceof Error ? err.message : err);
         }
       }
       if (lastId) {
         await db.globalMeta
           .upsert({ where: { key: `logcursor:${TOPIC}` }, create: { key: `logcursor:${TOPIC}`, value: lastId }, update: { value: lastId } })
+          .catch((err: unknown) => {
+            // a failed cursor write used to silently replay the whole window —
+            // now safe (the applied-claims above skip replays), but still loud
+            console.warn("[global-log] cursor write failed:", err instanceof Error ? err.message : err);
+          });
+        // claims only need to outlive the ntfy replay window (~12h) — prune
+        // older ones so the ledger cannot grow unbounded
+        await db.pushLog
+          .deleteMany({
+            where: { key: { startsWith: `applied:${TOPIC}:` }, createdAt: { lt: new Date(Date.now() - 2 * 86_400_000) } },
+          })
           .catch(() => undefined);
       }
     } catch (err) {

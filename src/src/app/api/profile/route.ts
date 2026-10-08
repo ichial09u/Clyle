@@ -34,6 +34,11 @@ export async function POST(req: Request) {
   if (!userId || userId.length > 64) {
     return NextResponse.json({ error: "userId required" }, { status: 400 });
   }
+  // google:<sub> identities are owned by the OAuth flow — an anonymous
+  // device must never be able to rewrite a signed-in viewer's profile
+  if (userId.startsWith("google:")) {
+    return NextResponse.json({ error: "google identity is session-owned" }, { status: 403 });
+  }
 
   // nickname: 1-24 visible chars, collapsed whitespace
   const nickname = (body.nickname ?? "Username")

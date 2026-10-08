@@ -54,6 +54,9 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
     if (query.trim().length < 2) {
+      // kill any in-flight request — its late response used to repaint
+      // results under an already-cleared box
+      abortRef.current?.abort();
       setCatalog([]);
       return;
     }
@@ -66,6 +69,9 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
       abortRef.current = ac;
       try {
         const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`, { signal: ac.signal });
+        // a 500 used to render as an honest-looking "No results" — treat a
+        // server hiccup like an abort: keep the previous results instead
+        if (!res.ok) return;
         const payload = (await res.json()) as { catalog: AnimeLite[] };
         if (ac.signal.aborted) return;
         setCatalog(payload.catalog ?? []);

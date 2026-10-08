@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { syncCatalog, lastSync, syncInProgress } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
+import { isOwnerRequest, rateLimit, clientIp } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -37,6 +38,13 @@ export async function POST(req: Request) {
   const url = new URL(req.url);
   const force = url.searchParams.get("force") === "1";
   const kick = url.searchParams.get("kick") === "1";
+
+  // force=1 bypasses the throttle and holds the lambda for a full sweep —
+  // rate-limit it per client (the in-app "Sync now" button stays working)
+  // and give owner-token callers (scripts) an unlimited bypass
+  if (force && !isOwnerRequest(req) && !rateLimit(`sync-force:${clientIp(req)}`, 3, 10 * 60_000)) {
+    return NextResponse.json({ error: "too many syncs, try later" }, { status: 429 });
+  }
 
   if (!force) {
     const recent = await db.syncLog.findFirst({

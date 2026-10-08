@@ -28,8 +28,11 @@ export default function SignInPrompt() {
       if (window.localStorage.getItem(NEVER_KEY) === "1") return;
       const dismissedAt = Number(window.localStorage.getItem(DISMISS_KEY) ?? 0);
       if (dismissedAt && Date.now() - dismissedAt < RESHOW_MS) return;
-      // polite on the player itself: never mid-episode
-      if (window.location.pathname.startsWith("/watch") || window.location.pathname.startsWith("/signin")) return;
+      // polite on the player itself: never mid-episode (the player is an SPA
+      // view, NOT a /watch route — the old pathname check was dead code) and
+      // never on the sign-in page
+      if (window.location.pathname.startsWith("/signin")) return;
+      if (document.body.dataset.playerOpen === "1") return;
     } catch {
       return; // storage blocked — never nag
     }
@@ -77,7 +80,7 @@ export default function SignInPrompt() {
     <div
       role="dialog"
       aria-label="Sign in to save your progress"
-      className="fixed inset-x-3 bottom-3 z-[90] mx-auto max-w-md rounded-xl border border-white/10 bg-[#111318]/95 p-4 shadow-2xl backdrop-blur md:inset-x-auto md:left-1/2 md:-translate-x-1/2"
+      className="fixed inset-x-3 bottom-3 z-[35] mx-auto max-w-md rounded-xl border border-white/10 bg-[#111318]/95 p-4 shadow-2xl backdrop-blur md:inset-x-auto md:left-1/2 md:-translate-x-1/2"
     >
       <div className="flex items-start gap-3">
         <svg viewBox="0 0 24 24" className="mt-0.5 h-6 w-6 shrink-0" aria-hidden>

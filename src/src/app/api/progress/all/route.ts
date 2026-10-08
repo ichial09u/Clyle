@@ -28,6 +28,7 @@ export async function GET(req: Request) {
       updatedAt: true,
     },
     orderBy: { updatedAt: "desc" },
+    take: 400, // heavy users must not page through thousands of rows per merge
   });
 
   return NextResponse.json(

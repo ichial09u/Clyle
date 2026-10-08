@@ -29,12 +29,12 @@ export default function BottomNav({ active, onNavigate }: { active: TabKey; onNa
             <button
               key={key}
               onClick={() => onNavigate(key)}
-              className={`flex flex-col items-center gap-1 pt-2.5 pb-2 lg:py-3 transition ${isActive ? "" : "text-[#8a8a8a] hover:text-gray-300"}`}
+              className={`flex flex-col items-center gap-1 pt-2.5 pb-2 lg:py-3 lg:rounded-lg lg:hover:bg-white/5 transition ${isActive ? "" : "text-[#8a8a8a] hover:text-gray-300"}`}
               style={isActive ? { color: "var(--app-accent, #ffffff)" } : undefined}
               aria-current={isActive ? "page" : undefined}
             >
-              <Icon className="w-[22px] h-[22px] lg:w-6 lg:h-6" />
-              <span className="text-[10.5px] font-medium">{label}</span>
+              <Icon className="w-[22px] h-[22px] lg:w-7 lg:h-7" />
+              <span className="text-[10.5px] lg:text-[12px] font-medium">{label}</span>
             </button>
           );
         })}

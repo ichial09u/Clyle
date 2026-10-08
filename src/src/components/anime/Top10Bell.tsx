@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowDownRight, ArrowUpRight, Bell, BellRing, X } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Bell, BellRing, Newspaper, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -22,6 +22,7 @@ import {
   pushSelfHeal,
 } from "@/lib/push-client";
 import { artUrl } from "@/lib/art";
+import type { AnnNewsFeedItem } from "@/lib/ann-news";
 
 /**
  * Netflix-style Top 10 notifications: a floating bell on Home (unread badge)
@@ -44,6 +45,21 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
   useEffect(() => {
     eventsRef.current = events;
   }, [events]);
+
+  // ---- ANN news (in-app surface of the tracked-anime news sweep) ----
+  const [news, setNews] = useState<AnnNewsFeedItem[]>([]);
+  const [newsReadAt, setNewsReadAt] = useState(0);
+  const newsRef = useRef<AnnNewsFeedItem[]>([]);
+  useEffect(() => {
+    newsRef.current = news;
+  }, [news]);
+  useEffect(() => {
+    try {
+      setNewsReadAt(Number(localStorage.getItem("animetest123.newsreadat") ?? "0") || 0);
+    } catch {
+      /* storage blocked — news just never shows as unread */
+    }
+  }, []);
 
   // ---- push opt-in state ----
   const supported = useRef(false);
@@ -99,6 +115,14 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
     fetchTop10Events()
       .then(setEvents)
       .catch(() => undefined);
+    // same cadence as the rank events — the route carries its own sweep
+    // throttle, so this is a cheap read + feed payload
+    fetch("/api/ann-news", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (j && Array.isArray(j.feed)) setNews(j.feed as AnnNewsFeedItem[]);
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -131,13 +155,28 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
   }, [refresh]);
 
   const unread = events.filter((e) => e.id > readId).length;
+  const unreadNews = news.filter((n) => Date.parse(n.at) > newsReadAt).length;
+  const totalUnread = unread + unreadNews;
+
+  const markNewsRead = useCallback(() => {
+    const maxAt = newsRef.current.reduce((m, n) => Math.max(m, Date.parse(n.at) || 0), 0);
+    if (maxAt > 0) {
+      setNewsReadAt(maxAt);
+      try {
+        localStorage.setItem("animetest123.newsreadat", String(maxAt));
+      } catch {
+        /* storage blocked */
+      }
+    }
+  }, []);
 
   const closePanel = useCallback(() => {
     setOpen(false);
     // highlights stay visible while the panel is open; closing marks seen
     const maxId = eventsRef.current.reduce((m, e) => Math.max(m, e.id), 0);
     if (maxId > 0) markTop10Read(maxId);
-  }, []);
+    markNewsRead();
+  }, [markNewsRead]);
 
   const openEvent = (e: Top10EventItem) => {
     closePanel();
@@ -152,13 +191,13 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
         <div className="flex justify-end pt-3 pr-3">
           <button
             onClick={() => setOpen(true)}
-            aria-label={`Top 10 notifications${unread ? ` (${unread} unread)` : ""}`}
+            aria-label={`Notifications${totalUnread ? ` (${totalUnread} unread)` : ""}`}
             className="pointer-events-auto relative w-10 h-10 rounded-full bg-black/45 backdrop-blur-sm border border-white/15 flex items-center justify-center active:scale-95 transition shadow-lg"
           >
             <Bell className="w-[18px] h-[18px] text-white" />
-            {unread > 0 ? (
+            {totalUnread > 0 ? (
               <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full bg-red-600 text-white text-[10px] font-bold flex items-center justify-center border-2 border-black">
-                {unread > 9 ? "9+" : unread}
+                {totalUnread > 9 ? "9+" : totalUnread}
               </span>
             ) : null}
           </button>
@@ -208,6 +247,49 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                   {pushNote ? <p className="mt-2 text-[11px] text-amber-400/90 leading-snug">{pushNote}</p> : null}
                 </div>
 
+                {/* ANN News — new articles about the anime the fleet tracks */}
+                {news.length > 0 ? (
+                  <div className="border-b border-[#1c1c1c]">
+                    <div className="px-4 pt-3 pb-1.5 flex items-center gap-2">
+                      <Newspaper className="w-4 h-4 text-gray-400" />
+                      <p className="text-[12px] font-bold uppercase tracking-wide text-gray-400">ANN News</p>
+                    </div>
+                    <ul className="divide-y divide-[#161616]">
+                      {news.slice(0, 8).map((n) => {
+                        const isUnread = Date.parse(n.at) > newsReadAt;
+                        return (
+                          <li key={`${n.guid}:${n.malId}`}>
+                            <a
+                              href={n.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => {
+                                closePanel();
+                              }}
+                              className={`w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-white/[0.04] active:bg-[#141414] transition ${
+                                isUnread ? "bg-[#101010]" : ""
+                              }`}
+                            >
+                              <div className="w-10 h-[40px] rounded-[4px] bg-[#161616] border border-[#262626] shrink-0 flex items-center justify-center">
+                                <Newspaper className="w-4.5 h-4.5 text-gray-500" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[13px] font-semibold text-white leading-snug" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                                  {n.headline}
+                                </p>
+                                <p className="text-[11px] text-gray-500 mt-0.5 truncate">
+                                  ANN News — {n.anime} · {timeAgo(n.at)}
+                                </p>
+                              </div>
+                              {isUnread ? <span className="w-2 h-2 rounded-full bg-red-600 shrink-0" /> : null}
+                            </a>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
+
                 {events.length === 0 ? (
                   <div className="px-6 py-14 text-center">
                     <div className="mx-auto w-14 h-14 rounded-full bg-[#161616] border border-[#262626] flex items-center justify-center">
@@ -229,7 +311,7 @@ export default function Top10Bell({ onSelect }: { onSelect: (a: AnimeLite) => vo
                         <li key={e.id}>
                           <button
                             onClick={() => openEvent(e)}
-                            className={`w-full text-left flex items-center gap-3 px-4 py-3 active:bg-[#141414] transition ${
+                            className={`w-full text-left flex items-center gap-3 px-4 py-3 hover:bg-white/[0.04] active:bg-[#141414] transition ${
                               isUnread ? "bg-[#101010]" : ""
                             }`}
                           >

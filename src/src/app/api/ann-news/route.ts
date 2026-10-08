@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runAnnNewsSweep } from "@/lib/ann-news";
+import { runAnnNewsSweep, annNewsFeed } from "@/lib/ann-news";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -15,6 +15,9 @@ export async function GET() {
   // runAnnNewsSweep carries its own 60-min claim + full try/catch, so a manual
   // call can no longer (a) bypass the throttle to force RSS hammering or
   // (b) surface a raw 500 from a mid-sweep DB failure
-  const report = await runAnnNewsSweep();
-  return NextResponse.json({ ...report, at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
+  const [report, feed] = await Promise.all([runAnnNewsSweep(), annNewsFeed()]);
+  return NextResponse.json(
+    { ...report, feed, at: new Date().toISOString() },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

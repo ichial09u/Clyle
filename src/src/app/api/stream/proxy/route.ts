@@ -71,7 +71,9 @@ function mediaHostPlausible(u: URL): boolean {
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) return false; // raw IPv4
   if (PRIVATE_HOST_RE.test(u.hostname)) return false; // internal vhosts
   if (u.port && u.port !== "443") return false; // only standard https ports
-  return MEDIA_PATH_RE.test(u.pathname) || MEDIA_PATH_RE.test(u.pathname + u.search);
+  // pathname ONLY — a ".ts" hiding in the query string must not vouch for an
+  // arbitrary host (the shape gate exists to refuse generic relay abuse)
+  return MEDIA_PATH_RE.test(u.pathname);
 }
 
 function hostAllowed(hostname: string): boolean {
@@ -216,6 +218,11 @@ async function enrichMaster(text: string, target: URL, inheritedReferer?: string
     );
     heights = [current, ...(results.filter((h) => h != null) as number[])];
     heights.sort((a, b) => a - b);
+    // bounded probe cache (token dirs rotate — an unbounded Map grew forever)
+    if (probeCache.size > 400) {
+      const oldest = probeCache.keys().next().value;
+      if (oldest !== undefined) probeCache.delete(oldest);
+    }
     probeCache.set(cacheKey, { expires: Date.now() + TTL_30MIN, heights });
   }
 
@@ -367,7 +374,12 @@ export async function GET(req: Request) {
         const pk = sp.get("pk") ?? undefined;
         const rf = sp.get("rf") ?? undefined;
         const target = sp.get("u");
-        const base = target ? new URL(target) : new URL("https://fetch9.flixcloud.cc/master.m3u8");
+        let base: URL;
+        try {
+          base = target ? new URL(target) : new URL("https://fetch9.flixcloud.cc/master.m3u8");
+        } catch {
+          return new NextResponse("bad u", { status: 400 });
+        }
         return new NextResponse(rewritePlaylist(stored, base, rf, pk), {
           headers: {
             "Content-Type": "application/vnd.apple.mpegurl",

@@ -4,11 +4,14 @@
    document still renders with inlined styles (the global CSS may not have
    loaded) so the user never sees a raw white screen. */
 export default function GlobalError({
+  error,
   reset,
 }: {
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  // production client stacks otherwise vanish beyond the digest line
+  if (typeof console !== "undefined") console.error("[Clyle] global render error:", error);
   return (
     <html lang="en">
       <body style={{ margin: 0, background: "#000", color: "#fff", fontFamily: "system-ui, sans-serif" }}>
