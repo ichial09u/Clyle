@@ -57,6 +57,23 @@ export function allowHost(hostname: string) {
   allowHostWithReferer(hostname, undefined);
 }
 
+/* --- unvetted `rf` targets must at least LOOK like streaming media ---
+   rf is client-supplied, so "has rf = trusted" used to turn this route into
+   an open HTTPS relay (any host, any body, 25s, parallel ranges). Requests
+   from rewritten playlists always target segments/playlists/subs, so these
+   shape checks keep rotating CDN families working while refusing arbitrary
+   relay abuse (HTML pages, internal IPs, odd ports). */
+const PRIVATE_HOST_RE = /(^|\.)(localhost|local|internal|home\.arpa)$|^127\.|^10\.|^169\.254\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^0\./;
+const MEDIA_PATH_RE = /\.(m3u8|ts|m4s|mp4|aac|vtt|srt|key|jpg|jpeg|png|webp)($|\?)/i;
+
+function mediaHostPlausible(u: URL): boolean {
+  if (u.username || u.password) return false;
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) return false; // raw IPv4
+  if (PRIVATE_HOST_RE.test(u.hostname)) return false; // internal vhosts
+  if (u.port && u.port !== "443") return false; // only standard https ports
+  return MEDIA_PATH_RE.test(u.pathname) || MEDIA_PATH_RE.test(u.pathname + u.search);
+}
+
 function hostAllowed(hostname: string): boolean {
   const h = hostname.toLowerCase();
   if (CDN_SUFFIXES.some((s) => h.endsWith(s))) return true;
@@ -380,8 +397,13 @@ export async function GET(req: Request) {
   } catch {
     return new NextResponse("bad u", { status: 400 });
   }
-  // a rewritten child was already vetted when its playlist was served
-  if (target.protocol !== "https:" || (!hasRf && !hostAllowed(target.hostname))) {
+  // a rewritten child was already vetted when its playlist was served — but
+  // `rf` is client-supplied, so it can NEVER be the sole trust signal: an
+  // unknown host must still be a plausible media target (see helper above)
+  if (target.protocol !== "https:") {
+    return new NextResponse("host not allowed", { status: 403 });
+  }
+  if (!hostAllowed(target.hostname) && !(hasRf && mediaHostPlausible(target))) {
     return new NextResponse("host not allowed", { status: 403 });
   }
 

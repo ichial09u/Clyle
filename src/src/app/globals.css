@@ -339,3 +339,26 @@
   transform: scale(0.95);
   filter: brightness(1.25) saturate(1.1);
 }
+
+/* ---- player safe-area (PWA notch / home indicator) ----
+   env() is 0 on desktop, so these collapse to the exact previous values;
+   on notched devices the chrome clears the status bar / home indicator. */
+.player-safe-top {
+  padding-top: calc(env(safe-area-inset-top) + 12px);
+}
+.player-safe-bottom {
+  padding-bottom: calc(env(safe-area-inset-bottom) + 10px);
+}
+@media (min-width: 768px) {
+  .player-safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 16px);
+  }
+}
+@media (min-width: 1024px) {
+  .player-safe-bottom {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 20px);
+  }
+}
+.player-toast-top {
+  top: calc(env(safe-area-inset-top) + 12px);
+}

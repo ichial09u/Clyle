@@ -16,8 +16,6 @@ import { sendPushToEndpoints } from "@/lib/push";
  * Never throws.
  */
 
-const SWEEP_MIN_GAP_MS = 60 * 60 * 1000;
-
 export async function maybeRunAnnNewsSweep(): Promise<void> {
   try {
     const meta = await db.globalMeta.findUnique({ where: { key: "annnews:lastsweep" } });
@@ -36,7 +34,44 @@ export async function maybeRunAnnNewsSweep(): Promise<void> {
   }
 }
 
+const SWEEP_MIN_GAP_MS = 60 * 60 * 1000;
+
 export async function runAnnNewsSweep(): Promise<{
+  ok: boolean;
+  subs: number;
+  items: number;
+  matched: number;
+  sent: number;
+  note?: string;
+}> {
+  // move the 60-min claim INTO the sweep itself — the old split let a manual
+  // GET /api/ann-news bypass the throttle entirely and force RSS + push
+  // hammering at will
+  try {
+    const meta = await db.globalMeta.findUnique({ where: { key: "annnews:lastsweep" } });
+    if (meta && Date.now() - new Date(meta.value).getTime() < SWEEP_MIN_GAP_MS) {
+      return { ok: true, subs: 0, items: 0, matched: 0, sent: 0, note: "swept within the last hour — throttled" };
+    }
+    await db.globalMeta
+      .upsert({
+        where: { key: "annnews:lastsweep" },
+        create: { key: "annnews:lastsweep", value: new Date().toISOString() },
+        update: { value: new Date().toISOString() },
+      })
+      .catch(() => undefined);
+  } catch (err) {
+    console.warn("[ann-news] claim failed:", err instanceof Error ? err.message : err);
+  }
+
+  try {
+    return await sweepInner();
+  } catch (err) {
+    console.warn("[ann-news] sweep failed:", err instanceof Error ? err.message : err);
+    return { ok: false, subs: 0, items: 0, matched: 0, sent: 0, note: err instanceof Error ? err.message : "sweep failed" };
+  }
+}
+
+async function sweepInner(): Promise<{
   ok: boolean;
   subs: number;
   items: number;
@@ -98,7 +133,10 @@ export async function runAnnNewsSweep(): Promise<{
           t: `ANN News — ${titleCase(nameKey)}`,
           b: item.title.slice(0, 200),
           url: item.link || "/",
-          tag: "ann-news",
+          // per-anime tag: the shared "ann-news" tag let multiple matches in
+          // one sweep REPLACE each other in the tray (last wins, earlier
+          // news silently vanished) — distinct anime now stack separately
+          tag: `ann-news-${g.malId}`,
           img: g.image,
         },
         g.endpoints,
@@ -180,9 +218,24 @@ function parseRss(xml: string): Array<{ title: string; link: string; guid: strin
 }
 
 /** word-boundary-ish headline match on the normalized ANN title */
-function matchesTitle(nameKey: string, hay: string): boolean {
-  const escaped = nameKey.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(hay);
+/** loose comparable form — same normalization the ANN lookup route uses, so
+ *  punctuation/accent variants ("Demon Slayer: …" vs "Demon Slayer …") match */
+function normKey(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function matchesTitle(nameKey: string, rawHay: string): boolean {
+  // normalize BOTH sides; word-boundary test on the folded forms
+  const key = normKey(nameKey);
+  const hay = normKey(rawHay);
+  if (!key) return false;
+  const escaped = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^| )${escaped}( |$)`).test(hay);
 }
 
 function titleCase(nameKey: string): string {

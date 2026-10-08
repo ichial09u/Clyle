@@ -49,6 +49,8 @@ export default function HomeView({
 }) {
   const [data, setData] = useState<HomePayload | null>(null);
   const [error, setError] = useState(false);
+  // bumped by the Retry button — the /api/home fetch effect re-runs on change
+  const [reloadKey, setReloadKey] = useState(0);
   const [continueItems, setContinueItems] = useState<ContinueItem[]>([]);
   const [suggestions, setSuggestions] = useState<AnimeLite[]>([]);
   const [suggestAnchor, setSuggestAnchor] = useState<string | null>(null);
@@ -200,6 +202,7 @@ export default function HomeView({
 
   useEffect(() => {
     let cancelled = false;
+    setError(false);
     (async () => {
       try {
         const res = await fetch("/api/home");
@@ -213,7 +216,7 @@ export default function HomeView({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   // arrival kick — starts the episode import the moment the app is open and
   // again every time the PWA returns to the foreground (a restored session
@@ -255,8 +258,11 @@ export default function HomeView({
         />
       ) : null}
 
-      {/* Suggested For You — right under Continue Watching, driven by it */}
-      {continueItems.length && suggestions.length ? (
+      {/* Suggested For You — right under Continue Watching, driven by it.
+          NOT gated on continueItems: a brand-new viewer has no history rows
+          yet, and the server already returns a popular-catalog fallback for
+          exactly that case — hiding it left new users with no rail at all. */}
+      {suggestions.length ? (
         <Row
           title={suggestAnchor ? `Because you watched ${suggestAnchor}` : "Suggested For You"}
           items={suggestions}
@@ -275,9 +281,15 @@ export default function HomeView({
       {genres.length ? <GenreStrip genres={genres} onGenre={onGenre} /> : null}
 
       {error ? (
-        <p className="px-4 mt-8 text-center text-gray-400 text-sm">
-          Could not reach the catalog. MAL API may be busy — pull to retry in a moment.
-        </p>
+        <div className="px-4 mt-8 flex flex-col items-center gap-2.5">
+          <p className="text-center text-gray-400 text-sm">Could not reach the catalog. The MAL API may be busy.</p>
+          <button
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
+          >
+            Retry
+          </button>
+        </div>
       ) : null}
 
       {!data && !error ? (

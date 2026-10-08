@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useAiringNow, NEW_EPISODE_SOON_MS } from "@/lib/airing-tick";
 
 export default function PosterCard({
@@ -20,6 +21,9 @@ export default function PosterCard({
 }) {
   // ticking clock only matters when this card actually has an air time
   const now = useAiringNow();
+  // a dead CDN URL used to render the browser's broken-image glyph on the
+  // most-used card surface — fall back to the title block like image===null
+  const [broken, setBroken] = useState(false);
   const msUntil = nextEpisodeAt ? nextEpisodeAt * 1000 - now : Infinity;
   // strictly FUTURE (already-aired times hide — the badge would be a lie);
   // the 3-day window is the user-facing "new episode soon" rule
@@ -32,8 +36,8 @@ export default function PosterCard({
       aria-label={title}
       title={title}
     >
-      {image ? (
-        <img src={image} alt={title} loading="lazy" className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]" draggable={false} />
+      {image && !broken ? (
+        <img src={image} alt={title} loading="lazy" onError={() => setBroken(true)} className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.04]" draggable={false} />
       ) : (
         <div className="w-full h-full flex items-end p-2">
           <span className="font-slab text-[12px] leading-tight text-gray-300 line-clamp-3">{title}</span>

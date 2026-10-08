@@ -1163,7 +1163,17 @@ function getSettingsServerSnapshot(): string {
 /** Reactive settings for components (re-renders on every change). */
 export function useAppSettings(): AppSettings {
   const raw = useSyncExternalStore(subscribeSettings, getSettingsSnapshot, getSettingsServerSnapshot);
-  const base = { ...DEFAULT_SETTINGS, ...(raw ? (JSON.parse(raw) as Partial<AppSettings>) : {}) };
+  // one corrupted settings key used to THROW during render in every consumer
+  // (player included) and white-screen the whole app — guard like readJson
+  let parsed: Partial<AppSettings> = {};
+  if (raw && raw !== "{}") {
+    try {
+      parsed = JSON.parse(raw) as Partial<AppSettings>;
+    } catch {
+      parsed = {};
+    }
+  }
+  const base = { ...DEFAULT_SETTINGS, ...parsed };
   // merge the separately-stored icon reactively (it changes with the same event)
   base.iconDataUrl = readJson<string | null>(SETTINGS_ICON_KEY, null) ?? null;
   return base;

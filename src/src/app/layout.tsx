@@ -19,7 +19,7 @@ const robotoSlab = Roboto_Slab({
 });
 
 export const metadata: Metadata = {
-  title: "AnimeTest123 — Zoko Anime",
+  title: "Clyle — Anime, everywhere",
   description:
     "Anime catalog powered by the MyAnimeList (Jikan) API with playback through Zoko's player. New anime and episodes are imported automatically.",
   manifest: "/manifest.webmanifest",
@@ -42,6 +42,9 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
+  // REQUIRED for every env(safe-area-inset-*) in the app to report real
+  // values on notched devices (black-translucent status bar + standalone)
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

@@ -37,6 +37,7 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
   const [loading, setLoading] = useState(false);
   const [recent, setRecent] = useState<string[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const abortRef = useRef<AbortController | null>(null); // kills superseded searches
 
   useEffect(() => {
     setRecent(readRecent());
@@ -58,15 +59,21 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
     }
     setLoading(true);
     timer.current = setTimeout(async () => {
+      // abort any in-flight fetch from a PREVIOUS keystroke — a slow older
+      // response used to land after a newer one and overwrite fresher results
+      abortRef.current?.abort();
+      const ac = new AbortController();
+      abortRef.current = ac;
       try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`);
+        const res = await fetch(`/api/search?q=${encodeURIComponent(query.trim())}`, { signal: ac.signal });
         const payload = (await res.json()) as { catalog: AnimeLite[] };
+        if (ac.signal.aborted) return;
         setCatalog(payload.catalog ?? []);
         if ((payload.catalog ?? []).length) remember(query.trim());
       } catch {
-        /* keep previous */
+        /* aborted or offline — keep previous */
       } finally {
-        setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     }, 350);
     return () => {

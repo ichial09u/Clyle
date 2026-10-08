@@ -105,22 +105,26 @@ export default function DetailsView({
   return (
     <div className="pb-24">
       {/* top bar */}
-      {/* top bar — spans the content area right of the lg nav rail */}
-      <div className="fixed top-0 inset-x-0 z-30 max-w-[560px] md:max-w-[820px] lg:max-w-none lg:left-[76px] mx-auto">
-        <button
-          onClick={onBack}
-          className="m-3 w-9 h-9 rounded-full bg-black/50 backdrop-blur flex items-center justify-center hover:bg-black/70 transition"
-          aria-label="Back"
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M19 12H5M12 19l-7-7 7-7" />
-          </svg>
-        </button>
+      {/* top bar — spans the content area right of the lg nav rail.
+          Children are centered to the content column on lg so the Track
+          button belongs to the page instead of floating at the screen edge. */}
+      <div className="fixed top-0 inset-x-0 z-30 max-w-[560px] md:max-w-[820px] lg:max-w-none lg:left-[76px] mx-auto pointer-events-none">
+        <div className="relative mx-auto max-w-[560px] md:max-w-[820px] lg:max-w-[1100px]">
+          <button
+            onClick={onBack}
+            className="m-3 w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 transition pointer-events-auto"
+            aria-label="Back"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
+          </button>
 
-        {/* ANN tracking — the small circular chart-climb button (same shell as
-            the floating notification bell), opens the AnimeNewsNetwork panel */}
-        <div className="absolute right-3 top-3">
-          <TrackButton anime={anime} />
+          {/* ANN tracking — the small circular chart-climb button (same shell as
+              the floating notification bell), opens the AnimeNewsNetwork panel */}
+          <div className="absolute right-3 top-3 pointer-events-auto">
+            <TrackButton anime={anime} />
+          </div>
         </div>
       </div>
 

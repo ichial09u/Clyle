@@ -7,15 +7,20 @@ import { timeAgo } from "@/lib/client-store";
 
 export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => void }) {
   const [data, setData] = useState<{ updates: LatestUpdate[]; lastSync: string | null; syncing: boolean } | null>(null);
+  const [failed, setFailed] = useState(false); // fetch error — show retry, not a blank list
   const [syncing, setSyncing] = useState(false);
   const [result, setResult] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/latest");
-      setData(await res.json());
+      // the SW offline fallback answers 503 {error:"offline"} — blindly
+      // trusting the shape used to crash on `updates.map` (white screen)
+      const payload = (await res.json()) as { updates?: LatestUpdate[]; lastSync?: string | null; syncing?: boolean };
+      setData({ updates: payload.updates ?? [], lastSync: payload.lastSync ?? null, syncing: !!payload.syncing });
+      setFailed(!res.ok);
     } catch {
-      /* ignore */
+      setFailed(true);
     }
   }, []);
 
@@ -60,7 +65,22 @@ export default function LatestView({ onSelect }: { onSelect: (a: AnimeLite) => v
       <p className="px-4 text-[11.5px] text-gray-500">
         {data?.lastSync ? `Last import ${timeAgo(data.lastSync)}` : "Never synced"} — the app also auto-imports on open.
       </p>
-      {result ? <p className="px-4 mt-1 text-[12.5px] text-[#ff8a80]">{result}</p> : null}
+      {result ? <p className="px-4 mt-1 text-[12.5px] text-[#8ef2a0]">{result}</p> : null}
+
+      {failed ? (
+        <div className="px-4 mt-4 flex flex-col items-center gap-2.5">
+          <p className="text-center text-gray-400 text-[13px]">Couldn't load the latest episodes. You may be offline.</p>
+          <button
+            onClick={() => {
+              setFailed(false);
+              void load();
+            }}
+            className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
 
       {!data ? (
         <div className="mt-4 space-y-3 px-4">

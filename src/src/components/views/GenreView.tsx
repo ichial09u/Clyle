@@ -14,17 +14,20 @@ interface GenrePayload {
 
 export default function GenreView({ genre, onBack, onSelect }: { genre: string; onBack: () => void; onSelect: (a: AnimeLite) => void }) {
   const [data, setData] = useState<{ for: string; payload: GenrePayload } | null>(null);
+  const [failed, setFailed] = useState(false); // fetch error ≠ empty genre — don't lie to the user
   const [imported, setImported] = useState<Set<number>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
+    setFailed(false);
     (async () => {
       try {
         const res = await fetch(`/api/genre/${encodeURIComponent(genre)}`);
+        if (!res.ok) throw new Error(String(res.status));
         const payload = (await res.json()) as GenrePayload;
         if (!cancelled) setData({ for: genre, payload });
       } catch {
-        if (!cancelled) setData({ for: genre, payload: { genre, catalog: [], suggestions: [] } });
+        if (!cancelled) setFailed(true);
       }
     })();
     return () => {
@@ -35,12 +38,23 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
   const view = data?.for === genre ? data.payload : null;
 
   async function importOne(malId: number) {
+    // optimistic, but honest on failure: a failed POST no longer leaves a
+    // permanent green check
     setImported((prev) => new Set(prev).add(malId));
-    await fetch("/api/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ malId }),
-    }).catch(() => undefined);
+    try {
+      const res = await fetch("/api/import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ malId }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+    } catch {
+      setImported((prev) => {
+        const next = new Set(prev);
+        next.delete(malId);
+        return next;
+      });
+    }
   }
 
   return (
@@ -52,7 +66,20 @@ export default function GenreView({ genre, onBack, onSelect }: { genre: string; 
         <h1 className="font-slab text-[20px] font-bold">{genre}</h1>
       </header>
 
-      {!view ? (
+      {failed ? (
+        <div className="px-4 py-10 flex flex-col items-center gap-2.5">
+          <p className="text-center text-gray-400 text-[13px]">Couldn't load this genre. Check your connection.</p>
+          <button
+            onClick={() => {
+              setData(null);
+              setFailed(false);
+            }}
+            className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
+          >
+            Try again
+          </button>
+        </div>
+      ) : !view ? (
         <div className="grid grid-cols-3 md:grid-cols-5 lg:grid-cols-6 gap-2 md:gap-3 px-4">
           {Array.from({ length: 9 }).map((_, i) => (
             <div key={i} className="aspect-[2/3] rounded-[6px] bg-[#161616] animate-pulse" />

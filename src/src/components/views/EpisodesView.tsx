@@ -121,6 +121,14 @@ export default function EpisodesView({
     return desc ? [...filtered].reverse() : filtered;
   }, [episodesData, anime.totalEpisodes, desc, filter]);
 
+  // episode-number → title lookup: the old `episodes.find()` inside the grid
+  // was O(episodes²) per render (One Piece = 1100 buttons × 1100 scans)
+  const titlesByNumber = useMemo(() => {
+    const m = new Map<number, string>();
+    for (const e of episodesData?.episodes ?? []) if (e.title) m.set(e.number, e.title);
+    return m;
+  }, [episodesData]);
+
   const epProgress = progressVersion >= 0 ? getEpProgressAll(anime.malId) : {};
 
   const newEpisodes = useMemo(
@@ -249,7 +257,7 @@ export default function EpisodesView({
                 key={n}
                 onClick={() => openServerSheet(n)}
                 className="relative h-[46px] rounded-md bg-[#1c1c1c] hover:bg-[#282828] active:scale-95 transition text-[14px] font-medium overflow-hidden"
-                title={episodesData.episodes.find((e) => e.number === n)?.title ?? `Episode ${n}${pct ? ` — ${pct}% watched` : ""}`}
+                title={titlesByNumber.get(n) ?? `Episode ${n}${pct ? ` — ${pct}% watched` : ""}`}
               >
                 {n}
                 {newEpisodes.has(n) ? (

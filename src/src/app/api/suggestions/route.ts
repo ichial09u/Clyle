@@ -57,6 +57,7 @@ interface CatalogIndex {
   byId: Map<number, IndexRow>;
   genreW: Map<string, number>; // genre -> IDF² weight
   kwW: Map<string, number>; // keyword -> IDF weight (capped)
+  kwRe: Map<string, RegExp>; // precompiled word-boundary matcher per keyword
 }
 
 const STOP = new Set(
@@ -88,6 +89,7 @@ async function buildIndex(): Promise<CatalogIndex> {
     byId: new Map(),
     genreW: new Map(),
     kwW: new Map(),
+    kwRe: new Map(),
   };
 
   const genreDf = new Map<string, number>();
@@ -135,6 +137,8 @@ async function buildIndex(): Promise<CatalogIndex> {
   for (const [k, df] of kwDf) {
     // rare words are stronger taste signals than "school"
     index.kwW.set(k, Math.min(Math.log(1 + n / df), 3));
+    // precompile the matcher once per index build (not per request per row)
+    index.kwRe.set(k, new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`));
   }
 
   // attach per-row keyword weights now that kwW is complete
@@ -167,12 +171,14 @@ function simTo(idx: CatalogIndex, candidate: IndexRow, cText: string, cTitle: st
     if (show.genres.includes(g)) score += idx.genreW.get(g) ?? 0;
   }
   // keyword affinity: the watched show's distinctive words appearing in the
-  // candidate's text — title hits count double
+  // candidate's text — title hits count double (regexes are precompiled in
+  // the index; compiling thousands per request used to burn the CPU)
   let hits = 0;
   for (const k of show.keywords) {
     const w = idx.kwW.get(k) ?? 0;
     if (w < 1.1) continue;
-    const re = new RegExp(`\\b${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`);
+    const re = idx.kwRe.get(k);
+    if (!re) continue;
     if (re.test(cTitle)) hits += 2 * w;
     else if (re.test(cText)) hits += w;
   }

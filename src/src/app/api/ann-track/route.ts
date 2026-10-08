@@ -37,6 +37,7 @@ type AnnMatch = {
 };
 
 const TTL_MS = 6 * 60 * 60 * 1000;
+const CACHE_MAX = 500; // bounded — the warm-instance Map used to grow forever
 const cache = new Map<string, { at: number; payload: AnnApiPayload }>();
 
 type AnnApiPayload = { found: boolean; match?: AnnMatch; error?: string };
@@ -48,7 +49,12 @@ const decode = (s: string) =>
     .replace(/&gt;/g, ">")
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, d: string) => String.fromCodePoint(Number(d)));
+    // malformed numeric entities (e.g. &#999999999;) threw RangeError and
+    // 500'd the whole lookup — degrade to the literal text instead
+    .replace(/&#(\d+);/g, (_, d: string) => {
+      const n = Number(d);
+      return Number.isFinite(n) && n >= 0 && n <= 0x10ffff ? String.fromCodePoint(n) : "";
+    });
 
 /** loose comparable form: case/fold/punct-insensitive */
 const norm = (s: string) =>
@@ -178,7 +184,7 @@ async function resolve(q: string): Promise<AnnApiPayload> {
 
 export async function GET(req: Request) {
   const q = new URL(req.url).searchParams.get("q")?.trim() ?? "";
-  if (!q) return NextResponse.json({ found: false, error: "missing q" }, { status: 400 });
+  if (!q || q.length > 200) return NextResponse.json({ found: false, error: "missing q" }, { status: 400 });
 
   const key = norm(q);
   const hit = cache.get(key);
@@ -186,8 +192,23 @@ export async function GET(req: Request) {
     return NextResponse.json(hit.payload, { headers: { "Cache-Control": "public, max-age=600" } });
   }
 
-  const payload = await resolve(q);
+  // resolve() parses third-party XML — a malformed payload must degrade to a
+  // friendly miss, never a raw 500
+  let payload: AnnApiPayload;
+  try {
+    payload = await resolve(q);
+  } catch (err) {
+    console.warn("[ann-track] resolve failed:", err instanceof Error ? err.message : err);
+    payload = { found: false, error: "lookup failed" };
+  }
   // only cache definitive answers; bot-wall misses retry on the next request
-  if (payload.found || payload.error === undefined) cache.set(key, { at: Date.now(), payload });
-  return NextResponse.json(payload, { headers: { "Cache-Control": "public, max-age=600" } });
+  if (payload.found || payload.error === undefined) {
+    if (cache.size >= CACHE_MAX) cache.clear();
+    cache.set(key, { at: Date.now(), payload });
+  }
+  // misses/error must NOT stick at the CDN/browser for 10min while the
+  // server-side policy is to retry sooner
+  return NextResponse.json(payload, {
+    headers: { "Cache-Control": payload.found ? "public, max-age=600" : "no-store" },
+  });
 }

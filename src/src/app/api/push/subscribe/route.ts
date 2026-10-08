@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { logPushSub } from "@/lib/global-log";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,9 @@ export async function POST(req: Request) {
     create: { endpoint, p256dh, auth, userId: body.userId ?? null },
     update: { p256dh, auth, userId: body.userId ?? null, updatedAt: new Date() },
   });
+  // converge fleet-wide: instances that never saw this POST still learn the
+  // subscription, so sweeps running elsewhere can reach this device
+  logPushSub(endpoint, { p256dh, auth }, true);
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }
 
@@ -55,5 +59,7 @@ export async function DELETE(req: Request) {
   }
   if (!endpoint) return NextResponse.json({ ok: false, error: "endpoint required" }, { status: 400 });
   await db.pushSub.deleteMany({ where: { endpoint } });
+  // tell every instance (keys unknown here — the off-path only needs the URL)
+  logPushSub(endpoint, { p256dh: "", auth: "" }, false);
   return NextResponse.json({ ok: true }, { headers: { "Cache-Control": "no-store" } });
 }

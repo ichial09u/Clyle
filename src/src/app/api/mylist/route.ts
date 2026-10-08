@@ -20,9 +20,15 @@ export async function POST(req: Request) {
   const rows = await db.anime.findMany({ where: { malId: { in: ids } } });
   const byId = new Map(rows.map((r) => [r.malId, lite(r)]));
 
-  // anything not in the DB yet gets a quick MAL lookup
-  for (const id of ids) {
-    if (byId.has(id)) continue;
+  // anything not in the DB yet gets a quick MAL lookup — CAPPED: a fresh
+  // device re-listing 100 unknown ids used to fire 100 sequential upstream
+  // calls inside this request (Jikan rate-limits, the visitor waits for all)
+  const missing = ids.filter((id) => !byId.has(id));
+  const LOOKUP_CAP = 10;
+  let lookups = 0;
+  for (const id of missing) {
+    if (lookups >= LOOKUP_CAP) break; // the rest render from cache next visit / after a sync
+    lookups += 1;
     const full = await jikanOne<JikanAnime>(`/anime/${id}/full`);
     if (!full) continue;
     // hentai guard — adult titles never hydrate into the DB at all

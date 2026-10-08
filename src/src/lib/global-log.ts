@@ -22,6 +22,8 @@ import { db } from "@/lib/db";
  * Message kinds:
  *   { k:"wt",   day, items:[{ m:malId, d:deltaSec, t:title, i:image }] }
  *   { k:"sub",  endpoint, keys:{p256dh,auth}, ann:{malId,annId,annName,title,image}, on:boolean }
+ *   { k:"psub", endpoint, keys:{p256dh,auth}, on:boolean }   // plain push subs converge too
+ *   { k:"anin", endpoint, malId, title, image, on:boolean }  // per-anime episode bells
  *   { k:"news", key }              // pushLog claim marker (ANN news sent)
  *
  * Own messages are skipped on harvest (the writing instance applied its delta
@@ -46,6 +48,8 @@ type LogMsg =
       on: boolean;
       i: string;
     }
+  | { k: "psub"; endpoint: string; keys: { p256dh: string; auth: string }; on: boolean; i: string }
+  | { k: "anin"; endpoint: string; malId: number; title: string | null; image: string | null; on: boolean; i: string }
   | { k: "news"; key: string; i: string };
 
 /* ---------------- publish (write side) ---------------- */
@@ -69,11 +73,28 @@ function postMessage(body: string): Promise<boolean> {
     .finally(() => clearTimeout(timer));
 }
 
-/** Serialized so concurrent flushes can't reorder messages. */
-function enqueuePublish(msg: LogMsg): void {
-  publishing = publishing
-    .then(() => postMessage(JSON.stringify(msg)))
-    .catch(() => undefined);
+/** One publish with bounded retries — a single ntfy hiccup used to mean a
+ *  PERMANENTLY lost message (wt undercount, a sub toggle never propagating,
+ *  a missing news marker → duplicate push later). 3 attempts, short backoff,
+ *  loud warn on final failure so Vercel logs at least show the gap. */
+async function postMessageWithRetry(body: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, attempt * 1_200));
+    if (await postMessage(body)) return true;
+  }
+  console.warn("[global-log] publish failed after 3 attempts — message may be lost:", body.slice(0, 80));
+  return false;
+}
+
+/** Serialized so concurrent flushes can't reorder messages. Resolves to
+ *  whether the message actually reached the log. */
+function enqueuePublish(msg: LogMsg): Promise<boolean> {
+  const next = publishing.then(() => postMessageWithRetry(JSON.stringify(msg)));
+  publishing = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
 }
 
 function scheduleFlush(): void {
@@ -98,7 +119,17 @@ function flushWt(): void {
   for (const [day, items] of byDay) {
     // keep the message well under ntfy's 4KB body cap
     for (let i = 0; i < items.length; i += FLUSH_MAX_ITEMS) {
-      enqueuePublish({ k: "wt", day, items: items.slice(i, i + FLUSH_MAX_ITEMS), i: INSTANCE });
+      const chunk = items.slice(i, i + FLUSH_MAX_ITEMS);
+      void enqueuePublish({ k: "wt", day, items: chunk, i: INSTANCE }).then((ok) => {
+        if (ok) return;
+        // the publish failed even after retries — put the deltas back so a
+        // later flush retries them instead of silently losing the seconds
+        for (const it of chunk) {
+          const key = `${day}|${it.m}`;
+          const prev = pendingWt.get(key);
+          pendingWt.set(key, { d: (prev?.d ?? 0) + it.d, t: it.t ?? prev?.t, i: it.i ?? prev?.i, day });
+        }
+      });
     }
   }
 }
@@ -132,6 +163,24 @@ export function logAnnSub(
   void flushNow(); // subs matter promptly; flush the wt queue alongside
 }
 
+/** Plain push-subscription change — WITHOUT this, a device that enabled bell
+ *  notifications on instance A was invisible to instance B's sweeps (empty
+ *  PushSub there) and its episode/Top10 pushes silently never fired. */
+export function logPushSub(
+  endpoint: string,
+  keys: { p256dh: string; auth: string },
+  on: boolean,
+): void {
+  enqueuePublish({ k: "psub", endpoint, keys, on, i: INSTANCE });
+  void flushNow();
+}
+
+/** Per-anime episode-bell change (NotifyNextToggle) — same convergence gap. */
+export function logAnimeNotify(endpoint: string, malId: number, title: string | null, image: string | null, on: boolean): void {
+  enqueuePublish({ k: "anin", endpoint, malId, title, image, on, i: INSTANCE });
+  void flushNow();
+}
+
 /** A push was sent for this claim key — other instances must not resend. */
 export function logNewsSent(key: string): void {
   enqueuePublish({ k: "news", key, i: INSTANCE });
@@ -160,7 +209,11 @@ export async function harvest(): Promise<void> {
       // instance never ranks without its own latest deltas
       flushWt();
       const meta = await db.globalMeta.findUnique({ where: { key: `logcursor:${TOPIC}` } });
-      const since = meta?.value ?? "10m";
+      // first-ever harvest on a fresh instance: replay the FULL ntfy retention
+      // window (~12h). The old 10m default meant every cold container missed
+      // ~98% of the retained log — Most Watched diverged per instance and
+      // subscription/news state started mostly empty until users re-toggled.
+      const since = meta?.value ?? "12h";
       const ac = new AbortController();
       const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
       let text: string;
@@ -196,9 +249,11 @@ export async function harvest(): Promise<void> {
         try {
           if (msg.k === "wt") await applyWt(msg.day, msg.items);
           else if (msg.k === "sub") await applySub(msg);
+          else if (msg.k === "psub") await applyPsub(msg);
+          else if (msg.k === "anin") await applyAnin(msg);
           else if (msg.k === "news") await applyNewsMarker(msg.key);
-        } catch {
-          /* one bad message must not break the replay */
+        } catch (err) {
+          console.warn("[global-log] apply failed for one message:", err instanceof Error ? err.message : err);
         }
       }
       if (lastId) {
@@ -206,8 +261,10 @@ export async function harvest(): Promise<void> {
           .upsert({ where: { key: `logcursor:${TOPIC}` }, create: { key: `logcursor:${TOPIC}`, value: lastId }, update: { value: lastId } })
           .catch(() => undefined);
       }
-    } catch {
-      /* log unreachable — serve local state (same as pre-log behavior) */
+    } catch (err) {
+      // log unreachable — serve local state (same as pre-log behavior), but
+      // leave a trace: silent convergence gaps were impossible to debug
+      console.warn("[global-log] harvest failed — serving local state only:", err instanceof Error ? err.message : err);
     } finally {
       harvesting = null;
     }
@@ -220,12 +277,15 @@ async function applyWt(day: string, items: WtItem[]): Promise<void> {
   for (const it of items) {
     if (!Number.isFinite(it.m) || !(it.d > 0)) continue;
     const seconds = Math.min(Math.round(it.d), 6 * 3600); // sanity cap
-    const existing = await db.watchStat.findUnique({ where: { day_malId: { day, malId: it.m } } });
-    if (existing) {
-      await db.watchStat.update({ where: { id: existing.id }, data: { seconds: existing.seconds + seconds, title: it.t ?? existing.title, image: it.i ?? existing.image } });
-    } else {
-      await db.watchStat.create({ data: { day, malId: it.m, seconds, title: it.t ?? null, image: it.i ?? null } }).catch(() => undefined);
-    }
+    // ATOMIC increment — the old read-then-write raced concurrent watchtime
+    // POSTs on this instance and SET the summed value back, erasing deltas
+    await db.watchStat
+      .upsert({
+        where: { day_malId: { day, malId: it.m } },
+        create: { day, malId: it.m, seconds, title: it.t ?? null, image: it.i ?? null },
+        update: { seconds: { increment: seconds }, title: it.t ?? undefined, image: it.i ?? undefined },
+      })
+      .catch(() => undefined);
   }
 }
 
@@ -245,6 +305,32 @@ async function applySub(msg: Extract<LogMsg, { k: "sub" }>): Promise<void> {
       .catch(() => undefined);
   } else {
     await db.annTrackSub.deleteMany({ where: { endpoint, malId: ann.malId } }).catch(() => undefined);
+  }
+}
+
+async function applyPsub(msg: Extract<LogMsg, { k: "psub" }>): Promise<void> {
+  if (!/^https:\/\//.test(msg.endpoint)) return;
+  if (msg.on) {
+    await db.pushSub
+      .upsert({ where: { endpoint: msg.endpoint }, create: { endpoint: msg.endpoint, p256dh: msg.keys.p256dh, auth: msg.keys.auth }, update: { p256dh: msg.keys.p256dh, auth: msg.keys.auth } })
+      .catch(() => undefined);
+  } else {
+    await db.pushSub.deleteMany({ where: { endpoint: msg.endpoint } }).catch(() => undefined);
+  }
+}
+
+async function applyAnin(msg: Extract<LogMsg, { k: "anin" }>): Promise<void> {
+  if (!/^https:\/\//.test(msg.endpoint) || !Number.isFinite(msg.malId)) return;
+  if (msg.on) {
+    await db.animeNotify
+      .upsert({
+        where: { endpoint_malId: { endpoint: msg.endpoint, malId: msg.malId } },
+        create: { endpoint: msg.endpoint, malId: msg.malId, title: msg.title, image: msg.image },
+        update: { title: msg.title ?? undefined, image: msg.image ?? undefined },
+      })
+      .catch(() => undefined);
+  } else {
+    await db.animeNotify.deleteMany({ where: { endpoint: msg.endpoint, malId: msg.malId } }).catch(() => undefined);
   }
 }
 

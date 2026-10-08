@@ -50,6 +50,37 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
     setTracked(!!readTracked()[String(anime.malId)]);
   }, [anime.malId]);
 
+  // SELF-HEAL: the server half of a tracked show used to vanish on every
+  // deploy (fresh /tmp SQLite) while the switch still read "Tracking" from
+  // localStorage — news pushes silently stopped. Re-POST the (endpoint,
+  // anime) pair whenever the local state says tracked; the server upsert is
+  // idempotent and the global log spreads it to every instance.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!readTracked()[String(anime.malId)] || !pushSupported()) return;
+      try {
+        const sub = await getPushSubscriptionJson();
+        if (!sub || cancelled) return;
+        await fetch("/api/ann-track/subs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            endpoint: sub.endpoint,
+            keys: sub.keys,
+            on: true,
+            ann: { malId: anime.malId, annId: null, annName: anime.title, title: anime.titleEnglish || anime.title, image: anime.image },
+          }),
+        });
+      } catch {
+        /* best-effort — the next toggle re-syncs anyway */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [anime.malId, anime.title, anime.titleEnglish, anime.image]);
+
   // tap outside the panel closes it
   useEffect(() => {
     if (!open) return;
@@ -111,7 +142,10 @@ export default function TrackButton({ anime }: { anime: AnimeLite }) {
         else setNote(r.reason === "denied" ? "Tracked on this device — allow notifications in your browser to also get ANN news alerts." : "Tracked on this device — notifications are unavailable here.");
       }
       if (sub) {
-        const res = await fetch("/api/ann-track", {
+        // POST /api/ann-track/subs — the server half lives there; the lookup
+        // route (/api/ann-track) is GET-only and used to 405 this silently,
+        // so the tracking switch never actually reached the server
+        const res = await fetch("/api/ann-track/subs", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

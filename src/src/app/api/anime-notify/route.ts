@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { logAnimeNotify } from "@/lib/global-log";
 
 export const dynamic = "force-dynamic";
 
@@ -47,13 +48,18 @@ export async function POST(req: Request) {
 
   if (body.on === false) {
     await db.animeNotify.deleteMany({ where: { endpoint, malId } });
+    // converge fleet-wide — the off toggle used to be invisible to other
+    // instances, so their airing-soon sweeps kept ringing a switched-off bell
+    logAnimeNotify(endpoint, malId, null, null, false);
     return NextResponse.json({ ok: true, on: false });
   }
 
+  const title = (body.title ?? "").slice(0, 200) || null;
   const row = await db.animeNotify.upsert({
     where: { endpoint_malId: { endpoint, malId } },
-    create: { endpoint, malId, title: (body.title ?? "").slice(0, 200) || null, image: body.image ?? null },
-    update: { title: (body.title ?? "").slice(0, 200) || null, image: body.image ?? null },
+    create: { endpoint, malId, title, image: body.image ?? null },
+    update: { title, image: body.image ?? null },
   });
+  logAnimeNotify(endpoint, malId, title, body.image ?? null, true);
   return NextResponse.json({ ok: true, on: true, id: row.id });
 }

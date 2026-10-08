@@ -19,16 +19,19 @@ import type { GenreInfo } from "@/lib/types";
 
 export default function GenresView({ onSelect }: { onSelect: (genre: string) => void }) {
   const [genres, setGenres] = useState<GenreInfo[] | null>(null);
+  const [failed, setFailed] = useState(false); // fetch error must not masquerade as an empty tab
 
   useEffect(() => {
     let cancelled = false;
+    setFailed(false);
     (async () => {
       try {
         const res = await fetch("/api/genres");
+        if (!res.ok) throw new Error(String(res.status));
         const payload = (await res.json()) as { genres: GenreInfo[] };
         if (!cancelled) setGenres(payload.genres);
       } catch {
-        if (!cancelled) setGenres([]);
+        if (!cancelled) setFailed(true);
       }
     })();
     return () => {
@@ -39,6 +42,20 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
   return (
     <div className="pb-24 lg:max-w-[1000px] lg:mx-auto">
       <h1 className="font-slab text-[26px] font-extrabold px-4 pt-4 pb-3">Genres</h1>
+      {failed ? (
+        <div className="px-4 py-10 flex flex-col items-center gap-2.5">
+          <p className="text-center text-gray-400 text-[13px]">Couldn't load the genres. Check your connection.</p>
+          <button
+            onClick={() => {
+              setGenres(null);
+              setFailed(false);
+            }}
+            className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
+          >
+            Try again
+          </button>
+        </div>
+      ) : (
       <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-3 px-4">
         {(genres ?? Array.from({ length: 36 }).map((_, i) => ({ name: `slot-${i}`, count: -1 }))).map((g) =>
           g.count === -1 ? (
@@ -84,6 +101,7 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
           )
         )}
       </div>
+      )}
     </div>
   );
 }

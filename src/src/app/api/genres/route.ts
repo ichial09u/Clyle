@@ -42,5 +42,7 @@ export async function GET() {
     .sort((a, b) => b.count - a.count)
     // re-pin the Pokémon tile to the front after the size sort
     .sort((a, b) => (a.name === POKEMON_GENRE ? -1 : b.name === POKEMON_GENRE ? 1 : 0));
-  return NextResponse.json({ genres });
+  // identical-for-everyone global data — let the CDN absorb the per-mount
+  // refetch storm (the client used to full-scan the catalog on every open)
+  return NextResponse.json({ genres }, { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } });
 }

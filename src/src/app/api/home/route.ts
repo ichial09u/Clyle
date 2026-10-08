@@ -109,26 +109,11 @@ export async function GET() {
     season = s?.data ?? [];
   }
 
-  // 3) persist everything we saw (non-catalog rows are kept as import suggestions)
-  const seenIds = new Set<number>();
-  const all: JikanAnime[] = [];
-  for (const a of [...top, ...popular, ...airing, ...favorite, ...season]) {
-    if (seenIds.has(a.mal_id)) continue;
-    seenIds.add(a.mal_id);
-    all.push(a);
-  }
-  const catalogIds = new Set(
-    (await db.anime.findMany({ where: { inCatalog: true }, select: { malId: true } })).map((r) => r.malId),
-  );
-  for (const a of all) {
-    const ranked = popRank.get(a.mal_id);
-    if (ranked) a.popularity = a.popularity ?? ranked; // keep MAL rank when we have one
-    if (catalogIds.has(a.mal_id)) {
-      await upsertAnime(a, { inCatalog: true, source: "seed" });
-    } else {
-      await upsertAnime(a, { inCatalog: false, source: "rankings" });
-    }
-  }
+  // 3) persistence of everything we saw happens AFTER the payload is built —
+  //    fire-and-forget via persistSeenAsync() below (the old build ALSO
+  //    awaited ~75 sequential upserts here, doubling every cold rebuild's
+  //    latency and write load for zero benefit: nothing in the response
+  //    depends on these rows being written first)
 
   // 4) build the home screen from catalog anime only ("only animes Zoko has")
   //    (persistence of what we saw happens AFTER the payload is built — and
@@ -143,9 +128,14 @@ export async function GET() {
     dedup((list ?? []).map((a) => byId.get(a.mal_id)).filter((a): a is AnimeLite => !!a)).slice(0, n);
 
   // Hero is PINNED to ONE PIECE (malId 21) — the flagship title is always the
-  // first thing on the home screen, every visit, no rotation.
+  // first thing on the home screen, every visit, no rotation. If it ever
+  // leaves the catalog, fall back to the most popular title present so the
+  // hero never renders as an eternal skeleton.
   const onePiece = byId.get(21);
-  const hero = onePiece ? [onePiece] : [];
+  const heroFallback = [...byId.values()].sort(
+    (a, b) => (a.popularity ?? 999999) - (b.popularity ?? 999999),
+  )[0];
+  const hero = onePiece ? [onePiece] : heroFallback ? [heroFallback] : [];
 
   // cross-row de-dupe: each rail claims titles the earlier rails didn't use,
   // so the home screen reads as SEVEN genuinely different lists (the old build

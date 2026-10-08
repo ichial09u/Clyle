@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Heart, MessageSquare, MessageCircle, SendHorizonal, Trash2, ChevronDown, ChevronUp, X } from "lucide-react";
 import type { CommentItem } from "@/lib/types";
 import { timeAgo } from "@/lib/client-store";
@@ -551,14 +552,18 @@ export default function CommentsSection({ malId }: { malId: number }) {
         <ul className="mt-3 space-y-3.5">{tops.map(renderTop)}</ul>
       )}
 
-      {/* sign-in gate — pops the moment an anonymous viewer tries to comment */}
-      {showSignIn ? (
-        <div
-          className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm anim-backdrop flex items-end md:items-center justify-center px-4 pb-6 md:pb-0"
-          onClick={() => setShowSignIn(false)}
-          role="dialog"
-          aria-label="You need to sign in to comment"
-        >
+      {/* sign-in gate — pops the moment an anonymous viewer tries to comment.
+          PORTALED to <body>: panes are stacking contexts (z-20) and the
+          bottom nav is z-40 at the root, so an unported fixed dialog would
+          paint UNDER the nav bar (same trap EpisodesView's sheet escaped). */}
+      {showSignIn && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[80] bg-black/70 backdrop-blur-sm anim-backdrop flex items-end md:items-center justify-center px-4 pb-6 md:pb-0"
+              onClick={() => setShowSignIn(false)}
+              role="dialog"
+              aria-label="You need to sign in to comment"
+            >
           <div
             className="w-full max-w-[380px] rounded-2xl bg-[#141414] border border-white/10 shadow-2xl p-5 anim-sheet-up"
             onClick={(e) => e.stopPropagation()}
@@ -591,7 +596,8 @@ export default function CommentsSection({ malId }: { malId: number }) {
               Not now
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       ) : null}
     </section>
   );

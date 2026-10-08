@@ -185,8 +185,16 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
     setTimeout(() => setClearedCw(false), 1600);
   };
 
-  const clearHistory = () => {
+  const clearHistory = async () => {
+    // the old version only deleted two localStorage keys — the SERVER rows
+    // (via /api/continue) resurrected the history on the next home load, so
+    // the wipe never stuck. Route through removeProgress() per item (tombstone
+    // + DELETE /api/progress, same as clearContinue) and also drop the
+    // watch-time stats the description promises to erase.
     try {
+      const items = await loadContinueItems();
+      for (const it of items) removeProgress(it.malId);
+      localStorage.removeItem("animetest123.watchtime");
       localStorage.removeItem("animetest123.epprogress");
       localStorage.removeItem("animetest123.progress");
       window.dispatchEvent(new Event("progress-changed"));
@@ -422,13 +430,17 @@ export default function SettingsView({ onBack }: { onBack: () => void }) {
           title={clearedCw ? "Continue watching cleared ✓" : "Clear Continue Watching"}
           desc="Removes every in-progress show from this device."
           on={false}
-          onChange={() => void clearContinue()}
+          onChange={() => {
+            if (window.confirm("Remove every in-progress show from Continue Watching?")) void clearContinue();
+          }}
         />
         <ToggleRow
           title={clearedHist ? "Watch history cleared ✓" : "Clear watch history"}
           desc="Erases per-episode resume points and watch stats."
           on={false}
-          onChange={clearHistory}
+          onChange={() => {
+            if (window.confirm("Erase all resume points and watch stats? This can't be undone.")) void clearHistory();
+          }}
         />
       </Section>
 

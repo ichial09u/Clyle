@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls, { type Level } from "hls.js";
 import {
   ChevronLeft, Download, Lock, Unlock, SlidersHorizontal, Gauge, Scan, SkipBack, SkipForward,
-  Check, Play, Pause, Maximize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
+  Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupProviderOf } from "@/lib/zoko";
@@ -100,6 +100,18 @@ export default function WatchView({
   const [saveState, setSaveState] = useState<SaveState | null>(null);
   // desktop ↑/↓ volume pill — percent shown for ~1.4s after a press, else hidden
   const [volumePct, setVolumePct] = useState<number | null>(null);
+  // live fullscreen flag — drives the manual Full screen/Exit control on PC
+  const [fsActive, setFsActive] = useState(false);
+  useEffect(() => {
+    const doc = document as Document & { webkitFullscreenElement?: Element | null };
+    const sync = () => setFsActive(!!(doc.fullscreenElement || doc.webkitFullscreenElement));
+    document.addEventListener("fullscreenchange", sync);
+    document.addEventListener("webkitfullscreenchange", sync);
+    return () => {
+      document.removeEventListener("fullscreenchange", sync);
+      document.removeEventListener("webkitfullscreenchange", sync);
+    };
+  }, []);
 
   // per-episode DUB availability for the CURRENT episode: the highest proven
   // boundary across both chains (either chain can serve the dub via fallback)
@@ -419,12 +431,21 @@ export default function WatchView({
   durationRef.current = duration;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // the exit-animation copy of this view must ignore keys entirely
+      if (shellRef.current?.closest('[data-leaving="true"]')) return;
       const t = e.target as HTMLElement | null;
       const tag = t?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable) return;
+      // text-like targets keep the keyboard — but the SEEK RANGE (and other
+      // non-text inputs) must not swallow Space/Esc: after dragging the seek
+      // bar it keeps focus on PC, and Space used to die until blur (owner QA).
+      const textlike =
+        tag === "TEXTAREA" || tag === "SELECT" || t?.isContentEditable ||
+        (tag === "INPUT" && (t as HTMLInputElement).type !== "range");
+      if (textlike) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
 
       if (e.key === "Escape") {
+        if (e.repeat) return; // holding Esc must not spam-exit
         if (panelRef.current) {
           setPanel(null);
           return;
@@ -446,8 +467,8 @@ export default function WatchView({
 
       if (castStateRef.current === "casting") return; // the TV owns transport
       if (e.key === " " || e.code === "Space") {
+        e.preventDefault(); // don't scroll the page (even on repeat)
         if (e.repeat) return;
-        e.preventDefault(); // don't scroll the page
         togglePlay();
         showUi();
         return;
@@ -464,7 +485,10 @@ export default function WatchView({
       // so the change is visible even though the player has no volume slider
       if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         const video = videoRef.current;
-        if (!video) return;
+        if (!video) {
+          e.preventDefault(); // iframe fallback: don't scroll the page either
+          return;
+        }
         e.preventDefault(); // don't scroll the page
         const step = e.key === "ArrowUp" ? 0.1 : -0.1;
         video.muted = false;
@@ -495,7 +519,13 @@ export default function WatchView({
     if (typeof window === "undefined") return;
     if (window.matchMedia?.("(pointer: coarse)")?.matches) return;
     const onFsChange = () => {
-      if (document.fullscreenElement) return; // fullscreen ENTERED — not an exit
+      // the exit-animation copy must never act on fullscreen events
+      if (shellRef.current?.closest('[data-leaving="true"]')) return;
+      const doc = document as Document & { webkitFullscreenElement?: Element | null };
+      if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+        exitingRef.current = false; // (re-)entered — our guards start fresh
+        return;
+      }
       if (exitingRef.current) return; // our own exit (keydown path / teardown)
       if (panelRef.current) {
         setPanel(null);
@@ -509,10 +539,19 @@ export default function WatchView({
       onBackRef.current();
     };
     document.addEventListener("fullscreenchange", onFsChange);
-    return () => document.removeEventListener("fullscreenchange", onFsChange);
+    // Safari < 16.4 fires only the webkit-prefixed event — without this the
+    // first Esc there silently drops fullscreen and exit needs a second press
+    document.addEventListener("webkitfullscreenchange", onFsChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onFsChange);
+      document.removeEventListener("webkitfullscreenchange", onFsChange);
+    };
   }, []);
 
   const total = anime.totalEpisodes || episode;
+  // touch devices have their own auto-fullscreen + rotation flow — the manual
+  // Full screen control is a desktop affordance
+  const coarsePointer = typeof window !== "undefined" && !!window.matchMedia?.("(pointer: coarse)")?.matches;
   // Settings screen preferences — read reactively where the render needs them
   // (subtitle cues are native tracks styled via the document ::cue rule), and
   // through a ref inside long-lived event listeners (ended -> autoplay next)
@@ -638,6 +677,9 @@ export default function WatchView({
           throw new Error("unavailable");
         }
         const data = (await res.json()) as Resolved;
+        // a 200-with-no-src payload used to build `u=undefined` playlists and
+        // strand the player on a black spinner forever — treat it as a failure
+        if (!data || typeof data.src !== "string" || !data.src) throw new Error("bad-payload");
         if (!cancelled) {
           setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined });
           // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
@@ -906,6 +948,7 @@ export default function WatchView({
         startFragPrefetch: true,
       });
       hlsRef.current = hls;
+      let netRetries = 0; // fatal-network recoveries before we give up honestly
       hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer, stream.pk));
       hls.attachMedia(video);
       // dual-audio masters (the FlixCloud dub embeds carry Japanese + English
@@ -926,6 +969,14 @@ export default function WatchView({
       hls.on(Hls.Events.ERROR, (_e, data) => {
         if (!data.fatal) return;
         if (data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+          // unbounded startLoad() loops spun forever on dead manifests — cap
+          // the recoveries, then surface the honest Retry UI
+          netRetries += 1;
+          if (netRetries > 5 || typeof navigator !== "undefined" && !navigator.onLine) {
+            hls.stopLoad();
+            if (!destroyed) setStreamError(true);
+            return;
+          }
           hls.startLoad();
         } else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) {
           hls.recoverMediaError();
@@ -1120,12 +1171,20 @@ export default function WatchView({
     if (hlsRef.current) hlsRef.current.currentLevel = q === "auto" ? -1 : q;
   };
 
+  /** Save the current spot so an upcoming stream swap resumes EXACTLY here
+   *  (SUB↔DUB toggles and backup-server jumps re-resolve the source; without
+   *  staging the pending seek they used to rewind 10–20s to the last 10s
+   *  heartbeat — every language switch felt like a restart). */
+  const stageSpot = () => {
+    const pos = videoRef.current?.currentTime ?? 0;
+    saveNow();
+    pendingSeekRef.current = pos;
+  };
+
   /** Switch stream server mid-playback without losing the spot. */
   const switchServer = (next: ServerId) => {
     if (next === server || castStateRef.current === "casting") return;
-    const pos = videoRef.current?.currentTime ?? 0;
-    saveNow(); // save your spot RIGHT NOW
-    pendingSeekRef.current = pos; // the new source resumes exactly here
+    stageSpot();
     setPanel(null);
     // backup servers are DUB only — switching to one flips the language too
     onEpisodeChange(episode, isBackupServer(next) ? "dub" : lang, next);
@@ -1157,8 +1216,19 @@ export default function WatchView({
   const fullscreen = () => {
     const el = shellRef.current;
     if (!el) return;
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => undefined);
-    else el.requestFullscreen?.().catch(() => undefined);
+    if (document.fullscreenElement) {
+      // OUR exit — the fullscreenchange bridge must not read it as Esc
+      exitingRef.current = true;
+      document.exitFullscreen().catch(() => undefined);
+    } else {
+      const fel = el as HTMLElement & { webkitRequestFullscreen?: () => Promise<void> | void };
+      const request = el.requestFullscreen?.bind(el) ?? fel.webkitRequestFullscreen?.bind(el);
+      try {
+        void request?.()?.catch?.(() => undefined);
+      } catch {
+        /* iPhone Safari element-fullscreen — ignore */
+      }
+    }
   };
 
   /* -------- Chromecast actions -------- */
@@ -1613,7 +1683,7 @@ export default function WatchView({
 
         {/* resumed pill — "picked up where you left off" */}
         {resumedFrom != null && !casting ? (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 player-layer" style={{ top: "3.25rem" }}>
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 player-layer player-toast-top">
             <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
             <button
               onClick={(e) => {
@@ -1695,7 +1765,7 @@ export default function WatchView({
 
         {/* player toast: cast failures + dub-fallback notices (never both) */}
         {castMsg || playerMsg ? (
-          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center">
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center player-toast-top">
             {castMsg ?? playerMsg}
           </div>
         ) : null}
@@ -1703,7 +1773,7 @@ export default function WatchView({
         {/* desktop ↑/↓ volume OSD — mirrors the keyboard press so the change
             is visible even without a volume slider */}
         {volumePct !== null ? (
-          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-black/80 rounded-2xl px-3.5 py-1.5 pointer-events-none">
+          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-black/80 rounded-2xl px-3.5 py-1.5 pointer-events-none player-toast-top">
             <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor" aria-hidden>
               <path d="M3 9v6h4l5 5V4L7 9H3z" />
               {volumePct > 0 ? (
@@ -1776,7 +1846,7 @@ export default function WatchView({
 
         {/* ---- in-player TOP bar: back / title / download ---- */}
         <div
-          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 pt-3 pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 player-safe-top pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition" aria-label="Back">
@@ -1790,6 +1860,7 @@ export default function WatchView({
                 // might carry it (Anivexa network): jump straight there
                 const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
                 if (b) {
+                  stageSpot(); // resume exactly here after the backup jump
                   showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
                   onEpisodeChange(episode, "dub", b.server as ServerId);
                   return;
@@ -1809,10 +1880,12 @@ export default function WatchView({
               if (next === "dub" && dubServers && dubServers.length > 0 && !dubServers.includes(server)) {
                 // this title's dub lives on the other server — jump there
                 const target = dubServers[0];
+                stageSpot(); // resume exactly here after the server jump
                 showPlayerMsg(`DUB is on ${target === "kiwi" ? "Kiwi" : "Zoko"} for this title — switched server`);
                 onEpisodeChange(episode, next, target);
                 return;
               }
+              stageSpot(); // SUB↔DUB on the same server re-resolves the stream
               setLang(next);
             }}
             className="font-slab text-[16px] font-bold truncate"
@@ -1830,7 +1903,7 @@ export default function WatchView({
 
         {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
         <div
-          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 pb-2.5 pt-9 md:px-6 md:pb-4 md:pt-10 lg:px-10 lg:pb-5 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 player-safe-bottom pt-9 md:px-6 md:pt-10 lg:px-10 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* controls stay readable on wide screens: cap their width, keep the
@@ -1884,6 +1957,16 @@ export default function WatchView({
           label="Resize"
           onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
         />
+        {/* manual fullscreen toggle for PC — covers the rare case where the
+            browser denied the auto request (no gesture / iframe quirks) so
+            the user is never stuck windowed with bars showing */}
+        {!coarsePointer ? (
+          <ControlButton
+            icon={fsActive ? Minimize : Maximize}
+            label={fsActive ? "Exit full screen" : "Full screen"}
+            onClick={fullscreen}
+          />
+        ) : null}
         {castUsable && !iframeFallback ? (
           <ControlButton
             icon={Cast}

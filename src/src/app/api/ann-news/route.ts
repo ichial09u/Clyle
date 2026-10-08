@@ -12,6 +12,9 @@ export const maxDuration = 60;
  * GET /api/ann-news  (also safe to call manually for a status report)
  */
 export async function GET() {
+  // runAnnNewsSweep carries its own 60-min claim + full try/catch, so a manual
+  // call can no longer (a) bypass the throttle to force RSS hammering or
+  // (b) surface a raw 500 from a mid-sweep DB failure
   const report = await runAnnNewsSweep();
-  return NextResponse.json({ ...report, startedAt: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json({ ...report, at: new Date().toISOString() }, { headers: { "Cache-Control": "no-store" } });
 }

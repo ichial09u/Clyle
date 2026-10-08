@@ -18,6 +18,7 @@ import { fetchTop10Month, timeAgo, type Top10MonthEntry } from "@/lib/client-sto
 export default function Top50View({ onBack, onSelect }: { onBack: () => void; onSelect: (a: AnimeLite) => void }) {
   const [items, setItems] = useState<Top10MonthEntry[]>([]);
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
+  const [gotFirst, setGotFirst] = useState(false); // skeleton only until the FIRST answer (empty/failed must show honestly)
   const lastFetch = useRef(0);
 
   const refresh = useCallback((fresh = false) => {
@@ -26,8 +27,9 @@ export default function Top50View({ onBack, onSelect }: { onBack: () => void; on
       .then((list) => {
         setItems(list);
         setLoadedAt(Date.now());
+        setGotFirst(true);
       })
-      .catch(() => undefined);
+      .catch(() => setGotFirst(true));
   }, []);
 
   useEffect(() => {
@@ -77,7 +79,7 @@ export default function Top50View({ onBack, onSelect }: { onBack: () => void; on
         </div>
       </div>
 
-      {!items.length ? (
+      {!items.length && !gotFirst ? (
         <div className="px-4 py-10 space-y-3">
           {Array.from({ length: 8 }).map((_, i) => (
             <div key={i} className="flex gap-3 items-center">
@@ -89,6 +91,16 @@ export default function Top50View({ onBack, onSelect }: { onBack: () => void; on
             </div>
           ))}
         </div>
+      ) : !items.length ? (
+        <div className="px-4 py-10 flex flex-col items-center gap-2.5">
+          <p className="text-center text-gray-400 text-[13px]">No ranking available right now — Anime Trending may be busy.</p>
+          <button
+            onClick={() => refresh(true)}
+            className="rounded-full bg-white text-black text-[12.5px] font-semibold px-4 py-2 hover:opacity-90 active:scale-95 transition"
+          >
+            Try again
+          </button>
+        </div>
       ) : (
         <ol className="px-4 mt-1">
           {items.map((a) => {
@@ -98,9 +110,19 @@ export default function Top50View({ onBack, onSelect }: { onBack: () => void; on
             const isNew = prev == null;
             return (
               <li key={a.malId}>
-                <button
+                {/* div role=button — PosterCard is itself a <button>; nesting a
+                    button inside a button is invalid HTML and React warns */}
+                <div
+                  role="button"
+                  tabIndex={0}
                   onClick={() => onSelect(a)}
-                  className="w-full flex items-center gap-3 py-2 text-left active:bg-[#101010] rounded-lg transition"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelect(a);
+                    }
+                  }}
+                  className="w-full flex items-center gap-3 py-2 text-left active:bg-[#101010] rounded-lg transition cursor-pointer hover:bg-white/[0.04]"
                 >
                   {/* Netflix-style big rank numeral */}
                   <span
@@ -131,7 +153,7 @@ export default function Top50View({ onBack, onSelect }: { onBack: () => void; on
                       ) : null}
                     </p>
                   </div>
-                </button>
+                </div>
               </li>
             );
           })}
