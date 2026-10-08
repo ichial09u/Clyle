@@ -30,6 +30,18 @@ export default function DetailsView({
   useEffect(() => {
     let cancelled = false;
     setExpanded(false);
+    const memoKey = `clyle:details:${initial.malId}`;
+    // INSTANT PAINT: a payload seen before (back-navigation, revisit) renders
+    // from the session memo while the network revalidates underneath.
+    try {
+      const memo = sessionStorage.getItem(memoKey);
+      if (memo) {
+        const payload = JSON.parse(memo) as DetailsPayload;
+        if (payload?.anime && !payload.pending) setData({ for: initial.malId, payload });
+      }
+    } catch {
+      /* memo is best-effort */
+    }
     const grab = async (): Promise<DetailsPayload | null> => {
       try {
         const res = await fetch(`/api/anime/${initial.malId}`);
@@ -43,16 +55,23 @@ export default function DetailsView({
       // When the viewer taps an import card (search/genre), the import POST is
       // still running server-side and /api/anime can fail or come back empty —
       // poll briefly so the page fills in live instead of staying skeletal.
-      // Same for `pending: true` responses (cold cache): the hero fills from
-      // the first answer, the sections land on a warm re-poll.
+      // Same for `pending: true` responses (never-baked anime): the hero fills
+      // from the first answer, the sections land on a warm re-poll.
       for (let attempt = 0; attempt < 24 && !cancelled; attempt++) {
         const payload = await grab();
         if (cancelled) return;
         if (payload?.anime) {
           setData({ for: initial.malId, payload });
-          if (!payload.pending) return; // complete — sections present
+          if (!payload.pending) {
+            try {
+              sessionStorage.setItem(memoKey, JSON.stringify(payload));
+            } catch {
+              /* quota — memo is best-effort */
+            }
+            return; // complete — sections present
+          }
         }
-        await new Promise((r) => setTimeout(r, 2_500));
+        await new Promise((r) => setTimeout(r, 1_200));
       }
     })();
     return () => {

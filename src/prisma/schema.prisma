@@ -500,3 +500,17 @@ model GlobalMeta {
   key   String @id
   value String
 }
+
+// Pre-baked "Other Seasons" + "You May Also Like" per anime, harvested from
+// AniList (relations + recommendations). The details route serves these rows
+// INSTANTLY — no upstream fetch on the request path — because the rows ship
+// inside the packaged custom.db on every deploy (a cold serverless instance
+// answers warm from the very first hit). Related entries are stored raw
+// (AniList title/art); image + inCatalog are re-merged from the live Anime
+// table at serve time so poster updates (e.g. TMDB art) propagate instantly.
+model DetailCache {
+  malId        Int      @id
+  otherSeasons String   @default("[]") // JSON: [{malId,name,relation,image}]
+  similar      String   @default("[]") // JSON: [{malId,name,image}]
+  fetchedAt    DateTime @default(now())
+}

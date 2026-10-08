@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { jikan, jikanOne, type JikanAnime } from "@/lib/jikan";
 import { anilistMalIdNotFound, anilistToJikan, mediaByMal, peekMediaByMal, relationName } from "@/lib/anilist";
+import {
+  computeSections,
+  serveSections,
+  storeSections,
+  warmAndStore,
+  type RawSections,
+} from "@/lib/detail-sections";
 import { upsertAnime } from "@/lib/sync";
 import { lite } from "@/lib/serialize";
 
@@ -12,22 +19,20 @@ const SEASON_RELATIONS = ["Sequel", "Prequel", "Side story", "Summary", "Alterna
 /**
  * GET /api/anime/{malId} — full details + Other Seasons + You May Also Like.
  *
- * AniList-first: relations and recommendations arrive in the SAME request as
- * the details (previously two Jikan calls that could retry through MAL 504s
- * for 10+ seconds). Jikan stays as the fallback source.
+ * ── Latency contract (the "details sections take forever" fix) ───────────
+ * 1. FAST PATH — sections live in the DetailCache table, which ships inside
+ *    the packaged custom.db on every deploy. A hit answers with ONE SQLite
+ *    read (plus a live-row merge for fresh posters/flags): instant on every
+ *    instance, including the first hit after a cold start. No pending, no
+ *    polling.
+ * 2. PEEK PATH — no cache row yet, but the instance has the AniList media
+ *    cached: compute + write-through the cache, serve complete.
+ * 3. COLD PATH — answer immediately with `pending: true` while a background
+ *    harvest lands the cache row; the client's re-poll hits path 1.
  *
- * ── Latency contract (the "detail button hangs 11-25s" fix) ──────────────
- * This route NEVER awaits a cold AniList/MAL fetch:
- *   - catalog anime: relations/similar come from the CACHE-ONLY peek
- *     (peekMediaByMal — instant, even if stale). Cold cache → answer
- *     immediately with `pending: true` while a background mediaByMal() warms
- *     it; DetailsView re-polls and the follow-up request is fully warm.
- *   - unknown anime (imported via MAL-id search): the import is BUDGET-RACED
- *     at 4s. If it loses the race it keeps running in the background
- *     (in-flight deduped) and the route answers `pending: true`.
- *   - the Jikan fallbacks for relations/recommendations are budget-raced at
- *     2.5s each — a dead MAL never blocks the response, it just trims the
- *     sections for that request.
+ * The Jikan fallbacks for relations/recommendations are budget-raced at
+ * 2.5s each — a dead MAL never blocks the response, it just trims the
+ * sections for that request (and the result is cached so it never repeats).
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ malId: string }> }) {
   const { malId: malIdStr } = await params;
@@ -56,91 +61,66 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
 
   const anime = lite(row);
 
-  // ---- cache-only peek: relations + recommendations sources ----
-  const media = await peekMediaByMal(malId);
-  if (!media) {
-    // cold cache — never block: warm it in the background, answer now.
-    // (mediaByMal is the disk-cached reader; when it lands, the client's
-    // re-poll gets the full sections in one warm round-trip.)
-    void mediaByMal(malId).catch(() => null);
+  // ---- FAST PATH: pre-baked sections (ships with the DB) ----
+  const served = await serveSections(malId);
+  if (served) {
     return NextResponse.json(
-      { anime, otherSeasons: [], similar: [], pending: true },
+      { anime, ...served, pending: false },
       { headers: { "Cache-Control": "no-store" } },
     );
   }
 
-  // ---- Other Seasons (Sequel / Prequel / Side story / Summary / …) ----
-  const otherSeasons: Array<{ malId: number; name: string; relation: string; image: string | null; inCatalog: boolean }> = [];
+  // ---- PEEK PATH: instance has the AniList media cached ----
+  const media = await peekMediaByMal(malId);
+  if (media) {
+    const sections: RawSections = computeSections(media);
 
-  const pushRelated = async (rel: string, malId2: number, name: string, image: string | null) => {
-    const relRow = await db.anime.findUnique({ where: { malId: malId2 }, select: { image: true, inCatalog: true } });
-    otherSeasons.push({ malId: malId2, name, relation: rel, image: relRow?.image ?? image, inCatalog: relRow?.inCatalog ?? false });
-  };
-
-  if (media.relations?.edges?.length) {
-    for (const edge of media.relations.edges) {
-      const rel = relationName(edge.relationType);
-      if (!SEASON_RELATIONS.includes(rel)) continue;
-      const node = edge.node;
-      const relatedMal = node?.idMal ?? null;
-      if (!node || !relatedMal) continue;
-      await pushRelated(rel, relatedMal, node.title?.english ?? node.title?.romaji ?? `#${relatedMal}`, node.coverImage?.extraLarge ?? node.coverImage?.large ?? null);
-    }
-  } else if (!isJikanFallbackDead("rel", malId)) {
-    // Jikan fallback for the relations graph — budget-raced 2.5s
-    const full = await Promise.race([
-      jikanOne<JikanAnime>(`/anime/${malId}/full`),
-      sleep(2_500).then(() => null),
-    ]);
-    const relations = (row.inCatalog ? full?.relations : []) ?? [];
-    if (!relations.length) markJikanFallbackDead("rel", malId);
-    for (const rel of relations) {
-      if (!SEASON_RELATIONS.includes(rel.relation)) continue;
-      for (const e of rel.entry) {
-        if (e.type !== "anime") continue;
-        await pushRelated(rel.relation, e.mal_id, e.name, null);
+    // Jikan backfills ONLY when AniList genuinely lacks a section —
+    // budget-raced so a shedding MAL trims sections instead of hanging them.
+    if (!sections.otherSeasons.length && !isJikanFallbackDead("rel", malId)) {
+      const full = await Promise.race([
+        jikanOne<JikanAnime>(`/anime/${malId}/full`),
+        sleep(2_500).then(() => null),
+      ]);
+      const relations = (row.inCatalog ? full?.relations : []) ?? [];
+      if (!relations.length) markJikanFallbackDead("rel", malId);
+      for (const rel of relations) {
+        if (!SEASON_RELATIONS.includes(rel.relation)) continue;
+        for (const e of rel.entry) {
+          if (e.type !== "anime") continue;
+          sections.otherSeasons.push({ malId: e.mal_id, name: e.name, relation: rel.relation, image: null });
+        }
       }
     }
+    if (!sections.similar.length && !isJikanFallbackDead("rec", malId)) {
+      const recs = await Promise.race([
+        jikan<{ data: Array<{ entry: JikanAnime }> }>(`/anime/${malId}/recommendations`),
+        sleep(2_500).then(() => null),
+      ]);
+      const recEntries = (recs?.data ?? []).map((r) => r.entry).slice(0, 24);
+      if (!recEntries.length) markJikanFallbackDead("rec", malId);
+      sections.similar = recEntries.map((e) => ({
+        malId: e.mal_id,
+        name: e.title_english ?? e.title,
+        image: e.images?.webp?.large_image_url ?? e.images?.jpg?.large_image_url ?? e.images?.jpg?.image_url ?? null,
+      }));
+    }
+
+    await storeSections(malId, sections); // write-through — this request's work benefits every later one
+    const cached = await serveSections(malId);
+    if (cached) {
+      return NextResponse.json(
+        { anime, ...cached, pending: false },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
   }
 
-  // ---- You May Also Like — recommendations, catalog entries first ----
-  let similar: Array<{ malId: number; name: string; image: string | null; inCatalog: boolean }> = [];
-
-  if (media.recommendations?.nodes?.length) {
-    const recs = media.recommendations.nodes
-      .map((n) => n.mediaRecommendation)
-      .filter((m): m is NonNullable<typeof m> => !!m)
-      .map(anilistToJikan)
-      .filter((a): a is JikanAnime => !!a)
-      .slice(0, 24);
-    similar = await buildSimilar(recs);
-  } else if (!isJikanFallbackDead("rec", malId)) {
-    // Jikan fallback — budget-raced 2.5s
-    const recs = await Promise.race([
-      jikan<{ data: Array<{ entry: JikanAnime }> }>(`/anime/${malId}/recommendations`),
-      sleep(2_500).then(() => null),
-    ]);
-    const recEntries = (recs?.data ?? []).map((r) => r.entry).slice(0, 24);
-    if (!recEntries.length) markJikanFallbackDead("rec", malId);
-    similar = await buildSimilar(recEntries);
-  }
-
-  async function buildSimilar(recEntries: JikanAnime[]) {
-    const recRows = await Promise.all(
-      recEntries.map((e) => db.anime.findUnique({ where: { malId: e.mal_id }, select: { image: true, inCatalog: true } })),
-    );
-    const list = recEntries.map((e, i) => ({
-      malId: e.mal_id,
-      name: e.title_english ?? e.title,
-      image: recRows[i]?.image ?? e.images?.webp?.large_image_url ?? e.images?.jpg?.large_image_url ?? e.images?.jpg?.image_url ?? null,
-      inCatalog: recRows[i]?.inCatalog ?? false,
-    }));
-    list.sort((a, b) => Number(b.inCatalog) - Number(a.inCatalog));
-    return list;
-  }
-
+  // ---- COLD PATH: never block — harvest in the background, answer now.
+  // (The client re-polls; the follow-up request serves from DetailCache.)
+  void warmAndStore(malId);
   return NextResponse.json(
-    { anime, otherSeasons: otherSeasons.slice(0, 12), similar: similar.slice(0, 12), pending: false },
+    { anime, otherSeasons: [], similar: [], pending: true },
     { headers: { "Cache-Control": "no-store" } },
   );
 }

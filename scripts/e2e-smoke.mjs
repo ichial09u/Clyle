@@ -127,6 +127,15 @@ async function expectJson(name, path, init, validate, timeout) {
     const raw = anime ? JSON.stringify(anime) : "";
     record("One Piece posters are Elbaph arc art", raw.includes("op-elbaph-poster") && raw.includes("op-elbaph-banner"), raw.slice(0, 120));
   }
+  // Details sections are PRE-BAKED in DetailCache (ships inside custom.db):
+  // every view must answer pending:false with both sections present — no
+  // re-polling, no waiting on AniList (the "details take forever" fix).
+  {
+    const ok = !!anime && anime.pending === false && Array.isArray(anime.otherSeasons) && anime.otherSeasons.length > 0 && Array.isArray(anime.similar) && anime.similar.length > 0;
+    record("Details sections baked (Other Seasons + You May Also Like, pending:false)", ok, !ok ? `pending=${anime?.pending} rel=${anime?.otherSeasons?.length} sim=${anime?.similar?.length}` : "");
+    const relOk = !!anime?.otherSeasons?.length && anime.otherSeasons.every((r) => r.relation && r.name);
+    record("Detail sections carry relation + name (live merge intact)", !!relOk, JSON.stringify(anime?.otherSeasons?.[0]).slice(0, 120));
+  }
   const eps = await expectJson(
     "GET /api/anime/21/episodes",
     "/api/anime/21/episodes",
