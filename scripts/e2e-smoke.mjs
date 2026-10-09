@@ -121,10 +121,20 @@ async function expectJson(name, path, init, validate, timeout) {
     (r, b) => r.ok && b?.anime?.title === "South Park" && b?.pending === false,
   );
   await expectJson(
-    "GET /api/anime/999999/episodes (338 eps + season dropdown)",
+    "GET /api/anime/999999/episodes (338 eps + seasons, dub-only payload)",
     "/api/anime/999999/episodes",
     {},
-    (r, b) => r.ok && b?.total >= 330 && Array.isArray(b?.seasons) && b.seasons.length === 30 && b?.hasDub === true,
+    (r, b) =>
+      r.ok &&
+      b?.total >= 330 &&
+      Array.isArray(b?.seasons) &&
+      b.seasons.length === 30 &&
+      b?.hasDub === true &&
+      // owner: "don't show sub button at all for South Park" — the sheet and
+      // the player toggle read this payload, so it must be dub-only
+      b?.hasSub === false &&
+      Array.isArray(b?.subServers) &&
+      b.subServers.length === 0,
   );
   {
     const t0 = Date.now();

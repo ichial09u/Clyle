@@ -95,6 +95,10 @@ export default function WatchView({
   // exact episodes that provider dubs, so buttons show only where real
   // coverage exists and the main chain can't serve the dub itself
   const [backupDub, setBackupDub] = useState<Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null>(null);
+  // DUB-ONLY title (probed subServers === [] — South Park/WCO): with one
+  // language there is nothing to switch, so the [SUB|DUB] segmented control
+  // is hidden entirely (owner: "don't show sub button at all for South Park")
+  const [dubOnly, setDubOnly] = useState(false);
   // generic in-player toast (dub fallback notices); cast errors use castMsg
   const [playerMsg, setPlayerMsg] = useState<string | null>(null);
   // live connection state — drives the offline hints (what plays offline vs
@@ -132,9 +136,10 @@ export default function WatchView({
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; subServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
         if (!ok || !d) return;
         if (typeof d.hasDub === "boolean") setHasDub(d.hasDub);
+        if (Array.isArray(d.subServers)) setDubOnly(d.subServers.length === 0);
         if (Array.isArray(d.dubServers)) setDubServers(d.dubServers);
         if (d.dubThrough && (d.dubThrough.s1 != null || d.dubThrough.s2 != null)) setDubThrough(d.dubThrough);
         if (Array.isArray(d.dubMissing)) setDubMissing(d.dubMissing);
@@ -150,6 +155,16 @@ export default function WatchView({
       ok = false;
     };
   }, [anime.malId]);
+
+  // DUB-ONLY title opened with a stale SUB pref (history/continue row): flip
+  // to DUB once the payload lands — same stageSpot dance as a manual toggle
+  // so the language swap resumes exactly where it was
+  useEffect(() => {
+    if (dubOnly && lang === "sub") {
+      stageSpot();
+      setLang("dub");
+    }
+  }, [dubOnly, lang]);
 
   // toast timers must not outlive the player — the 12s cast-failure pill and
   // friends used to fire after unmount
@@ -1962,7 +1977,7 @@ export default function WatchView({
           </span>
           <div className="flex-1" />
           {/* explicit language control — the toggle the title used to hide */}
-          {!iframeFallback && !casting ? (
+          {!iframeFallback && !casting && !dubOnly ? (
             <div className="flex items-center rounded-full bg-black/45 border border-white/15 p-0.5 shrink-0" role="group" aria-label="Audio language">
               <button
                 onClick={(e) => {

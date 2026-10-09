@@ -106,11 +106,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       airing: anime.airing,
       durationMin: anime.durationMin,
       total,
-      // WCO serves the natively-English track for both selections
+      // WCO serves the one natively-English track — there is no sub/dub
+      // choice to make (owner: "don't show sub button at all for South
+      // Park"). Dub-only payload: the server sheet renders a single DUB
+      // button and the player hides the [SUB|DUB] control entirely.
       hasDub: true,
       dubServers: ["zoko" as const],
-      hasSub: true,
-      subServers: ["zoko" as const],
+      hasSub: false,
+      subServers: [] as Array<"zoko" | "kiwi">,
       dubThrough: { s1: total, s2: total },
       dubMissing: [] as number[],
       backupDub: [],
