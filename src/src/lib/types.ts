@@ -110,6 +110,15 @@ export interface EpisodesPayload {
    * shortly so the episode appears without the user leaving and coming back.
    */
   freshnessPending?: boolean;
+  /**
+   * WESTERN-SHOW SERVER NAMING (South Park — not anime). Maps each internal
+   * server id to the embedded SITE that server's player pulls from
+   * ({ zoko: "WCO", kiwi: "LookMovie2" }). Presence = the episode sheet says
+   * plain "Server 1"/"Server 2" (no SUB/DUB prefix — there is no language
+   * choice on a natively-English show) and the player's server panel shows
+   * the site names instead of Zoko/Kiwi.
+   */
+  serverNames?: Partial<Record<"zoko" | "kiwi", string>>;
 }
 
 export interface RelatedCard {

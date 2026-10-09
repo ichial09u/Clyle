@@ -453,7 +453,18 @@ export default function EpisodesView({
                                 isPref ? "text-white" : isBackup ? "text-[#8f9bff]" : "text-[#d32f2f]"
                               }`}
                             />
-                            {isBackup ? `DUB ${backupName}` : `${lang.toUpperCase()} Server #${n}`}
+                          {(() => {
+                            // Western shows (South Park — serverNames present) are
+                            // natively English: no SUB/DUB language choice exists,
+                            // so the buttons are plain "Server 1"/"Server 2".
+                            // Anime keeps the classic "<LANG> Server #N" labels.
+                            const spName = (episodesData?.serverNames ?? {})[server as "zoko" | "kiwi"];
+                            return isBackup
+                              ? `DUB ${backupName}`
+                              : spName
+                                ? `Server ${n}`
+                                : `${lang.toUpperCase()} Server #${n}`;
+                          })()}
                           </button>
                         );
                       })}

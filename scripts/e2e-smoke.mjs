@@ -149,7 +149,11 @@ async function expectJson(name, path, init, validate, timeout) {
       // the player toggle read this payload, so it must be dub-only
       b?.hasSub === false &&
       Array.isArray(b?.subServers) &&
-      b.subServers.length === 0,
+      b.subServers.length === 0 &&
+      // two-sites naming (owner: "remove zoko/kiwi — use the embedded site names"):
+      // Server 1 = WCO, Server 2 = LookMovie2 (its own resolver, not a WCO skin)
+      b?.serverNames?.zoko === "WCO" &&
+      b?.serverNames?.kiwi === "LookMovie2",
   );
   await expectJson(
     "GET /api/anime/999928/episodes (S28 exact numbers — source has no E1)",
@@ -160,6 +164,21 @@ async function expectJson(name, path, init, validate, timeout) {
   // Task 28 proved S23E10 pulled from WCO + both Post COVID specials dead at
   // the CDN. CC task: S23E10 returns via the LM2 fallback (real bytes + CC
   // verified), so its row is restored — S24 stays dropped (both mirrors dead).
+  await expectJson(
+    "GET /api/stream South Park S1E1 via Server 2 (LookMovie2-first)",
+    "/api/stream?malId=999901&ep=1&lang=dub&server=kiwi",
+    {},
+    (r, b) =>
+      r.ok &&
+      typeof b?.src === "string" &&
+      b.src.startsWith("http") &&
+      // server 2 resolves the LM2 mirror FIRST (its own site); when LM2's
+      // storage pool is down it honestly reports the WCO safety net — both
+      // play through the app proxy
+      (b?.provider === "lm2" || b?.provider === "wco") &&
+      b?.serverUsed === "kiwi" &&
+      b?.direct !== true,
+  );
   await expectJson(
     "GET /api/anime/999923/episodes (S23: E10 Christmas Snow restored via LM2 fallback)",
     "/api/anime/999923/episodes",
@@ -184,11 +203,14 @@ async function expectJson(name, path, init, validate, timeout) {
     let spSubs = [];
     let spSkip;
     const sp = await expectJson(
-      "GET /api/stream South Park S1E1 (WCO direct MP4 + vendored CC + intro skip)",
+      "GET /api/stream South Park S1E1 (proxied WCO MP4 + vendored CC + intro skip)",
       "/api/stream?malId=999901&ep=1&lang=sub&server=zoko",
       {},
       (r, b) => {
-        const ok = r.ok && b?.provider === "wco" && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct === true;
+        // the payload carries the RAW source + direct:false — the player wraps
+        // it in the app proxy (the proven playback path), whose Range passthrough
+        // makes seeking work inside the MP4
+        const ok = r.ok && (b?.provider === "wco" || b?.provider === "lm2") && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct !== true;
         spSrc = typeof b?.src === "string" ? b.src : "";
         spSubs = Array.isArray(b?.subtitles) ? b.subtitles : [];
         spSkip = b?.skip;
@@ -221,15 +243,24 @@ async function expectJson(name, path, init, validate, timeout) {
       !!iv && Number.isFinite(iv.start) && Number.isFinite(iv.end) && iv.end > iv.start && iv.end - iv.start <= 180 && iv.start <= 320,
       JSON.stringify(spSkip).slice(0, 140),
     );
-    // Task 28: WCO hotlink-filters foreign Referers (our origin -> 404 HTML,
-    // which emptied the dub player). The fixed player sends none — the direct
-    // MP4 must serve video bytes with NO Referer, exactly what
-    // <video referrerPolicy="no-referrer"> + Referrer-Policy produce.
+    // CC-SYNC fleet: the S13E1 verdict the owner's report was filed against —
+    // /api/captions must serve a measured offset (subs ~1.3 s early, now corrected)
+    await expectJson(
+      "GET /api/captions (S13E1 CC-sync verdict measured)",
+      "/api/captions?malId=999913&ep=1&lang=dub",
+      {},
+      (r, b) => r.ok && b?.measured === true && Number.isFinite(b?.offsetMs) && Math.abs(b.offsetMs) <= 15_000 && (b?.confidence ?? 0) >= 0.4,
+    );
+    // Seek-fix probe: the proxied MP4 must relay the client's Range as a real
+    // 206 with Content-Range (before the fix the proxy answered a 200 FULL
+    // body — which reset the media element on every forward seek).
     if (spSrc) {
       try {
         const ctrl = new AbortController();
         const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
-        const res = await fetch(spSrc, {
+        // the player wraps the raw src exactly like this (type=seg + rf)
+        const proxied = `/api/stream/proxy?type=seg&u=${encodeURIComponent(spSrc)}&rf=${encodeURIComponent("https://www.wcostream.tv/")}`;
+        const res = await fetch(new URL(proxied, BASE).toString(), {
           headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             Range: "bytes=0-1023",
@@ -237,17 +268,17 @@ async function expectJson(name, path, init, validate, timeout) {
           signal: ctrl.signal,
         }).finally(() => clearTimeout(t));
         const buf = await res.arrayBuffer();
-        const ok = (res.status === 200 || res.status === 206) && /video|octet/.test(res.headers.get("content-type") || "") && buf.byteLength > 0;
+        const ok = (res.status === 200 || res.status === 206) && /video|octet/.test(res.headers.get("content-type") || "") && buf.byteLength > 0 && !!res.headers.get("content-range");
         record(
-          "South Park dub MP4 serves video bytes with no Referer (dub-player fix)",
+          "South Park proxied MP4 relays Range (206 + Content-Range) — the seek fix",
           ok,
-          ok ? `${res.status} ${(res.headers.get("content-type") || "").slice(0, 24)} ${buf.byteLength}B` : `status ${res.status} ct=${res.headers.get("content-type")} bytes=${buf.byteLength}`,
+          ok ? `${res.status} ${(res.headers.get("content-type") || "").slice(0, 24)} ${buf.byteLength}B cr=${res.headers.get("content-range")}` : `status ${res.status} ct=${res.headers.get("content-type")} bytes=${buf.byteLength}`,
         );
       } catch (err) {
-        record("South Park dub MP4 serves video bytes with no Referer (dub-player fix)", false, String(err).slice(0, 160));
+        record("South Park proxied MP4 relays Range (206 + Content-Range) — the seek fix", false, String(err).slice(0, 160));
       }
     } else {
-      record("South Park dub MP4 serves video bytes with no Referer (dub-player fix)", false, "no stream src to probe");
+      record("South Park proxied MP4 relays Range (206 + Content-Range) — the seek fix", false, "no stream src to probe");
     }
   }
   await expectJson(

@@ -65,30 +65,53 @@ export async function GET(req: Request) {
 
   // ---- WCO source (South Park) ------------------------------------------
   // Western cartoon: no AniList/MAL mapping on any chain site — playback
-  // flows through the app's own WCO resolver for BOTH languages (the show
+  // flows through the app's own resolvers for BOTH languages (the show
   // is natively English; SUB and DUB both play the same track). Answered
   // BEFORE the Zoko machinery so no chain probes burn time on it.
   // Task 27: the franchise is spread out — malId 999900+season picks the
   // entry's season (0 = Movies & Specials); the resolver maps (entry, ep)
   // to the WCO slug, falling back to the Episode row's stored slug for
   // freshness-scraped episodes that aren't in the baked manifest.
+  // TWO PLAYERS, TWO SITES (owner: "another site like wco in the other
+  // player — that's why there are 2 players"):
+  //   Server 1 (zoko) = WCO  — wcoStream first, LM2 mirror as the dead-ep
+  //                            fallback (S23E10 "Christmas Snow")
+  //   Server 2 (kiwi) = LookMovie2 — lm2Stream FIRST (its own site, not a
+  //                            WCO skin), WCO as the safety net so the
+  //                            player never dead-ends on a busy pool
   // CC task: WCO ships no caption tracks for the show, so the vendored
   // English WebVTT (harvested from the LM2 mirror catalog, stored in
   // SpCaption) rides along as the episode's caption track — the player's
   // CC panel and drift sync pick it up like any other source's subs.
   const animeRow = await db.anime.findUnique({ where: { malId }, select: { source: true } });
   if (animeRow?.source === "wco") {
-    const stream = await wcoStream(malId, ep);
-    if (stream) {
-      return respond(malId, ep, lang, await withSpCaptions(malId, ep, stream), "zoko", "wco", WCO_REFERER, undefined, true);
-    }
-    // Fallback: LM2 mirror (resurrects WCO-dead episodes like S23E10
-    // "Christmas Snow", whose page WCO pulled). LM2 serves HLS — proxied
-    // playback, no direct flag. Its movie/special storage was "WRONG HASH"
-    // at wiring time, so gated titles still 404 honestly until it heals.
-    const lm2 = await lm2Stream(malId, ep).catch(() => null);
-    if (lm2) {
-      return respond(malId, ep, lang, await withSpCaptions(malId, ep, lm2), "zoko", "wco");
+    const wantLm2 = server === "kiwi"; // Server 2 = LookMovie2
+    // BOTH sites play PROXIED — that is the path proven on real devices, and
+    // with the proxy's Range passthrough the <video> element can seek inside
+    // the MP4/HLS (raw browser-direct playback left seeks broken on devices
+    // whose direct fetch the CDN refuses, with no way to fall back).
+    const wcoFirst = async () => {
+      const s = await wcoStream(malId, ep).catch(() => null);
+      return s ? { s, provider: "wco" as const, direct: false } : null;
+    };
+    const lm2First = async () => {
+      const s = await lm2Stream(malId, ep).catch(() => null);
+      return s ? { s, provider: "lm2" as const, direct: false } : null;
+    };
+    // the requested site first; the other site is the shared safety net
+    const hit = wantLm2 ? await lm2First() || (await wcoFirst()) : (await wcoFirst()) || (await lm2First());
+    if (hit) {
+      return respond(
+        malId,
+        ep,
+        lang,
+        await withSpCaptions(malId, ep, hit.s),
+        server === "kiwi" ? "kiwi" : "zoko",
+        hit.provider,
+        hit.provider === "wco" ? WCO_REFERER : undefined,
+        undefined,
+        hit.direct,
+      );
     }
     return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
@@ -236,7 +259,7 @@ async function respond(
   lang: Lang,
   stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
   serverUsed: ServerId,
-  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | "wco" | ServerId,
+  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | "wco" | "lm2" | ServerId,
   referer?: string | null,
   pk?: string,
   direct?: boolean,

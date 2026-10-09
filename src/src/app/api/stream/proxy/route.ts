@@ -437,6 +437,31 @@ export async function GET(req: Request) {
 
   const upstreamHeaders = upstreamHeadersFor(target.hostname, hasRf ? rfParam : undefined);
   const isM3u8Path = /\.m3u8($|\?)/i.test(target.pathname);
+  // ---- Range passthrough (the "seeking resets me" fix, proxy half) --------
+  // The <video> element seeks progressive files by sending `Range: bytes=…`.
+  // The proxy used to swallow it and answer a 200 FULL body, which Chrome
+  // reads as "this connection can't seek" — every forward seek into
+  // unbuffered territory reset the media element (progress bar / Skip Intro
+  // snapping back to 0). Forward the Range upstream (except for playlists
+  // and subtitles — they must always be fetched whole) and relay the 206.
+  // Chrome also OPENS playback with an open-ended range (`bytes=0-`), which
+  // upstream would stream unbounded — bound every window at RANGE_WINDOW so
+  // each proxy fetch is finite; Chrome asks for the next window as it plays.
+  const RANGE_WINDOW = 8 * 1024 * 1024;
+  const clientRange = req.headers.get("range");
+  let forwardRange: string | null = null;
+  if (clientRange && !isM3u8Path && !/\.vtt($|\?)/i.test(target.pathname) && !/\.srt($|\?)/i.test(target.pathname)) {
+    const m = /^bytes=(\d+)-(\d*)/.exec(clientRange.trim());
+    if (m) {
+      const start = parseInt(m[1], 10);
+      const endReq = m[2] ? parseInt(m[2], 10) : NaN;
+      if (Number.isFinite(start) && start >= 0) {
+        const end = Number.isFinite(endReq) && endReq >= start ? endReq : start + RANGE_WINDOW - 1;
+        forwardRange = `bytes=${start}-${Math.min(end, start + RANGE_WINDOW - 1)}`;
+      }
+    }
+  }
+  if (forwardRange) upstreamHeaders.Range = forwardRange;
   const lm2Retry = LM2_RETRY_SUFFIXES.some((s) => target.hostname.toLowerCase().endsWith(s));
   const attempts = lm2Retry ? LM2_MAX_ATTEMPTS : 1;
 
@@ -576,6 +601,7 @@ export async function GET(req: Request) {
   // discarded once the parallel fetch has actually succeeded.
   const contentLength = parseInt(upstream.headers.get("content-length") ?? "", 10);
   if (
+    !forwardRange && // a range fetch must be relayed as-is, never stitched
     upstream.status === 200 &&
     Number.isFinite(contentLength) &&
     contentLength >= SEG_PARALLEL_MIN &&
@@ -596,6 +622,23 @@ export async function GET(req: Request) {
         },
       });
     }
+  }
+
+  // Range honored upstream — relay the 206 faithfully (status + Content-Range
+  // + Accept-Ranges). Positional responses must never be cached either: a
+  // 206 for one range served for another would corrupt playback.
+  if (forwardRange && upstream.status === 206) {
+    const contentRange = upstream.headers.get("content-range");
+    return new NextResponse(upstream.body, {
+      status: 206,
+      headers: {
+        ...headers,
+        "Cache-Control": "no-store",
+        "Content-Type": contentType || "video/mp2t",
+        ...(contentRange ? { "Content-Range": contentRange, "Accept-Ranges": "bytes" } : {}),
+        ...(Number.isFinite(contentLength) ? { "Content-Length": String(contentLength) } : {}),
+      },
+    });
   }
 
   return new NextResponse(upstream.body, {

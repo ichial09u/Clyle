@@ -7,7 +7,7 @@ import {
   Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
-import { zokoPlayerUrl, zokoDownloadUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer } from "@/lib/zoko";
+import { zokoPlayerUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer } from "@/lib/zoko";
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
@@ -16,9 +16,19 @@ import {
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
-import { enqueueEpisodeSave, getSavedEpisode, type SaveState } from "@/lib/offline-download";
+import { enqueueEpisodeSave, getSavedEpisode, isEpisodeSaved, type SaveState } from "@/lib/offline-download";
 
 type Panel = null | "quality" | "speed" | "subs";
+
+// in-player device-download state (Clyle's own downloader — no external
+// download sites): a streamed fetch of the episode file with live progress,
+// handed to the browser as a real .mp4 when it completes
+type DeviceDl = { phase: "fetching" | "done" | "error"; received: number; total: number; msg?: string };
+
+/** single-file episode (MP4) — exports to the device; HLS saves offline instead */
+const isProgressiveSrc = (src?: string | null): boolean =>
+  !!src && !/\.m3u8($|\?)/i.test(src) && !src.startsWith("/api/");
+
 type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[]; /** true = play the raw URL in <video> (WCO MP4s: fingerprint-gated for server fetches, browser-direct works; no CORS needed without crossOrigin) */ direct?: boolean };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -102,6 +112,11 @@ export default function WatchView({
   // exact episodes that provider dubs, so buttons show only where real
   // coverage exists and the main chain can't serve the dub itself
   const [backupDub, setBackupDub] = useState<Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null>(null);
+  // WESTERN-SHOW server naming (South Park): maps the internal ids to the
+  // embedded SITE each player pulls from ({ zoko: "WCO", kiwi: "LookMovie2" }).
+  // Present = the server panel says the site names ("Server 1/2" wording on
+  // the episode sheet), never Zoko/Kiwi — this isn't anime.
+  const [serverNames, setServerNames] = useState<Partial<Record<"zoko" | "kiwi", string>> | null>(null);
   // DUB-ONLY title (probed subServers === [] — South Park/WCO): with one
   // language there is nothing to switch, so the [SUB|DUB] segmented control
   // is hidden entirely (owner: "don't show sub button at all for South Park")
@@ -143,7 +158,7 @@ export default function WatchView({
     let ok = true;
     fetch(`/api/anime/${anime.malId}/episodes`)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; subServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
+      .then((d: { hasDub?: boolean; dubServers?: ServerId[]; subServers?: ServerId[]; dubThrough?: { s1: number | null; s2: number | null }; dubMissing?: number[]; backupDub?: Array<{ server: string; provider: string; name: string; through: number | null; covered: number[] }> | null; serverNames?: Partial<Record<"zoko" | "kiwi", string>>; episodes?: Array<{ number: number; title?: string | null }> } | null) => {
         if (!ok || !d) return;
         if (typeof d.hasDub === "boolean") setHasDub(d.hasDub);
         if (Array.isArray(d.subServers)) setDubOnly(d.subServers.length === 0);
@@ -151,6 +166,7 @@ export default function WatchView({
         if (d.dubThrough && (d.dubThrough.s1 != null || d.dubThrough.s2 != null)) setDubThrough(d.dubThrough);
         if (Array.isArray(d.dubMissing)) setDubMissing(d.dubMissing);
         if (Array.isArray(d.backupDub)) setBackupDub(d.backupDub);
+        if (d.serverNames) setServerNames(d.serverNames);
         if (Array.isArray(d.episodes)) {
           const map: Record<number, string> = {};
           for (const e of d.episodes) if (e.title) map[e.number] = e.title;
@@ -223,6 +239,9 @@ export default function WatchView({
   // elapsed label follow the THUMB during a drag, the <video> only seeks ONCE
   // (on release); per-pixel seeking used to abort HLS fragments constantly
   const [scrub, setScrub] = useState<number | null>(null);
+  // ref mirror of `scrub` — pointerup can fire before the last input event's
+  // state lands, so the commit path reads this instead of the closure
+  const scrubRef = useRef<number | null>(null);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
   const [levels, setLevels] = useState<Array<Level>>([]);
@@ -625,8 +644,6 @@ export default function WatchView({
   const appSettings = useAppSettings();
   const appSettingsRef = useRef(appSettings);
   appSettingsRef.current = appSettings;
-  const downloadUrl = zokoDownloadUrl(anime.malId, episode, lang);
-
   /* -------- Chromecast: load the CAF sender SDK + track session state -------- */
   useEffect(() => {
     ensureCastSdk();
@@ -713,6 +730,104 @@ export default function WatchView({
     clearProgressTombstone(anime.malId);
   }, [anime.malId]);
 
+  // stable per-(show, episode, language, server) key — the download sheet and
+  // the offline-save pipeline share it (declared early: the download state
+  // below reads it)
+  const saveKey = `${anime.malId}:${episode}:${lang}:${server}`;
+
+  // ---- Clyle's own download feature ---------------------------------------
+  // The old "Download" dialog shipped the viewer OUT to Zoko's downloader —
+  // a third-party page with its own ads and a single mystery format. Now the
+  // download flow IS ours:
+  //   • direct-file episodes (South Park's WCO MP4s): a streamed, no-referrer
+  //     fetch with live progress, handed to the browser as a real .mp4 file.
+  //   • HLS episodes: the offline-save pipeline (the app's own downloader)
+  //     stores the episode inside Clyle — plays with zero internet.
+  // No external download page, no kiwi/Zoko branding — professional.
+  const [deviceDl, setDeviceDl] = useState<DeviceDl | null>(null);
+  const deviceDlAbortRef = useRef<AbortController | null>(null);
+  const [savedOffline, setSavedOffline] = useState(false);
+  useEffect(() => {
+    if (!downloadOpen) return;
+    setSavedOffline(isEpisodeSaved(saveKey));
+  }, [downloadOpen, saveKey]);
+  // a finished save flips the sheet's state too (saveState is the shared pill source)
+  useEffect(() => {
+    if (saveState?.phase === "done") setSavedOffline(true);
+  }, [saveState?.phase]);
+
+  const startDeviceDownload = async () => {
+    if (!stream?.src || deviceDl?.phase === "fetching") return;
+    const ctrl = new AbortController();
+    deviceDlAbortRef.current = ctrl;
+    setDeviceDl({ phase: "fetching", received: 0, total: 0 });
+    try {
+      // Clyle's own downloader: the episode file streams through OUR proxy in
+      // bounded 8 MB Range windows (the same seek-fix path playback uses) —
+      // live progress, cancelable, then handed to the browser as a real .mp4.
+      // (The old flow shipped the viewer out to a third-party download page.)
+      const url = proxyUrl(stream.src, "seg", stream.referer, stream.pk);
+      const WIN = 8 * 1024 * 1024;
+      const chunks: BlobPart[] = [];
+      let received = 0;
+      let total = 0;
+      for (let start = 0; !total || start < total; start += WIN) {
+        if (ctrl.signal.aborted) throw new Error("aborted");
+        const res = await fetch(url, {
+          headers: { Range: `bytes=${start}-${start + WIN - 1}` },
+          cache: "no-store",
+          signal: ctrl.signal,
+        });
+        if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+        if (!total) {
+          const cr = res.headers.get("content-range"); // "bytes 0-8388607/299435220"
+          total = cr ? parseInt(cr.split("/")[1] ?? "", 10) || 0 : 0;
+        }
+        const reader = res.body.getReader();
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value as unknown as BlobPart);
+            received += value.byteLength;
+            setDeviceDl({ phase: "fetching", received, total });
+          }
+        }
+        const len = parseInt(res.headers.get("content-length") ?? "", 10);
+        if (Number.isFinite(len) && len < WIN) break; // final partial window
+      }
+      const blob = new Blob(chunks, { type: "video/mp4" });
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = `${(anime.title || "episode").replace(/[\\/:*?"<>|]+/g, "").trim()} — E${episode}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objUrl), 60_000);
+      setDeviceDl({ phase: "done", received, total: total || received });
+    } catch (e) {
+      if (ctrl.signal.aborted) {
+        setDeviceDl(null); // user-cancelled — back to the idle sheet
+      } else {
+        setDeviceDl({ phase: "error", received: 0, total: 0, msg: String(e).slice(0, 90) });
+      }
+    } finally {
+      deviceDlAbortRef.current = null;
+    }
+  };
+
+  const startOfflineSave = () => {
+    if (!stream || !ready) return;
+    const isHls = /\.m3u8($|\?)/i.test(stream.src) || stream.src.startsWith("/api/");
+    enqueueEpisodeSave({
+      key: saveKey,
+      playlistUrl: proxyUrl(stream.src, isHls ? "m3u8" : "seg", stream.referer, stream.pk),
+      subtitles: (stream.subtitles ?? []).slice(0, 2).map((s) => captionUrl(s.src)),
+      onProgress: (s) => setSaveState(s),
+    });
+  };
+
   /* -------- resolve the direct stream -------- */
   useEffect(() => {
     // the exit-animation copy of this view must not fire network effects
@@ -772,7 +887,11 @@ export default function WatchView({
         // strand the player on a black spinner forever — treat it as a failure
         if (!data || typeof data.src !== "string" || !data.src) throw new Error("bad-payload");
         if (!cancelled) {
-          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined });
+          // `direct` MUST ride along: WCO MP4s are browser-direct by design —
+          // dropping it used to push the whole file through the proxy, whose
+          // seg path ignored Range (200 full-body), so EVERY forward seek
+          // (progress bar, Skip Intro) reset the media element to 0.
+          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined, direct: data.direct === true });
           // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
           // network) kick in when neither Zoko nor Kiwi carries a real dub —
           // say so, it explains any minor differences (sub style, quality ladder)
@@ -1186,7 +1305,6 @@ export default function WatchView({
      offline next-episode tap resolves from the cache and just plays).
      Everything runs in a module singleton: navigating away never interrupts
      a download, and re-runs only fetch segments the SW doesn't have yet. */
-  const saveKey = `${anime.malId}:${episode}:${lang}:${server}`;
   useEffect(() => {
     if (!ready || !stream || iframeFallback || offline) return;
     // WCO sources play browser-direct and their CDN 403s server-side fetches —
@@ -1247,13 +1365,27 @@ export default function WatchView({
     setCurrentTime(video.currentTime);
   };
 
+  /** THE SEEK BAR's commit path. Reads the DOM input's live value instead of
+   *  React state: browsers order pointerup / input / change differently on
+   *  tap vs drag (and per platform), so a closure-read `scrub` could be null
+   *  or stale at release — the bar then snapped back to currentTime (the
+   *  "progress bar resets me" report). el.value is ALWAYS the thumb's final
+   *  position. */
+  const commitScrub = (el: HTMLInputElement | null) => {
+    const v = el ? parseFloat(el.value) : scrubRef.current;
+    scrubRef.current = null;
+    setScrub(null);
+    if (v != null && Number.isFinite(v)) seekTo(v);
+  };
+
   // Crowd-learned Skip Intro: when a viewer manually scrubs forward from
   // inside the intro region well past it, that target is the best possible
   // hint where the OP ends on shows with no skip data (new seasons).
   // Throttled to one vote/minute; the server validates + takes medians.
   const lastSkipVoteRef = useRef(0);
   const userScrub = (to: number) => {
-    const from = scrub ?? currentTime;
+    const from = scrubRef.current ?? currentTime;
+    scrubRef.current = to; // ref first — the release path reads THIS
     setScrub(to); // visual only — the seek itself commits on release
     try {
       const now = Date.now();
@@ -1388,7 +1520,15 @@ export default function WatchView({
   // payload → AniSkip → crowd-learned scrub medians — see /api/stream). The
   // old blind 8-90s guess is GONE: when nothing measured this episode, the
   // button would land mid-cold-open and skip dialogue — no data, no button.
-  const introSkip: { start: number; end: number } | undefined = stream?.skip?.intro;
+  // SANITY GATE: a window shorter than 8 s is bot garbage (an all-zero or
+  // degenerate row would land the skip at ~0 — the "Skip Intro restarts the
+  // episode" report) — never show the button for it.
+  const introSkipRaw: { start: number; end: number } | undefined = stream?.skip?.intro;
+  const introSkip =
+    introSkipRaw && Number.isFinite(introSkipRaw.start) && Number.isFinite(introSkipRaw.end) &&
+    introSkipRaw.end - introSkipRaw.start >= 8 && introSkipRaw.end > 3
+      ? introSkipRaw
+      : undefined;
   const outroSkip = stream?.skip?.outro;
   // Pressed-this-appearance flags: the skip lands INSIDE the window (3 s
   // before the OP ends), so currentTime-derived visibility alone keeps the
@@ -1933,7 +2073,7 @@ export default function WatchView({
                       // same payload validation as the main resolve path — a
                       // 200-with-no-src used to rebuild the u=undefined playlist
                       if (d && typeof d.src === "string" && d.src) {
-                        setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined });
+                        setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined, direct: d.direct === true });
                       } else {
                         setStreamError(true);
                       }
@@ -2077,20 +2217,18 @@ export default function WatchView({
                   step={0.5}
                   value={scrub ?? currentTime}
                   onChange={(e) => userScrub(parseFloat(e.target.value))}
-                  onPointerUp={() => {
-                    if (scrub != null) {
-                      seekTo(scrub);
-                      setScrub(null);
-                    }
+                  onPointerUp={(e) => commitScrub(e.currentTarget)}
+                  onPointerCancel={() => {
+                    scrubRef.current = null;
+                    setScrub(null);
                   }}
-                  onPointerCancel={() => setScrub(null)}
                   onKeyUp={(e) => {
-                    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-                      if (scrub != null) seekTo(scrub);
-                      setScrub(null);
-                    }
+                    if (e.key === "ArrowLeft" || e.key === "ArrowRight") commitScrub(e.currentTarget);
                   }}
-                  onBlur={() => setScrub(null)}
+                  onBlur={() => {
+                    scrubRef.current = null;
+                    setScrub(null);
+                  }}
                   className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 md:h-5 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 md:[&::-webkit-slider-thumb]:w-4 md:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
                   aria-label="Seek"
                 />
@@ -2217,7 +2355,10 @@ export default function WatchView({
               </div>
             </div>
 
-            {/* stream server — switch mid-episode, playback resumes at the same second */}
+            {/* stream server — switch mid-episode, playback resumes at the same second.
+                Western shows (serverNames present — South Park): the buttons name the
+                embedded SITE each player pulls from (WCO / LookMovie2), never Zoko/Kiwi —
+                this isn't anime and those brand names mean nothing here. */}
             <div className="mt-4 pt-3 border-t border-[#242424]">
               <h4 className="font-slab font-bold text-[14px] mb-2">Server</h4>
               <div className="flex gap-2">
@@ -2232,7 +2373,11 @@ export default function WatchView({
                         : "bg-[#1c1c1c] hover:bg-[#282828] text-gray-200"
                     }`}
                   >
-                    {s === "zoko" ? "Zoko (Server #1)" : "Kiwi (Server #2)"}
+                    {serverNames?.[s]
+                      ? `${serverNames[s]} (Server ${s === "zoko" ? 1 : 2})`
+                      : s === "zoko"
+                        ? "Zoko (Server #1)"
+                        : "Kiwi (Server #2)"}
                     {s === server ? <span className="ml-1.5 text-[10px] font-normal">· in use</span> : null}
                   </button>
                 ))}
@@ -2261,7 +2406,12 @@ export default function WatchView({
                   );
                 })}
               <p className="mt-1.5 text-[10.5px] text-gray-500">Switching server keeps your exact spot — no restart.</p>
-              <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay, Yenime, or the Anivexa backup servers.</p>
+              {serverNames ? (
+                // Western show: the anime dub-backfill chain doesn't apply
+                <p className="mt-1 text-[10.5px] text-gray-600">Both servers carry the full series.</p>
+              ) : (
+                <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay, Yenime, or the Anivexa backup servers.</p>
+              )}
             </div>
           </div>
         ) : null}
@@ -2291,29 +2441,110 @@ export default function WatchView({
         ) : null}
       </div>
 
-      {/* download format dialog */}
+      {/* download sheet — Clyle's OWN downloader. Direct-file episodes
+          (South Park's WCO MP4s) export a real .mp4 through a streamed,
+          progress-tracked fetch; HLS episodes are saved into the app by the
+          offline pipeline. No third-party download sites, ever. */}
       {downloadOpen ? (
-        <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-center justify-center px-6" onClick={() => setDownloadOpen(false)}>
+        <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-end sm:items-center justify-center" onClick={() => setDownloadOpen(false)}>
           <div
-            className="w-full max-w-[340px] md:max-w-[400px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden anim-sheet-up"
+            className="w-full sm:max-w-[420px] bg-[#151515] border-t sm:border sm:border-[#242424] sm:rounded-xl rounded-t-xl shadow-2xl overflow-hidden anim-sheet-up"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-label="Download episode"
           >
-            <div className="px-4 pt-3 pb-1 text-[13px] font-bold">Download episode</div>
-            <div className="px-4 py-2 text-[12.5px] text-gray-300 leading-relaxed">
-              MP4 · about {estimateSizeMB(anime.durationMin, "720p")} MB
-              <span className="block text-[11px] text-gray-500 mt-0.5">
-                The Zoko downloader serves one format per episode.
-              </span>
-            </div>
-            <div className="flex justify-end gap-5 px-4 py-3">
-              <a href={downloadUrl} target="_blank" rel="noreferrer" className="text-[#d32f2f] text-[12px] font-bold tracking-wide hover:opacity-80">
-                DOWNLOAD
-              </a>
-              <button onClick={() => setDownloadOpen(false)} className="text-[#d32f2f] text-[12px] font-bold tracking-wide hover:opacity-80">
-                CANCEL
+            <div className="px-4 pt-4 pb-1 flex items-center justify-between">
+              <h3 className="font-slab text-[16px] font-bold">Download</h3>
+              <button onClick={() => setDownloadOpen(false)} className="text-gray-400 hover:text-white" aria-label="Close">
+                ✕
               </button>
+            </div>
+            <p className="px-4 text-[12px] text-gray-400 truncate">
+              {anime.title} · Episode {episode}
+              {epTitle ? `: ${epTitle}` : ""}
+            </p>
+
+            <div className="px-4 py-4" style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + 20px)" }}>
+              {isProgressiveSrc(stream?.src) ? (
+                /* ---- progressive MP4: export a real .mp4 file to the device ---- */
+                (() => {
+                  const total = deviceDl?.total || 0;
+                  const received = deviceDl?.received || 0;
+                  const pct = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0;
+                  const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
+                  return (
+                    <>
+                      {deviceDl?.phase === "fetching" ? (
+                        <>
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div className="h-full bg-[#d32f2f] rounded-full transition-all" style={{ width: total > 0 ? `${pct}%` : "35%" }} />
+                          </div>
+                          <p className="mt-2 text-[11.5px] text-gray-300 tabular-nums">
+                            Downloading… {total > 0 ? `${pct}% · ${mb(received)} / ${mb(total)}` : mb(received)}
+                          </p>
+                        </>
+                      ) : deviceDl?.phase === "done" ? (
+                        <p className="text-[12.5px] text-emerald-400 font-semibold">
+                          Saved to your device ✓ ({mb(deviceDl.received || received)})
+                        </p>
+                      ) : deviceDl?.phase === "error" ? (
+                        <p className="text-[12px] text-[#ff8a80]">Download failed — {deviceDl.msg}. Try again.</p>
+                      ) : null}
+                      <button
+                        onClick={() => (deviceDl?.phase === "fetching" ? deviceDlAbortRef.current?.abort() : void startDeviceDownload())}
+                        className={`mt-3 w-full flex items-center justify-center gap-2 rounded-lg py-3 text-[13px] font-bold transition active:scale-[0.98] ${
+                          deviceDl?.phase === "fetching"
+                            ? "bg-[#1c1c1c] hover:bg-[#282828] text-gray-200"
+                            : "bg-[#d32f2f] hover:bg-[#b71c1c] text-white"
+                        }`}
+                      >
+                        <Download className="w-4 h-4" />
+                        {deviceDl?.phase === "fetching" ? "Cancel download" : "Download .mp4 to device"}
+                      </button>
+                      <p className="mt-2 text-[10.5px] text-gray-500 leading-relaxed">
+                        Full episode, single file. Saved by Clyle&apos;s own downloader — works offline in your gallery or any player.
+                      </p>
+                    </>
+                  );
+                })()
+              ) : null}
+              {!stream?.src || !isProgressiveSrc(stream?.src) ? (
+                /* ---- HLS: the app's own offline downloader ---- */
+                (() => {
+                  const mine = saveState && saveState.key === saveKey ? saveState : null;
+                  const pct = mine?.total ? Math.round((mine.done / mine.total) * 100) : 0;
+                  return (
+                    <>
+                      {mine?.phase === "download" ? (
+                        <>
+                          <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                            <div className="h-full bg-[#d32f2f] rounded-full transition-all" style={{ width: `${pct}%` }} />
+                          </div>
+                          <p className="mt-2 text-[11.5px] text-gray-300 tabular-nums">Downloading… {pct}%</p>
+                        </>
+                      ) : null}
+                      {savedOffline || mine?.phase === "done" ? (
+                        <p className="text-[12.5px] text-emerald-400 font-semibold">Saved for offline ✓ — plays without internet</p>
+                      ) : null}
+                      {mine?.phase === "error" ? (
+                        <p className="text-[12px] text-[#ff8a80]">Download failed — check your connection and try again.</p>
+                      ) : null}
+                      {!savedOffline && mine?.phase !== "done" && mine?.phase !== "download" ? (
+                        <button
+                          onClick={startOfflineSave}
+                          className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg py-3 text-[13px] font-bold transition active:scale-[0.98] bg-[#d32f2f] hover:bg-[#b71c1c] text-white"
+                        >
+                          <Download className="w-4 h-4" />
+                          Download for offline
+                        </button>
+                      ) : null}
+                      <p className="mt-2 text-[10.5px] text-gray-500 leading-relaxed">
+                        Stored inside Clyle — watch it from your library with zero internet. About {estimateSizeMB(anime.durationMin, "720p")} MB.
+                      </p>
+                    </>
+                  );
+                })()
+              ) : null}
             </div>
           </div>
         </div>

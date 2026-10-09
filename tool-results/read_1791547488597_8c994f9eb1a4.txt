@@ -1,0 +1,572 @@
+     1→  1780→          /* hard-sandboxed Zoko iframe fallback (no popups, no top navigation).
+     2→  1781→             Cross-origin internals can't be recolored, so the fallback gets a
+     3→  1782→             red-themed frame + our own red chrome around it. */
+     4→  1783→          <div className={`w-full h-full flex items-center justify-center ${resizeMode === 2 ? "" : "px-2"}`}>
+     5→  1784→            <div className="relative w-full h-full rounded-md overflow-hidden ring-2 ring-[#d32f2f]/80 shadow-[0_0_24px_rgba(211,47,47,0.35)] bg-black">
+     6→  1785→              <iframe
+     7→  1786→                key={`zoko-${episode}-${lang}`}
+     8→  1787→                src={zokoPlayerUrl(anime.malId, episode, lang)}
+     9→  1788→                title={castTitle}
+    10→  1789→                className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
+    11→  1790→                allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+    12→  1791→                referrerPolicy="no-referrer"
+    13→  1792→                sandbox="allow-scripts allow-same-origin allow-presentation"
+    14→  1793→              />
+    15→  1794→              <div className="pointer-events-none absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-[#d32f2f]/25 to-transparent" />
+    16→  1795→              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-[#d32f2f]/25 to-transparent" />
+    17→  1796→            </div>
+    18→  1797→          </div>
+    19→  1798→        )}
+    20→  1799→
+    21→  1800→        {/* resumed pill — "picked up where you left off" */}
+    22→  1801→        {resumedFrom != null && !casting ? (
+    23→  1802→          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 player-layer player-toast-top">
+    24→  1803→            <span className="text-[11px] text-gray-200 whitespace-nowrap">Resumed at {fmtTime(resumedFrom)}</span>
+    25→  1804→            <button
+    26→  1805→              onClick={(e) => {
+    27→  1806→                e.stopPropagation();
+    28→  1807→                seekTo(0);
+    29→  1808→                setResumedFrom(null);
+    30→  1809→              }}
+    31→  1810→              className="text-[11px] font-bold text-[#ff8a80] hover:text-white bg-white/10 hover:bg-[#d32f2f] rounded-full px-2.5 py-1 transition"
+    32→  1811→            >
+    33→  1812→              Start over
+    34→  1813→            </button>
+    35→  1814→          </div>
+    36→  1815→        ) : null}
+    37→  1816→
+    38→  1817→        {/* offline-save pill — "Saving for offline · 43%" → "Saved for offline ✓"
+    39→  1818→            (the same pill reports the chained NEXT-episode save) */}
+    40→  1819→        {saveState && !casting && saveState.phase !== "error" ? (
+    41→  1820→          <div
+    42→  1821→            className="absolute left-4 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full px-3 py-1.5 player-layer pointer-events-none"
+    43→  1822→            style={{ bottom: "7.5rem" }}
+    44→  1823→          >
+    45→  1824→            {saveState.phase === "download" ? (
+    46→  1825→              <>
+    47→  1826→                <Download className="w-3.5 h-3.5 text-(--app-accent) animate-pulse" />
+    48→  1827→                <span className="text-[11px] text-gray-200 whitespace-nowrap">
+    49→  1828→                  {saveState.key === saveKey ? "Saving for offline" : "Saving next episode"}
+    50→  1829→                  {saveState.total ? ` · ${Math.round((saveState.done / saveState.total) * 100)}%` : ""}
+    51→  1830→                </span>
+    52→  1831→              </>
+    53→  1832→            ) : (
+    54→  1833→              <>
+    55→  1834→                <Check className="w-3.5 h-3.5 text-(--app-accent)" />
+    56→  1835→                <span className="text-[11px] text-gray-200 whitespace-nowrap">
+    57→  1836→                  {saveState.key === saveKey
+    58→  1837→                    ? "Saved for offline"
+    59→  1838→                    : "Next episode saved for offline"}
+    60→  1839→                </span>
+    61→  1840→              </>
+    62→  1841→            )}
+    63→  1842→          </div>
+    64→  1843→        ) : null}
+    65→  1844→
+    66→  1845→        {/* skip intro / skip ending — appear when the window opens, fade out
+    67→  1846→            after 3s untapped, come back whenever the player UI is summoned */}
+    68→  1847→        {showSkipOutro && !casting && !iframeFallback ? (
+    69→  1848→          <button
+    70→  1849→            onClick={(e) => {
+    71→  1850→              e.stopPropagation();
+    72→  1851→              setSkipOutroDismissed(true); // vanish instantly, don't wait for the seek
+    73→  1852→              seekTo(outroSkip!.end);
+    74→  1853→              showUi();
+    75→  1854→            }}
+    76→  1855→            className={`absolute bottom-44 md:bottom-48 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] md:text-[14px] font-bold rounded-full px-4 md:px-5 py-2 md:py-2.5 transition-all duration-500 z-10 ${
+    77→  1856→              skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
+    78→  1857→            }`}
+    79→  1858→          >
+    80→  1859→            <FastForward className="w-4 h-4 md:w-5 md:h-5 text-(--app-accent)" /> Skip Ending
+    81→  1860→          </button>
+    82→  1861→        ) : null}
+    83→  1862→        {showSkipIntro && !casting && !iframeFallback ? (
+    84→  1863→          <button
+    85→  1864→            onClick={(e) => {
+    86→  1865→              e.stopPropagation();
+    87→  1866→              // vanish INSTANTLY on press (owner report: the button used to
+    88→  1867→              // linger ~a second because visibility rode on currentTime,
+    89→  1868→              // which only updates after the seek lands) — then jump to the
+    90→  1869→              // OP's final seconds (title reveal) instead of hard-cutting out
+    91→  1870→              setSkipIntroDismissed(true);
+    92→  1871→              seekTo(Math.max(introSkip!.start, introSkip!.end - 3));
+    93→  1872→              showUi();
+    94→  1873→            }}
+    95→  1874→            className={`absolute bottom-28 md:bottom-32 right-4 flex items-center gap-1.5 bg-black/70 hover:bg-black/85 text-white text-[12.5px] md:text-[14px] font-bold rounded-full px-4 md:px-5 py-2 md:py-2.5 transition-all duration-500 z-10 ${
+    96→  1875→              skipAwake ? "opacity-100" : "opacity-0 pointer-events-none"
+    97→  1876→            }`}
+    98→  1877→          >
+    99→  1878→            <Zap className="w-4 h-4 md:w-5 md:h-5 text-(--app-accent)" /> Skip Intro
+   100→  1879→          </button>
+   101→  1880→        ) : null}
+   102→  1881→
+   103→  1882→        {/* player toast: cast failures + dub-fallback notices (never both) */}
+   104→  1883→        {castMsg || playerMsg ? (
+   105→  1884→          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-black/80 text-[11.5px] text-gray-200 rounded-2xl px-3.5 py-1.5 max-w-[92%] text-center player-toast-top">
+   106→  1885→            {castMsg ?? playerMsg}
+   107→  1886→          </div>
+   108→  1887→        ) : null}
+   109→  1888→
+   110→  1889→        {/* desktop ↑/↓ volume OSD — mirrors the keyboard press so the change
+   111→  1890→            is visible even without a volume slider */}
+   112→  1891→        {volumePct !== null ? (
+   113→  1892→          <div className="absolute top-3 right-3 z-30 flex items-center gap-2 bg-black/80 rounded-2xl px-3.5 py-1.5 pointer-events-none player-toast-top">
+   114→  1893→            <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor" aria-hidden>
+   115→  1894→              <path d="M3 9v6h4l5 5V4L7 9H3z" />
+   116→  1895→              {volumePct > 0 ? (
+   117→  1896→                <path
+   118→  1897→                  d={
+   119→  1898→                    volumePct >= 50
+   120→  1899→                      ? "M16 8a5 5 0 0 1 0 8M18.5 5.5a9 9 0 0 1 0 13"
+   121→  1900→                      : "M16 8a5 5 0 0 1 0 8"
+   122→  1901→                  }
+   123→  1902→                  fill="none"
+   124→  1903→                  stroke="currentColor"
+   125→  1904→                  strokeWidth="2"
+   126→  1905→                  strokeLinecap="round"
+   127→  1906→                />
+   128→  1907→              ) : (
+   129→  1908→                <path d="M16 9l6 6m0-6l-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+   130→  1909→              )}
+   131→  1910→            </svg>
+   132→  1911→            <span className="text-[11.5px] text-gray-200 font-semibold tabular-nums">
+   133→  1912→              {volumePct === 0 ? "Muted" : `Volume ${volumePct}%`}
+   134→  1913→            </span>
+   135→  1914→          </div>
+   136→  1915→        ) : null}
+   137→  1916→
+   138→  1917→        {streamError && !casting && !iframeFallback ? (
+   139→  1918→          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
+   140→  1919→            <p className="text-[13px] text-gray-300">
+   141→  1920→              {offline
+   142→  1921→                ? "You\u2019re offline and this episode isn\u2019t saved on this device yet. Episodes you watch while online play without internet."
+   143→  1922→                : "Our player couldn\u2019t load this stream."}
+   144→  1923→            </p>
+   145→  1924→            <div className="flex gap-2">
+   146→  1925→              <button
+   147→  1926→                onClick={(e) => {
+   148→  1927→                  e.stopPropagation();
+   149→  1928→                  setStreamError(false);
+   150→  1929→                  setStream(null);
+   151→  1930→                  fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)
+   152→  1931→                    .then((r) => (r.ok ? r.json() : null))
+   153→  1932→                    .then((d) => {
+   154→  1933→                      // same payload validation as the main resolve path — a
+   155→  1934→                      // 200-with-no-src used to rebuild the u=undefined playlist
+   156→  1935→                      if (d && typeof d.src === "string" && d.src) {
+   157→  1936→                        setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined });
+   158→  1937→                      } else {
+   159→  1938→                        setStreamError(true);
+   160→  1939→                      }
+   161→  1940→                    })
+   162→  1941→                    .catch(() => setStreamError(true));
+   163→  1942→                }}
+   164→  1943→                className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+   165→  1944→              >
+   166→  1945→                Retry
+   167→  1946→              </button>
+   168→  1947→              <button
+   169→  1948→                onClick={(e) => {
+   170→  1949→                  e.stopPropagation();
+   171→  1950→                  setIframeFallback(true);
+   172→  1951→                }}
+   173→  1952→                className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+   174→  1953→              >
+   175→  1954→                Use Zoko player
+   176→  1955→              </button>
+   177→  1956→            </div>
+   178→  1957→          </div>
+   179→  1958→        ) : null}
+   180→  1959→
+   181→  1960→        {/* offline + embedded Zoko player: the third-party iframe needs the
+   182→  1961→            network — say so instead of letting its own error page confuse */}
+   183→  1962→        {offline && iframeFallback && !casting ? (
+   184→  1963→          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-8 text-center z-20 pointer-events-none">
+   185→  1964→            <p className="text-[13px] text-gray-300">
+   186→  1965→              You&rsquo;re offline — the embedded player needs internet. Episodes you watched while
+   187→  1966→              online still play on our own player.
+   188→  1967→            </p>
+   189→  1968→          </div>
+   190→  1969→        ) : null}
+   191→  1970→
+   192→  1971→        {/* ---- in-player TOP bar: back / title / [SUB|DUB] / download ---- */}
+   193→  1972→        <div
+   194→  1973→          className={`player-layer absolute inset-x-0 top-0 z-20 flex items-center gap-1 px-2 player-safe-top pb-7 bg-gradient-to-b from-black/85 via-black/45 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+   195→  1974→          onClick={(e) => e.stopPropagation()}
+   196→  1975→        >
+   197→  1976→          <button onClick={onBack} className="p-1.5 hover:opacity-80 active:scale-95 transition shrink-0" aria-label="Back">
+   198→  1977→            <ChevronLeft className="w-6 h-6" />
+   199→  1978→          </button>
+   200→  1979→          {/* PLAIN TITLE — the title used to be a hidden SUB↔DUB toggle button
+   201→  1980→              sitting right next to the Back arrow: a thumb aiming for exit
+   202→  1981→              hit the title and silently swapped + re-resolved the stream (the
+   203→  1982→              "exiting the player reloads the episode" report — the reload was
+   204→  1983→              the language flip re-fetching the source). Language moves to the
+   205→  1984→              visible [SUB|DUB] segmented control on the right. */}
+   206→  1985→          <span className="font-slab text-[16px] font-bold truncate pointer-events-none" title={playerTitle}>
+   207→  1986→            {playerTitle}
+   208→  1987→          </span>
+   209→  1988→          <div className="flex-1" />
+   210→  1989→          {/* explicit language control — the toggle the title used to hide */}
+   211→  1990→          {!iframeFallback && !casting && !dubOnly ? (
+   212→  1991→            <div className="flex items-center rounded-full bg-black/45 border border-white/15 p-0.5 shrink-0" role="group" aria-label="Audio language">
+   213→  1992→              <button
+   214→  1993→                onClick={(e) => {
+   215→  1994→                  e.stopPropagation();
+   216→  1995→                  if (lang !== "sub") {
+   217→  1996→                    stageSpot();
+   218→  1997→                    setLang("sub");
+   219→  1998→                  }
+   220→  1999→                }}
+   221→  2000→                aria-pressed={lang === "sub"}
+   222→  2001→                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "sub" ? "bg-white text-black" : "text-gray-300"}`}
+   223→  2002→              >
+   224→  2003→                SUB
+   225→  2004→              </button>
+   226→  2005→              <button
+   227→  2006→                onClick={(e) => {
+   228→  2007→                  e.stopPropagation();
+   229→  2008→                  if (lang === "dub") return;
+   230→  2009→                  if (epHasDub === false) {
+   231→  2010→                    // main chain can't dub this episode — but a BACKUP server
+   232→  2011→                    // might carry it (Anivexa network): jump straight there
+   233→  2012→                    const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
+   234→  2013→                    if (b) {
+   235→  2014→                      stageSpot(); // resume exactly here after the backup jump
+   236→  2015→                      showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
+   237→  2016→                      onEpisodeChange(episode, "dub", b.server as ServerId);
+   238→  2017→                      return;
+   239→  2018→                    }
+   240→  2019→                    showPlayerMsg(
+   241→  2020→                      epDubThru === 0
+   242→  2021→                        ? "No English DUB available for this title yet"
+   243→  2022→                        : epDubThru != null
+   244→  2023→                          ? dubMissing.includes(episode)
+   245→  2024→                            ? "No English DUB for this episode yet"
+   246→  2025→                            : "The English DUB hasn't reached this episode yet"
+   247→  2026→                          : "No English DUB available for this title yet",
+   248→  2027→                    );
+   249→  2028→                    return;
+   250→  2029→                  }
+   251→  2030→                  if (dubServers && dubServers.length > 0 && !dubServers.includes(server)) {
+   252→  2031→                    // this title's dub lives on the other server — jump there
+   253→  2032→                    const target = dubServers[0];
+   254→  2033→                    stageSpot(); // resume exactly here after the server jump
+   255→  2034→                    showPlayerMsg(`DUB is on ${target === "kiwi" ? "Kiwi" : "Zoko"} for this title — switched server`);
+   256→  2035→                    onEpisodeChange(episode, "dub", target);
+   257→  2036→                    return;
+   258→  2037→                  }
+   259→  2038→                  stageSpot(); // SUB↔DUB on the same server re-resolves the stream
+   260→  2039→                  setLang("dub");
+   261→  2040→                }}
+   262→  2041→                aria-pressed={lang === "dub"}
+   263→  2042→                title={epHasDub === false ? "No DUB for this episode — tap for details" : "Switch to English DUB"}
+   264→  2043→                className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition ${lang === "dub" ? "bg-white text-black" : "text-gray-300"}`}
+   265→  2044→              >
+   266→  2045→                DUB
+   267→  2046→              </button>
+   268→  2047→            </div>
+   269→  2048→          ) : null}
+   270→  2049→          {!isBackupServer(server) ? (
+   271→  2050→            <button onClick={() => setDownloadOpen(true)} className="p-1.5 hover:opacity-80 active:scale-95 transition shrink-0" aria-label="Download">
+   272→  2051→              <Download className="w-5 h-5" />
+   273→  2052→            </button>
+   274→  2053→          ) : null}
+   275→  2054→        </div>
+   276→  2055→
+   277→  2056→        {/* ---- in-player BOTTOM: seek bar with times + control row ---- */}
+   278→  2057→        <div
+   279→  2058→          className={`player-layer absolute inset-x-0 bottom-0 z-20 px-3 player-safe-bottom pt-9 md:px-6 md:pt-10 lg:px-10 bg-gradient-to-t from-black/90 via-black/55 to-transparent ${ui && !casting ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+   280→  2059→          onClick={(e) => e.stopPropagation()}
+   281→  2060→        >
+   282→  2061→          {/* controls stay readable on wide screens: cap their width, keep the
+   283→  2062→              gradient full-bleed */}
+   284→  2063→          <div className="mx-auto w-full md:max-w-[760px] lg:max-w-[1040px]">
+   285→  2064→          {!iframeFallback ? (
+   286→  2065→            <div className="flex items-center gap-2 md:gap-3">
+   287→  2066→              <span className="text-[10.5px] md:text-[12.5px] lg:text-[13.5px] text-gray-200 tabular-nums w-11 md:w-14 lg:w-16 text-right shrink-0">{fmtTime(scrub ?? currentTime)}</span>
+   288→  2067→              <div className="relative h-4 md:h-5 flex items-center flex-1">
+   289→  2068→                <div className="absolute inset-x-0 h-[3px] md:h-[5px] bg-white/15 rounded-full overflow-hidden">
+   290→  2069→                  <div className="h-full bg-white/25" style={{ width: `${bufPct}%` }} />
+   291→  2070→                </div>
+   292→  2071→                <div className="absolute h-[3px] md:h-[5px] bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
+   293→  2072→                <input
+   294→  2073→                  ref={seekRef}
+   295→  2074→                  type="range"
+   296→  2075→                  min={0}
+   297→  2076→                  max={duration || 0}
+   298→  2077→                  step={0.5}
+   299→  2078→                  value={scrub ?? currentTime}
+   300→  2079→                  onChange={(e) => userScrub(parseFloat(e.target.value))}
+   301→  2080→                  onPointerUp={() => {
+   302→  2081→                    if (scrub != null) {
+   303→  2082→                      seekTo(scrub);
+   304→  2083→                      setScrub(null);
+   305→  2084→                    }
+   306→  2085→                  }}
+   307→  2086→                  onPointerCancel={() => setScrub(null)}
+   308→  2087→                  onKeyUp={(e) => {
+   309→  2088→                    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+   310→  2089→                      if (scrub != null) seekTo(scrub);
+   311→  2090→                      setScrub(null);
+   312→  2091→                    }
+   313→  2092→                  }}
+   314→  2093→                  onBlur={() => setScrub(null)}
+   315→  2094→                  className="absolute inset-x-0 w-full appearance-none bg-transparent h-4 md:h-5 cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 md:[&::-webkit-slider-thumb]:w-4 md:[&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#d32f2f]"
+   316→  2095→                  aria-label="Seek"
+   317→  2096→                />
+   318→  2097→              </div>
+   319→  2098→              <span className="text-[10.5px] md:text-[12.5px] lg:text-[13.5px] text-gray-200 tabular-nums w-11 md:w-14 lg:w-16 shrink-0">{fmtTime(duration)}</span>
+   320→  2099→            </div>
+   321→  2100→          ) : null}
+   322→  2101→
+   323→  2102→      <div className="mt-1 md:mt-2.5 flex items-center justify-between">
+   324→  2103→        <ControlButton icon={SkipBack} label="Previous" onClick={() => go(episode - 1)} disabled={episode <= 1} />
+   325→  2104→        <ControlButton icon={Lock} label="Lock" onClick={() => setLocked(true)} />
+   326→  2105→        <ControlButton icon={SlidersHorizontal} label="Quality" onClick={() => setPanel("quality")} />
+   327→  2106→        <ControlButton icon={Gauge} label="Speed" onClick={() => setPanel("speed")} />
+   328→  2107→        <ControlButton
+   329→  2108→          icon={Scan}
+   330→  2109→          label="Resize"
+   331→  2110→          onClick={() => setResizeMode((m) => ((m + 1) % 3) as 0 | 1 | 2)}
+   332→  2111→        />
+   333→  2112→        {/* manual fullscreen toggle for PC — covers the rare case where the
+   334→  2113→            browser denied the auto request (no gesture / iframe quirks) so
+   335→  2114→            the user is never stuck windowed with bars showing */}
+   336→  2115→        {!coarsePointer ? (
+   337→  2116→          <ControlButton
+   338→  2117→            icon={fsActive ? Minimize : Maximize}
+   339→  2118→            label={fsActive ? "Exit full screen" : "Full screen"}
+   340→  2119→            onClick={fullscreen}
+   341→  2120→          />
+   342→  2121→        ) : null}
+   343→  2122→        {castUsable && !iframeFallback ? (
+   344→  2123→          <ControlButton
+   345→  2124→            icon={Cast}
+   346→  2125→            label={casting ? "Stop" : "Cast"}
+   347→  2126→            active={casting}
+   348→  2127→            onClick={() => (casting ? stopCasting() : void startCasting())}
+   349→  2128→          />
+   350→  2129→        ) : null}
+   351→  2130→        <ControlButton icon={SkipForward} label="Next" onClick={() => go(episode + 1)} disabled={episode >= total} />
+   352→  2131→      </div>
+   353→  2132→          </div>
+   354→  2133→        </div>
+   355→  2134→
+   356→  2135→        {/* locked — single unlock chip */}
+   357→  2136→        {locked ? (
+   358→  2137→          <button
+   359→  2138→            onClick={(e) => {
+   360→  2139→              e.stopPropagation();
+   361→  2140→              setLocked(false);
+   362→  2141→            }}
+   363→  2142→            className="absolute top-16 right-4 z-30 flex items-center gap-2 bg-black/70 text-gray-300 hover:text-white rounded-full px-3 py-2 text-[12px] transition"
+   364→  2143→          >
+   365→  2144→            <Unlock className="w-4 h-4" /> Unlock
+   366→  2145→          </button>
+   367→  2146→        ) : null}
+   368→  2147→
+   369→  2148→        {/* quality panel — real hls levels, slides up inside the player */}
+   370→  2149→        {panel === "quality" ? (
+   371→  2150→          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 max-h-[46vh] overflow-y-auto anim-sheet-up lg:inset-x-auto lg:w-[720px] lg:left-[calc(50%-360px)] lg:border-x lg:border-[#222]" onClick={(e) => e.stopPropagation()}>
+   372→  2151→            <div className="flex items-center justify-between pb-2">
+   373→  2152→              <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
+   374→  2153→                <ChevronLeft className="w-4 h-4" /> Back
+   375→  2154→              </button>
+   376→  2155→              <span className="text-[12px] text-gray-400">Quality & Subtitles</span>
+   377→  2156→              <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white" aria-label="Close panel">
+   378→  2157→                ✕
+   379→  2158→              </button>
+   380→  2159→            </div>
+   381→  2160→            <div className="grid grid-cols-2 gap-4">
+   382→  2161→              <div>
+   383→  2162→                <h4 className="font-slab font-bold text-[14px] mb-2">Quality</h4>
+   384→  2163→                <ul className="space-y-2">
+   385→  2164→                  <li>
+   386→  2165→                    <button onClick={() => applyQuality("auto")} className={`flex items-center gap-2 text-[13px] ${quality === "auto" ? "text-[#ff5252]" : "text-gray-300"}`}>
+   387→  2166→                      {quality === "auto" ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+   388→  2167→                      Auto
+   389→  2168→                    </button>
+   390→  2169→                  </li>
+   391→  2170→                  {/* ALL levels the stream offers — highest first. Switching is
+   392→  2171→                      seamless: hls jumps rendition without restarting the
+   393→  2172→                      video, and the spot is saved the moment you tap. */}
+   394→  2173→                  {[...levels]
+   395→  2174→                    .map((l, i) => ({ l, i }))
+   396→  2175→                    .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0) || (b.l.bitrate ?? 0) - (a.l.bitrate ?? 0))
+   397→  2176→                    .map(({ l, i }) => (
+   398→  2177→                      <li key={i}>
+   399→  2178→                        <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
+   400→  2179→                          {quality === i ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+   401→  2180→                          {l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`}
+   402→  2181→                        </button>
+   403→  2182→                      </li>
+   404→  2183→                    ))}
+   405→  2184→                  {levels.length === 0 ? (
+   406→  2185→                    <li className="text-[11.5px] text-gray-500">Single quality for this episode</li>
+   407→  2186→                  ) : null}
+   408→  2187→                </ul>
+   409→  2188→              </div>
+   410→  2189→              <div>
+   411→  2190→                <h4 className="font-slab font-bold text-[14px] mb-2">Subtitles</h4>
+   412→  2191→                <ul className="space-y-2 text-[13px]">
+   413→  2192→                  <li>
+   414→  2193→                    <button onClick={() => toggleSubs(false)} className={`flex items-center gap-2 ${!subsOn ? "text-[#ff5252]" : "text-gray-300"}`}>
+   415→  2194→                      {!subsOn ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+   416→  2195→                      Off
+   417→  2196→                    </button>
+   418→  2197→                  </li>
+   419→  2198→                  {/* EVERY caption language the stream carries — Zoko sources
+   420→  2199→                      expose 10-20 (Arabic, Chinese, English, Spanish, ...).
+   421→  2200→                      The chosen track remounts the <track> element (key=src)
+   422→  2201→                      and rides along to Chromecast sessions too. */}
+   423→  2202→                  {(stream?.subtitles ?? []).map((t, i) => {
+   424→  2203→                    const active = subsOn && subTrack?.src === t.src;
+   425→  2204→                    return (
+   426→  2205→                      <li key={`${t.src}-${i}`}>
+   427→  2206→                        <button onClick={() => pickSubLang(i)} className={`flex items-center gap-2 ${active ? "text-[#ff5252]" : "text-gray-300"}`}>
+   428→  2207→                          {active ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+   429→  2208→                          {t.label || `Track ${i + 1}`}
+   430→  2209→                        </button>
+   431→  2210→                      </li>
+   432→  2211→                    );
+   433→  2212→                  })}
+   434→  2213→                  {(stream?.subtitles ?? []).length === 0 ? (
+   435→  2214→                    <li className="text-[11.5px] text-gray-500">No captions for this episode</li>
+   436→  2215→                  ) : null}
+   437→  2216→                </ul>
+   438→  2217→              </div>
+   439→  2218→            </div>
+   440→  2219→
+   441→  2220→            {/* stream server — switch mid-episode, playback resumes at the same second */}
+   442→  2221→            <div className="mt-4 pt-3 border-t border-[#242424]">
+   443→  2222→              <h4 className="font-slab font-bold text-[14px] mb-2">Server</h4>
+   444→  2223→              <div className="flex gap-2">
+   445→  2224→                {(["zoko", "kiwi"] as const).map((s) => (
+   446→  2225→                  <button
+   447→  2226→                    key={s}
+   448→  2227→                    onClick={() => switchServer(s)}
+   449→  2228→                    disabled={s === server}
+   450→  2229→                    className={`flex-1 rounded-lg py-2 text-[12.5px] font-bold transition active:scale-[0.98] ${
+   451→  2230→                      s === server
+   452→  2231→                        ? "bg-[#d32f2f] text-white cursor-default"
+   453→  2232→                        : "bg-[#1c1c1c] hover:bg-[#282828] text-gray-200"
+   454→  2233→                    }`}
+   455→  2234→                  >
+   456→  2235→                    {s === "zoko" ? "Zoko (Server #1)" : "Kiwi (Server #2)"}
+   457→  2236→                    {s === server ? <span className="ml-1.5 text-[10px] font-normal">· in use</span> : null}
+   458→  2237→                  </button>
+   459→  2238→                ))}
+   460→  2239→              </div>
+   461→  2240→              {/* BACKUP DUB servers — one button per Anivexa provider whose
+   462→  2241→                  dub list contains THIS episode; hidden entirely when the
+   463→  2242→                  main chain dubs the episode. Switching keeps your spot. */}
+   464→  2243→              {(backupDub ?? [])
+   465→  2244→                .filter((b) => (b.covered ?? []).includes(episode))
+   466→  2245→                .map((b) => {
+   467→  2246→                  const active = server === b.server;
+   468→  2247→                  return (
+   469→  2248→                    <button
+   470→  2249→                      key={b.server}
+   471→  2250→                      onClick={() => switchServer(b.server as ServerId)}
+   472→  2251→                      disabled={active}
+   473→  2252→                      className={`mt-2 w-full rounded-lg py-2 text-[12.5px] font-bold transition active:scale-[0.98] ${
+   474→  2253→                        active
+   475→  2254→                          ? "bg-[#3b3b60] text-white cursor-default"
+   476→  2255→                          : "bg-[#1c1c2e] hover:bg-[#282840] text-gray-200"
+   477→  2256→                      }`}
+   478→  2257→                    >
+   479→  2258→                      {b.name} (backup DUB)
+   480→  2259→                      {active ? <span className="ml-1.5 text-[10px] font-normal">· in use</span> : null}
+   481→  2260→                    </button>
+   482→  2261→                  );
+   483→  2262→                })}
+   484→  2263→              <p className="mt-1.5 text-[10.5px] text-gray-500">Switching server keeps your exact spot — no restart.</p>
+   485→  2264→              <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay, Yenime, or the Anivexa backup servers.</p>
+   486→  2265→            </div>
+   487→  2266→          </div>
+   488→  2267→        ) : null}
+   489→  2268→
+   490→  2269→        {/* speed panel */}
+   491→  2270→        {panel === "speed" ? (
+   492→  2271→          <div className="absolute inset-x-0 bottom-0 z-40 bg-[#0d0d0d]/95 border-t border-[#222] rounded-t-xl px-4 py-3 anim-sheet-up lg:inset-x-auto lg:w-[720px] lg:left-[calc(50%-360px)] lg:border-x lg:border-[#222]" onClick={(e) => e.stopPropagation()}>
+   493→  2272→            <div className="flex items-center justify-between pb-2">
+   494→  2273→              <button onClick={() => setPanel(null)} className="text-gray-400 hover:text-white text-[12px] flex items-center gap-1">
+   495→  2274→                <ChevronLeft className="w-4 h-4" /> Back
+   496→  2275→              </button>
+   497→  2276→              <h4 className="font-slab font-bold text-[14px]">Speed</h4>
+   498→  2277→              <span className="w-10" />
+   499→  2278→            </div>
+   500→  2279→            <div className="flex flex-wrap gap-2 justify-center pb-1">
+   501→  2280→              {SPEEDS.map((s) => (
+   502→  2281→                <button
+   503→  2282→                  key={s}
+   504→  2283→                  onClick={() => applySpeed(s)}
+   505→  2284→                  className={`px-3 py-1.5 rounded-full text-[12.5px] transition ${s === speed ? "bg-white text-black font-bold" : "bg-[#1c1c1c] text-gray-300"}`}
+   506→  2285→                >
+   507→  2286→                  {s}×
+   508→  2287→                </button>
+   509→  2288→              ))}
+   510→  2289→            </div>
+   511→  2290→          </div>
+   512→  2291→        ) : null}
+   513→  2292→      </div>
+   514→  2293→
+   515→  2294→      {/* download format dialog */}
+   516→  2295→      {downloadOpen ? (
+   517→  2296→        <div className="fixed inset-0 z-[60] bg-black/60 anim-backdrop flex items-center justify-center px-6" onClick={() => setDownloadOpen(false)}>
+   518→  2297→          <div
+   519→  2298→            className="w-full max-w-[340px] md:max-w-[400px] bg-[#2b2b2b] rounded-lg shadow-2xl overflow-hidden anim-sheet-up"
+   520→  2299→            onClick={(e) => e.stopPropagation()}
+   521→  2300→            role="dialog"
+   522→  2301→            aria-label="Download episode"
+   523→  2302→          >
+   524→  2303→            <div className="px-4 pt-3 pb-1 text-[13px] font-bold">Download episode</div>
+   525→  2304→            <div className="px-4 py-2 text-[12.5px] text-gray-300 leading-relaxed">
+   526→  2305→              MP4 · about {estimateSizeMB(anime.durationMin, "720p")} MB
+   527→  2306→              <span className="block text-[11px] text-gray-500 mt-0.5">
+   528→  2307→                The Zoko downloader serves one format per episode.
+   529→  2308→              </span>
+   530→  2309→            </div>
+   531→  2310→            <div className="flex justify-end gap-5 px-4 py-3">
+   532→  2311→              <a href={downloadUrl} target="_blank" rel="noreferrer" className="text-[#d32f2f] text-[12px] font-bold tracking-wide hover:opacity-80">
+   533→  2312→                DOWNLOAD
+   534→  2313→              </a>
+   535→  2314→              <button onClick={() => setDownloadOpen(false)} className="text-[#d32f2f] text-[12px] font-bold tracking-wide hover:opacity-80">
+   536→  2315→                CANCEL
+   537→  2316→              </button>
+   538→  2317→            </div>
+   539→  2318→          </div>
+   540→  2319→        </div>
+   541→  2320→      ) : null}
+   542→  2321→    </div>
+   543→  2322→  );
+   544→  2323→}
+   545→  2324→
+   546→  2325→function ControlButton({
+   547→  2326→  icon: Icon,
+   548→  2327→  label,
+   549→  2328→  onClick,
+   550→  2329→  disabled,
+   551→  2330→  active,
+   552→  2331→}: {
+   553→  2332→  icon: React.ComponentType<{ className?: string }>;
+   554→  2333→  label: string;
+   555→  2334→  onClick: () => void;
+   556→  2335→  disabled?: boolean;
+   557→  2336→  active?: boolean;
+   558→  2337→}) {
+   559→  2338→  // reference style: icon and label side-by-side in one row inside the player;
+   560→  2339→  // desktop (md/lg) scales up so the row is readable across a fullscreen TV
+   561→  2340→  return (
+   562→  2341→    <button
+   563→  2342→      onClick={onClick}
+   564→  2343→      disabled={disabled}
+   565→  2344→      className={`flex items-center gap-1 md:gap-1.5 disabled:opacity-30 active:scale-95 transition px-0.5 md:px-1.5 py-1 cursor-pointer ${active ? "text-[#ff5252]" : "text-gray-200 hover:text-white"}`}
+   566→  2345→    >
+   567→  2346→      <Icon className="w-3 h-3 md:w-[18px] md:h-[18px] lg:w-[22px] lg:h-[22px] shrink-0" />
+   568→  2347→      <span className="text-[10.5px] md:text-[12.5px] lg:text-[14px] leading-none whitespace-nowrap">{label}</span>
+   569→  2348→    </button>
+   570→  2349→  );
+   571→  2350→}
+   572→  2351→

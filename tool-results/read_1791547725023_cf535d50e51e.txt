@@ -1,0 +1,765 @@
+     1→/**
+     2→ * Skip-time lookup: OP/ED intervals for every catalog anime.
+     3→ *
+     4→ * Four tiers, best data wins:
+     5→ *   1. Zoko's own per-episode `skip` payload (frame-accurate, but rare —
+     6→ *      only some titles carry it)
+     7→ *   2. The vendored AniSkip community dataset (skip-times.data.json,
+     8→ *      built from aniskip's public dump — covers 42/43 catalog titles,
+     9→ *      3,290 OP entries, highest-vote row per episode)
+    10→ *   3. Per-anime consensus: openings are the SAME video across episodes,
+    11→ *      so episodes missing from the dump reuse the median interval of
+    12→ *      the anime's other episodes
+    13→ *   4. LIVE AniSkip query — for brand-new episodes (and freshly imported
+    14→ *      anime) that predate the vendored dump. Fetched once on first open,
+    15→ *      cached on disk (positive entries forever, misses 7 days) and warmed
+    16→ *      proactively by the catalog sync, so a newly imported episode
+    17→ *      effectively "imports" its own skip intro with it. The player still
+    18→ *      has its own last-resort 8-90s heuristic window for TV-length
+    19→ *      episodes with no data at all.
+    20→ *   4.5 SkipDB fills (skipdb.tv) — AniSkip doesn't cover everything (HxH
+    21→ *      2011, Code Geass R2, Oshi no Ko, Naruto Shippuden…). SkipDB is the
+    22→ *      open crowdsourced skip-timestamps database (ODbL 1.0), keyed by IMDb
+    23→ *      ids + real season/episode numbers. The backfill bot maps MAL->IMDb
+    24→ *      (Wikidata P4086+P345, Jikan backup), vendors the dump into the
+    25→ *      SkipDbFill table and refreshes weekly; this tier reads it for any
+    26→ *      episode the tiers above left blank.
+    27→ *
+    28→ * Server-side only (the dataset ships inside the server bundle).
+    29→ */
+    30→
+    31→import { createHash } from "node:crypto";
+    32→import { mkdir, readFile, writeFile } from "node:fs/promises";
+    33→import { tmpdir } from "node:os";
+    34→import { join } from "node:path";
+    35→
+    36→import { db } from "@/lib/db";
+    37→import skipDataset from "./skip-times.data.json";
+    38→
+    39→export interface SkipInterval {
+    40→  start: number;
+    41→  end: number;
+    42→}
+    43→
+    44→export interface SkipData {
+    45→  intro?: SkipInterval;
+    46→  outro?: SkipInterval;
+    47→  /** where the data came from — handy for debugging */
+    48→  source?: "zoko" | "scout" | "aniskip" | "aniskip-live" | "skipdb" | "crowd";
+    49→}
+    50→
+    51→type EpisodeEntry = { op?: [number, number]; ed?: [number, number] };
+    52→type Dataset = Record<string, Record<string, EpisodeEntry>>;
+    53→
+    54→const data = skipDataset as unknown as Dataset;
+    55→
+    56→/* ------------------------------------------------------------------ *
+    57→ * Tier 0 — owner-verified "no opening on this episode". Community
+    58→ * sources can carry WRONG premiere rows and have no way to express
+    59→ * absence (Tokyo Ghoul ep 1 ships a vote-backed op row in the AniSkip
+    60→ * dump, yet the broadcast runs the cold open straight into the episode
+    61→ * — the owner watched it: no OP, no button). An entry here outranks
+    62→ * EVERY tier for that episode's intro: dataset exact rows, consensus,
+    63→ * scout medians, SkipDB, live AniSkip, crowd learns. Outros are
+    64→ * untouched (premieres still have their ED).
+    65→ * ---------------------------------------------------------------- */
+    66→const OWNER_NO_INTRO: Record<number, readonly number[]> = {
+    67→  22319: [1], // Tokyo Ghoul S1 ep1 "Tragedy" — premiere has no opening
+    68→};
+    69→
+    70→function ownerSaysNoIntro(malId: number, ep: number): boolean {
+    71→  return OWNER_NO_INTRO[malId]?.includes(ep) ?? false;
+    72→}
+    73→
+    74→/** median across an anime's known episodes, per type */
+    75→const consensusCache = new Map<string, { op?: [number, number]; ed?: [number, number] }>();
+    76→
+    77→function median(values: number[]): number | null {
+    78→  if (!values.length) return null;
+    79→  const s = [...values].sort((a, b) => a - b);
+    80→  return s[Math.floor(s.length / 2)];
+    81→}
+    82→
+    83→function consensus(malId: number): { op?: [number, number]; ed?: [number, number] } {
+    84→  const key = String(malId);
+    85→  const hit = consensusCache.get(key);
+    86→  if (hit) return hit;
+    87→
+    88→  const out: { op?: [number, number]; ed?: [number, number] } = {};
+    89→  const byEp = data[key];
+    90→  if (byEp) {
+    91→    for (const type of ["op", "ed"] as const) {
+    92→      const starts: number[] = [];
+    93→      const ends: number[] = [];
+    94→      for (const entry of Object.values(byEp)) {
+    95→        const iv = entry[type];
+    96→        if (iv) {
+    97→          starts.push(iv[0]);
+    98→          ends.push(iv[1]);
+    99→        }
+   100→      }
+   101→      const s = median(starts);
+   102→      const e = median(ends);
+   103→      if (s != null && e != null) out[type] = [s, e];
+   104→    }
+   105→  }
+   106→  consensusCache.set(key, out);
+   107→  return out;
+   108→}
+   109→
+   110→/** Look up OP/ED intervals for one episode: exact entry, else per-anime consensus. */
+   111→export function lookupSkipTimes(malId: number, ep: number): { intro?: SkipInterval; outro?: SkipInterval } {
+   112→  const byEp = data[String(malId)];
+   113→  const entry = byEp?.[String(ep)] ?? consensus(malId);
+   114→  if (!entry) return {};
+   115→  const out: { intro?: SkipInterval; outro?: SkipInterval } = {};
+   116→  if (entry.op) out.intro = { start: entry.op[0], end: entry.op[1] };
+   117→  if (entry.ed) out.outro = { start: entry.ed[0], end: entry.ed[1] };
+   118→  return out;
+   119→}
+   120→
+   121→/**
+   122→ * The vendored dataset's EXACT op row for this episode — no consensus
+   123→ * fallback. Used to defend known openings against the scout tier's
+   124→ * "couldn't measure" verdicts: a fleet nodetect row means the bots failed
+   125→ * to cross-match THIS scan (audio quirks, odd encodes), not that the show
+   126→ * has no opening. When the community has a vote-backed op for the exact
+   127→ * episode (Kimetsu ep1: 41.3–131.3 at 10k votes), it must never be
+   128→ * silenced by a failed measurement. Consensus has no such protection —
+   129→ * finale episodes genuinely drop their OP, and the anime-wide median
+   130→ * would wrongly button them.
+   131→ */
+   132→export function exactDatasetIntro(malId: number, ep: number): SkipInterval | null {
+   133→  const entry = data[String(malId)]?.[String(ep)];
+   134→  if (!entry?.op) return null;
+   135→  return { start: entry.op[0], end: entry.op[1] };
+   136→}
+   137→
+   138→function valid(iv: unknown): iv is SkipInterval {
+   139→  if (!iv || typeof iv !== "object") return false;
+   140→  const v = iv as SkipInterval;
+   141→  return Number.isFinite(v.start) && Number.isFinite(v.end) && v.end > v.start;
+   142→}
+   143→
+   144→/**
+   145→ * Plausibility gate — a "skip intro" that STARTS 10 minutes into a
+   146→ * 24-minute episode is not an opening (Zoko mis-tags recap blocks and
+   147→ * random chapters as intro/outro on plenty of shows — Grand Blue ep9
+   148→ * "intro 619-709"). Since the blind 8-90s guess was removed, a WRONG
+   149→ * interval shows a wrong button — worse than no button. Anything that
+   150→ * fails the sanity shape is dropped: the Skip Intro button must actually
+   151→ * skip the opening, or not exist.
+   152→ */
+   153→export function plausibleIntro(iv: SkipInterval | undefined | null, lenMin?: number | null): iv is SkipInterval {
+   154→  if (!iv || !valid(iv)) return false;
+   155→  const cap = lenMin && lenMin > 30 ? 420 : 320; // hour-long formats may open late
+   156→  return iv.start <= cap && iv.end - iv.start <= 180;
+   157→}
+   158→
+   159→export function plausibleOutro(iv: SkipInterval | undefined | null): iv is SkipInterval {
+   160→  return !!iv && valid(iv) && iv.end - iv.start <= 300;
+   161→}
+   162→
+   163→/**
+   164→ * Merge Zoko's native skip payload with the AniSkip dataset.
+   165→ * Zoko wins per-field (it is frame-accurate for its own encodes);
+   166→ * the dataset fills whatever Zoko left blank. BOTH sources pass the
+   167→ * plausibility gate here — this is where early-returning callers
+   168→ * (withSkipDataLive's "nothing left to ask") would otherwise leak a
+   169→ * mis-tagged interval (Grand Blue ep9 "intro 619-709") into the player.
+   170→ */
+   171→export function withSkipData<T extends { skip?: SkipData }>(
+   172→  malId: number,
+   173→  ep: number,
+   174→  stream: T,
+   175→  opts: { episodeLengthMin?: number | null } = {},
+   176→): T & { skip?: SkipData } {
+   177→  const zoko = stream.skip ?? {};
+   178→  const filled = lookupSkipTimes(malId, ep);
+   179→
+   180→  const merged: SkipData = {};
+   181→  const zi = valid(zoko.intro) && plausibleIntro(zoko.intro, opts.episodeLengthMin) ? zoko.intro : undefined;
+   182→  const zo = valid(zoko.outro) && plausibleOutro(zoko.outro) ? zoko.outro : undefined;
+   183→  const fi = valid(filled.intro) && plausibleIntro(filled.intro, opts.episodeLengthMin) ? filled.intro : undefined;
+   184→  const fo = valid(filled.outro) && plausibleOutro(filled.outro) ? filled.outro : undefined;
+   185→  // Tier 0 (owner) strips a wrong intro before it can ride any merge —
+   186→  // the dataset/zoko payloads cannot express "no opening exists"
+   187→  const intro = ownerSaysNoIntro(malId, ep) ? undefined : zi ?? fi;
+   188→  const outro = zo ?? fo;
+   189→  if (intro) merged.intro = intro;
+   190→  if (outro) merged.outro = outro;
+   191→  if (intro || outro) {
+   192→    merged.source = zi || zo ? "zoko" : "aniskip";
+   193→  }
+   194→
+   195→  return { ...stream, skip: Object.keys(merged).length ? merged : undefined };
+   196→}
+   197→
+   198→/* ------------------------------------------------------------------ *
+   199→ * Tier 2.5 — the intro-scout fleet. Bots watch the first minutes of
+   200→ * every catalog episode (the SAME streams the player serves) and
+   201→ * cross-match loudness envelopes across episodes: the opening is the
+   202→ * one part of a show that repeats identically, so where episodes align
+   203→ * IS the opening. Because these intervals are measured on OUR encodes,
+   204→ * they beat AniSkip's community timings (taken on other encodes, often
+   205→ * offset by recaps/stream bumps — the "skip intro is inaccurate" bug).
+   206→ * Priority: Zoko native (frame-accurate) > scout > AniSkip > crowd.
+   207→ * ---------------------------------------------------------------- */
+   208→
+   209→const SCOUT_CACHE_TTL_MS = 60_000;
+   210→const scoutCache = new Map<number, { rows: Array<{ ep: number; start: number; end: number; nodetect: boolean }>; at: number }>();
+   211→
+   212→async function scoutRows(malId: number): Promise<Array<{ ep: number; start: number; end: number; nodetect: boolean }>> {
+   213→  const hit = scoutCache.get(malId);
+   214→  if (hit && Date.now() - hit.at < SCOUT_CACHE_TTL_MS) return hit.rows;
+   215→  const rows = await db.introScout.findMany({
+   216→    where: { malId },
+   217→    orderBy: { updatedAt: "desc" },
+   218→    take: 60, // room for nodetect rows too — real measurements are filtered below
+   219→    select: { ep: true, start: true, end: true, nodetect: true },
+   220→  });
+   221→  scoutCache.set(malId, { rows, at: Date.now() });
+   222→  return rows;
+   223→}
+   224→
+   225→/**
+   226→ * The fleet's verdict for one episode:
+   227→ *   interval set    — the opening interval (exact per-episode row, or the
+   228→ *                     anime-wide median when 2+ episodes agree)
+   229→ *   confirmedNone   — bots WATCHED this exact episode and found NO opening:
+   230→ *                     the Skip Intro button must not appear for it (no
+   231→ *                     guessing, no AniSkip resurrection)
+   232→ *   null            — the fleet has nothing on this anime
+   233→ */
+   234→export async function scoutIntro(
+   235→  malId: number,
+   236→  ep: number,
+   237→): Promise<{ interval: SkipInterval | null; exact: boolean; confirmedNone?: boolean } | null> {
+   238→  try {
+   239→    const rows = await scoutRows(malId);
+   240→    const exact = rows.find((r) => r.ep === ep);
+   241→    if (exact) {
+   242→      if (exact.nodetect) return { interval: null, exact: true, confirmedNone: true };
+   243→      // degenerate row guard — merge upserts can land as {0,0} (old establish
+   244→      // failures came back from prod without their nodetect flag); a zero or
+   245→      // inverted interval is a broken row, not a measurement. Ignore it and
+   246→      // fall through to the anime-wide median / other tiers.
+   247→      if (exact.end > exact.start) return { interval: { start: exact.start, end: exact.end }, exact: true };
+   248→    }
+   249→    // degenerate {0,0} rows are excluded here too — they must not skew the median
+   250→    const measured = rows.filter((r) => !r.nodetect && r.end > r.start);
+   251→    if (measured.length >= 2) {
+   252→      const med = (xs: number[]) => {
+   253→        const s = [...xs].sort((a, b) => a - b);
+   254→        return s[Math.floor(s.length / 2)];
+   255→      };
+   256→      const start = med(measured.map((r) => r.start));
+   257→      const end = med(measured.map((r) => r.end));
+   258→      if (end > start && end - start <= 150 && start <= 320) {
+   259→        // PREMIERE GUARD — episode 1 is the classic no-opening episode
+   260→        // (extended cold open, or none at all), so the anime-wide median
+   261→        // may only button it when the fleet's measurements describe one
+   262→        // FIXED video: lengths must agree tightly (recap bumps move the
+   263→        // start, never the duration). Tokyo Ghoul S1's fleet "openings"
+   264→        // span 84-124 s across episodes — the cross-match latched onto
+   265→        // recurring non-OP content, and that noise's median must not
+   266→        // fabricate a button on the premiere.
+   267→        if (ep === 1) {
+   268→          const lens = measured.map((r) => r.end - r.start);
+   269→          if (Math.max(...lens) - Math.min(...lens) > 15) return null;
+   270→        }
+   271→        return { interval: { start, end }, exact: false };
+   272→      }
+   273→    }
+   274→    return null;
+   275→  } catch {
+   276→    return null;
+   277→  }
+   278→}
+   279→
+   280→/* ------------------------------------------------------------------ *
+   281→ * Tier 3.5 — SkipDB fills (skipdb.tv, open data under ODbL 1.0).
+   282→ * For anime AniSkip doesn't have: the backfill bot maps MAL->IMDb once
+   283→ * (Wikidata + Jikan backup), vendors SkipDB's approved intro/outro segments
+   284→ * per (season, episode) into the SkipDbFill table, and re-downloads the
+   285→ * dump weekly so new episodes keep arriving. Same precedence class as the
+   286→ * vendored AniSkip dataset — community timings on other encodes — so it
+   287→ * only fills gaps the higher tiers left blank, never overrides them.
+   288→ * ---------------------------------------------------------------- */
+   289→
+   290→const SKIPDB_TTL_MS = 60_000;
+   291→const skipDbCache = new Map<
+   292→  number,
+   293→  { rows: Array<{ ep: number; kind: string; start: number; end: number; confidence: number }>; at: number }
+   294→>();
+   295→
+   296→async function skipDbRows(
+   297→  malId: number,
+   298→): Promise<Array<{ ep: number; kind: string; start: number; end: number; confidence: number }>> {
+   299→  const hit = skipDbCache.get(malId);
+   300→  if (hit && Date.now() - hit.at < SKIPDB_TTL_MS) return hit.rows;
+   301→  const rows = await db.skipDbFill.findMany({
+   302→    where: { malId },
+   303→    select: { ep: true, kind: true, start: true, end: true, confidence: true },
+   304→  });
+   305→  skipDbCache.set(malId, { rows, at: Date.now() });
+   306→  return rows;
+   307→}
+   308→
+   309→/**
+   310→ * SkipDB's exact per-episode intervals for one episode (op/ed in seconds),
+   311→ * already sanity-gated. null when the table has nothing for this anime.
+   312→ */
+   313→export async function skipDbIntervals(
+   314→  malId: number,
+   315→  ep: number,
+   316→): Promise<{ op?: SkipInterval; ed?: SkipInterval } | null> {
+   317→  try {
+   318→    const rows = await skipDbRows(malId);
+   319→    if (!rows.length) return null;
+   320→    const out: { op?: SkipInterval; ed?: SkipInterval } = {};
+   321→    for (const kind of ["op", "ed"] as const) {
+   322→      const r = rows.find((x) => x.ep === ep && x.kind === kind);
+   323→      if (!r) continue;
+   324→      const iv = { start: r.start, end: r.end };
+   325→      if (kind === "op" && plausibleIntro(iv)) out.op = iv;
+   326→      if (kind === "ed" && plausibleOutro(iv)) out.ed = iv;
+   327→    }
+   328→    return out.op || out.ed ? out : null;
+   329→  } catch {
+   330→    return null; // table missing / db hiccup — SkipDB is optional, never fatal
+   331→  }
+   332→}
+   333→
+   334→/* ------------------------------------------------------------------ *
+   335→ * Tier 4 — LIVE AniSkip lookups (cached), for episodes the vendored
+   336→ * dump + consensus don't cover: brand-new episodes of airing shows and
+   337→ * freshly imported anime. Also used to prefetch skip data when the
+   338→ * catalog sync imports new episodes (see prefetchSkipTimes below).
+   339→ * ------------------------------------------------------------------ */
+   340→
+   341→const ANISKIP_API = "https://api.aniskip.com/v2/skip-times";
+   342→// Submissions trickle in over the days after an episode airs (2026-season
+   343→// shows were 404 on air day, populated within the week) — re-ask daily so a
+   344→// fresh episode picks up community times as soon as anyone submits them.
+   345→const ANISKIP_MISS_TTL_MS = 24 * 60 * 60 * 1000;
+   346→const ANISKIP_DISK_DIR =
+   347→  process.env.VERCEL === "1" ? join(tmpdir(), "aniskip-cache") : join(process.cwd(), "db", "aniskip-cache");
+   348→
+   349→type LiveEntry = { op?: [number, number]; ed?: [number, number]; at: number; miss?: boolean };
+   350→type LiveTimes = { op?: [number, number]; ed?: [number, number] };
+   351→type LiveFetchResult = { times: LiveTimes | null; transient: boolean };
+   352→type LiveFile = Record<string, LiveEntry>;
+   353→const liveMem = new Map<string, LiveFile>();
+   354→const liveInFlight = new Map<string, Promise<LiveFetchResult>>();
+   355→
+   356→function liveDiskPath(malId: number): string {
+   357→  const hash = createHash("sha1").update(String(malId)).digest("hex").slice(0, 16);
+   358→  return join(ANISKIP_DISK_DIR, `${hash}.json`);
+   359→}
+   360→
+   361→async function liveRead(malId: number): Promise<LiveFile> {
+   362→  const key = String(malId);
+   363→  const mem = liveMem.get(key);
+   364→  if (mem) return mem;
+   365→  try {
+   366→    const file = JSON.parse(await readFile(liveDiskPath(malId), "utf8")) as LiveFile;
+   367→    liveMem.set(key, file);
+   368→    return file;
+   369→  } catch {
+   370→    return {};
+   371→  }
+   372→}
+   373→
+   374→async function liveWrite(malId: number, file: LiveFile): Promise<void> {
+   375→  liveMem.set(String(malId), file);
+   376→  try {
+   377→    await mkdir(ANISKIP_DISK_DIR, { recursive: true });
+   378→    await writeFile(liveDiskPath(malId), JSON.stringify(file), "utf8");
+   379→  } catch {
+   380→    /* read-only FS (serverless) — the in-memory copy still helps this instance */
+   381→  }
+   382→}
+   383→
+   384→/**
+   385→ * Ask api.aniskip.com for one episode's OP/ED times. `lenMin` is the
+   386→ * episode's length in MINUTES — the API requires an `episodeLength` param
+   387→ * (400s without it); 24 is the TV standard when we don't know better.
+   388→ * Returns the times plus whether the failure was TRANSIENT (5xx / rate
+   389→ * limit / timeout) — transient failures must NOT be negative-cached.
+   390→ */
+   391→async function fetchAniSkipLive(malId: number, ep: number, lenMin?: number): Promise<LiveFetchResult> {
+   392→  const len = lenMin && Number.isFinite(lenMin) && lenMin > 0 ? Math.round(lenMin) : 24;
+   393→  try {
+   394→    const res = await fetch(`${ANISKIP_API}/${malId}/${ep}?types=op&types=ed&episodeLength=${len}`, {
+   395→      headers: { Accept: "application/json" },
+   396→      cache: "no-store",
+   397→      signal: AbortSignal.timeout(4_500),
+   398→    });
+   399→    if (res.status === 404) return { times: null, transient: false }; // genuine "not submitted yet"
+   400→    if (!res.ok) return { times: null, transient: true }; // 429/5xx — retry another time
+   401→    const body = (await res.json()) as {
+   402→      found?: boolean;
+   403→      results?: Array<{ interval?: { startTime?: number; endTime?: number }; skipType?: string }>;
+   404→    };
+   405→    if (!body?.found || !Array.isArray(body.results)) return { times: null, transient: false };
+   406→    const out: LiveTimes = {};
+   407→    for (const r of body.results) {
+   408→      const s = r?.interval?.startTime;
+   409→      const e = r?.interval?.endTime;
+   410→      if (!Number.isFinite(s) || !Number.isFinite(e) || e! <= s!) continue;
+   411→      if (r.skipType === "op") out.op = [s!, e!];
+   412→      else if (r.skipType === "ed") out.ed = [s!, e!];
+   413→    }
+   414→    return { times: out.op || out.ed ? out : null, transient: false };
+   415→  } catch {
+   416→    return { times: null, transient: true }; // timeout / offline — retryable
+   417→  }
+   418→}
+   419→
+   420→/**
+   421→ * Cached live lookup for one episode. Positive entries are kept forever
+   422→ * (community timings don't rot); misses are retried after 7 days.
+   423→ */
+   424→async function liveLookup(malId: number, ep: number, lenMin?: number): Promise<LiveTimes | null> {
+   425→  const epKey = String(ep);
+   426→  const file = await liveRead(malId);
+   427→  const hit = file[epKey];
+   428→  if (hit && Date.now() - hit.at < (hit.miss ? ANISKIP_MISS_TTL_MS : Number.MAX_SAFE_INTEGER)) {
+   429→    return hit.miss ? null : { op: hit.op, ed: hit.ed };
+   430→  }
+   431→  const inflightKey = `${malId}/${ep}`;
+   432→  let p: Promise<LiveFetchResult> | undefined = liveInFlight.get(inflightKey);
+   433→  if (!p) {
+   434→    p = fetchAniSkipLive(malId, ep, lenMin)
+   435→      .then((r) => {
+   436→        liveInFlight.delete(inflightKey);
+   437→        return r;
+   438→      })
+   439→      .catch(() => {
+   440→        liveInFlight.delete(inflightKey);
+   441→        return { times: null, transient: true } as LiveFetchResult;
+   442→      });
+   443→    liveInFlight.set(inflightKey, p);
+   444→  }
+   445→  const wrapped = await p;
+   446→  const data = wrapped.times;
+   447→  const transient = wrapped.transient;
+   448→  if (!transient) {
+   449→    const fresh = await liveRead(malId); // another request may have written meanwhile
+   450→    fresh[epKey] = data ? { ...data, at: Date.now() } : { at: Date.now(), miss: true };
+   451→    await liveWrite(malId, fresh);
+   452→  }
+   453→  return data;
+   454→}
+   455→
+   456→/**
+   457→ * Merge like `withSkipData`, plus the live AniSkip tier: anything the
+   458→ * vendored data left blank gets one (cached) live query. This is what makes
+   459→ * EVERY episode — including ones imported after the dump was built — carry
+   460→ * its skip intro/ending.
+   461→ */
+   462→export async function withSkipDataLive<T extends { skip?: SkipData }>(
+   463→  malId: number,
+   464→  ep: number,
+   465→  stream: T,
+   466→  opts: { episodeLengthMin?: number | null } = {},
+   467→): Promise<T & { skip?: SkipData }> {
+   468→  const merged = withSkipData(malId, ep, stream, opts);
+   469→  let skip: SkipData = { ...(merged.skip ?? {}) };
+   470→
+   471→  // scout tier — measured on OUR encodes by the fleet. An exact per-episode
+   472→  // measurement outranks everything (including Zoko's payload, which marks
+   473→  // the repeated cold-open as "intro start" on many shows); the anime-wide
+   474→  // median only fills gaps (Zoko/frame data wins there).
+   475→  // A CONFIRMED-NONE verdict (the fleet watched this episode against an
+   476→  // established reference and found no opening) wins too — EXCEPT when this
+   477→  // exact episode already has concrete intro data: Zoko's native payload or
+   478→  // the dataset's exact op row. A nodetect is "our scan couldn't align",
+   479→  // which must never silence a vote-backed community interval for the same
+   480→  // episode (Kimetsu ep1: 10k votes vs one failed audio match). Consensus /
+   481→  // live / crowd intros are NOT protected — finale episodes genuinely drop
+   482→  // their OP and the anime-wide median must not button them.
+   483→  // The OWNER verdict (Tier 0) suppresses UNCONDITIONALLY — a human watched
+   484→  // the episode and confirmed no opening exists; no community row, however
+   485→  // vote-backed, may resurrect the button (Tokyo Ghoul ep1).
+   486→  // scout + skipdb in parallel — the two sources are independent, and the
+   487→  // sequential round-trips used to add dead latency to EVERY stream resolve
+   488→  const [scout, sdbExact] = await Promise.all([
+   489→    scoutIntro(malId, ep),
+   490→    skipDbIntervals(malId, ep),
+   491→  ]);
+   492→  const confirmedNone = !!scout?.confirmedNone;
+   493→  const ownerNone = ownerSaysNoIntro(malId, ep);
+   494→  const exactKnown = valid(stream.skip?.intro) || !!exactDatasetIntro(malId, ep) || !!sdbExact?.op;
+   495→  const suppressIntro = ownerNone || (confirmedNone && !exactKnown);
+   496→  if (suppressIntro) {
+   497→    delete skip.intro;
+   498→    if (!skip.outro) delete skip.source;
+   499→  } else if (scout?.interval && (scout.exact || !valid(stream.skip?.intro))) {
+   500→    skip.intro = scout.interval;
+   501→    skip.source = "scout";
+   502→  }
+   503→  // SkipDB fill tier — exact per-episode community rows for anime AniSkip
+   504→  // doesn't carry. Exact rows survive a fleet confirmed-none (same defense
+   505→  // as the dataset's exact op row above); they never override zoko/scout/
+   506→  // AniSkip data, only fill what's missing.
+   507→  if (!suppressIntro && (!skip.intro || !skip.outro) && sdbExact) {
+   508→    if (!skip.intro && sdbExact.op) {
+   509→      skip.intro = sdbExact.op;
+   510→      skip.source = "skipdb";
+   511→    }
+   512→    if (!skip.outro && sdbExact.ed) {
+   513→      skip.outro = sdbExact.ed;
+   514→      if (!skip.source) skip.source = "skipdb";
+   515→    }
+   516→  }
+   517→  if (skip.intro && skip.outro) return { ...merged, skip }; // nothing left to ask
+   518→
+   519→  try {
+   520→    const live = await liveLookup(malId, ep, opts.episodeLengthMin ?? undefined);
+   521→    if (live) {
+   522→      if (!skip.intro && live.op && !suppressIntro) {
+   523→        skip.intro = { start: live.op[0], end: live.op[1] };
+   524→        skip.source = "aniskip-live";
+   525→      }
+   526→      if (!skip.outro && live.ed) skip.outro = { start: live.ed[0], end: live.ed[1] };
+   527→      if (skip.intro || skip.outro) {
+   528→        if (!skip.source) skip.source = "aniskip-live";
+   529→        return { ...merged, skip };
+   530→      }
+   531→    }
+   532→  } catch {
+   533→    /* live tier is best-effort — the crowd/heuristic tiers still cover episodes */
+   534→  }
+   535→  // crowd tier — for shows nobody has submitted anywhere yet, viewers who
+   536→  // scrubbed past the opening have already taught us where it ends
+   537→  // (never applied when the fleet confirmed there IS no opening)
+   538→  if (!suppressIntro) {
+   539→    try {
+   540→      const crowd = await crowdIntroTarget(malId, ep);
+   541→      if (crowd != null) {
+   542→        if (!skip.intro) {
+   543→          skip.intro = { start: 8, end: crowd };
+   544→          skip.source = "crowd";
+   545→        }
+   546→        if (skip.intro || skip.outro) return { ...merged, skip };
+   547→      }
+   548→    } catch {
+   549→      /* votes are best-effort too */
+   550→    }
+   551→  }
+   552→  // final plausibility gate — the button must actually skip the opening:
+   553→  // drop any interval that fails the sanity shape (wrong data < no button)
+   554→  if (skip.intro && !plausibleIntro(skip.intro, opts.episodeLengthMin)) {
+   555→    delete skip.intro;
+   556→    if (!skip.outro) delete skip.source;
+   557→  }
+   558→  if (skip.outro && !plausibleOutro(skip.outro)) {
+   559→    delete skip.outro;
+   560→    if (!skip.intro) delete skip.source;
+   561→  }
+   562→  return { ...merged, skip };
+   563→}
+   564→
+   565→/**
+   566→ * Coverage check used by the skip audit (bot): where would this episode's
+   567→ * Skip Intro data come from? Checks the vendored dataset (exact row, then
+   568→ * per-anime consensus), then the live tier's cache — `allowLiveFetch` also
+   569→ * permits one cached network query to AniSkip (used when probing gaps), and
+   570→ * finally the crowd-learned scrub median — the audit counts anything the
+   571→ * player would actually show. `confirmedNone` = a verified NO opening on
+   572→ * this episode — the fleet's cross-match verdict, or the owner's watch-and-
+   573→ * confirm override (Tier 0). The button is suppressed by design — not a
+   574→ * coverage gap.
+   575→ */
+   576→export interface SkipCoverage {
+   577→  intro?: SkipInterval;
+   578→  outro?: SkipInterval;
+   579→  source: "scout" | "exact" | "consensus" | "skipdb" | "live" | "crowd" | "owner";
+   580→  confirmedNone?: boolean;
+   581→}
+   582→
+   583→export async function skipCoverage(
+   584→  malId: number,
+   585→  ep: number,
+   586→  opts: { allowLiveFetch?: boolean; episodeLengthMin?: number | null } = {},
+   587→): Promise<SkipCoverage | null> {
+   588→  // Tier 0 first — the owner's watch-and-confirm verdict outranks every
+   589→  // data tier (reported as an intentional suppression, not a gap)
+   590→  if (ownerSaysNoIntro(malId, ep)) return { source: "owner", confirmedNone: true };
+   591→  // scout tier next — what the player would actually use (see the priority
+   592→  // in withSkipDataLive). A confirmed-none yields to an exact dataset op row
+   593→  // for THIS episode (same precedence as the player merge).
+   594→  const scout = await scoutIntro(malId, ep);
+   595→  if (scout?.confirmedNone) {
+   596→    const ex = exactDatasetIntro(malId, ep);
+   597→    if (ex && plausibleIntro(ex, opts.episodeLengthMin)) return { source: "exact", intro: ex };
+   598→    // a SkipDB exact row for this episode is also vote-backed concrete data
+   599→    // and must not be silenced by the fleet's failed cross-match
+   600→    const sdbN = await skipDbIntervals(malId, ep);
+   601→    if (sdbN?.op && plausibleIntro(sdbN.op, opts.episodeLengthMin)) return { source: "skipdb", intro: sdbN.op };
+   602→    return { source: "scout", confirmedNone: true };
+   603→  }
+   604→  if (scout?.interval) return { source: "scout", intro: scout.interval };
+   605→  const byEp = data[String(malId)];
+   606→  const exact = byEp?.[String(ep)];
+   607→  const exOp = exact?.op ? { start: exact.op[0], end: exact.op[1] } : null;
+   608→  const exEd = exact?.ed ? { start: exact.ed[0], end: exact.ed[1] } : null;
+   609→  if (exOp || exEd) {
+   610→    const cov: SkipCoverage = { source: "exact" };
+   611→    if (plausibleIntro(exOp, opts.episodeLengthMin)) cov.intro = exOp;
+   612→    if (plausibleOutro(exEd)) cov.outro = exEd;
+   613→    if (cov.intro || cov.outro) return cov;
+   614→  }
+   615→  const cons = consensus(malId);
+   616→  const coOp = cons.op ? { start: cons.op[0], end: cons.op[1] } : null;
+   617→  const coEd = cons.ed ? { start: cons.ed[0], end: cons.ed[1] } : null;
+   618→  if (coOp || coEd) {
+   619→    const cov: SkipCoverage = { source: "consensus" };
+   620→    if (plausibleIntro(coOp, opts.episodeLengthMin)) cov.intro = coOp;
+   621→    if (plausibleOutro(coEd)) cov.outro = coEd;
+   622→    if (cov.intro || cov.outro) return cov;
+   623→  }
+   624→  // SkipDB tier — the vendored-fill table for anime AniSkip doesn't have
+   625→  const sdb = await skipDbIntervals(malId, ep);
+   626→  if (sdb) {
+   627→    const cov: SkipCoverage = { source: "skipdb" };
+   628→    if (plausibleIntro(sdb.op, opts.episodeLengthMin)) cov.intro = sdb.op;
+   629→    if (plausibleOutro(sdb.ed)) cov.outro = sdb.ed;
+   630→    if (cov.intro || cov.outro) return cov;
+   631→  }
+   632→  const liveCov = (op?: [number, number], ed?: [number, number]): SkipCoverage | null => {
+   633→    const i = op ? { start: op[0], end: op[1] } : null;
+   634→    const o = ed ? { start: ed[0], end: ed[1] } : null;
+   635→    if (!plausibleIntro(i, opts.episodeLengthMin) && !plausibleOutro(o)) return null;
+   636→    const cov: SkipCoverage = { source: "live" };
+   637→    if (plausibleIntro(i, opts.episodeLengthMin)) cov.intro = i;
+   638→    if (plausibleOutro(o)) cov.outro = o;
+   639→    return cov;
+   640→  };
+   641→  if (opts.allowLiveFetch) {
+   642→    const live = await liveLookup(malId, ep, opts.episodeLengthMin ?? undefined);
+   643→    const cov = live ? liveCov(live.op, live.ed) : null;
+   644→    if (cov) return cov;
+   645→  } else {
+   646→    const cached = (await liveRead(malId))[String(ep)];
+   647→    const cov = cached && !cached.miss ? liveCov(cached.op, cached.ed) : null;
+   648→    if (cov) return cov;
+   649→  }
+   650→  // crowd tier — viewers' scrub medians count as coverage too (the player
+   651→  // shows a working Skip Intro button for them)
+   652→  const crowd = await crowdIntroTarget(malId, ep);
+   653→  if (crowd != null) return { source: "crowd", intro: { start: 8, end: crowd } };
+   654→  return null;
+   655→}
+   656→
+   657→/**
+   658→ * Warm the live cache ahead of time — called after the catalog sync imports
+   659→ * new episodes so their skip data is already on disk before anyone presses
+   660→ * play. Sequential with ~1.1s spacing (AniSkip's documented rate limit is
+   661→ * 1 req/s); bounded so a huge import can't run away.
+   662→ */
+   663→export async function prefetchSkipTimes(
+   664→  pairs: Array<{ malId: number; ep: number; lenMin?: number | null }>,
+   665→  budget = 16,
+   666→): Promise<number> {
+   667→  let fetched = 0;
+   668→  for (const { malId, ep, lenMin } of pairs.slice(0, budget)) {
+   669→    try {
+   670→      const file = await liveRead(malId);
+   671→      const hit = file[String(ep)];
+   672→      if (hit && (hit.op || hit.ed || (hit.miss && Date.now() - hit.at < ANISKIP_MISS_TTL_MS))) continue;
+   673→      const { times, transient } = await fetchAniSkipLive(malId, ep, lenMin ?? undefined);
+   674→      if (!transient) {
+   675→        const fresh = await liveRead(malId);
+   676→        fresh[String(ep)] = times ? { ...times, at: Date.now() } : { at: Date.now(), miss: true };
+   677→        await liveWrite(malId, fresh);
+   678→      }
+   679→      if (times) fetched++;
+   680→    } catch {
+   681→      /* keep going */
+   682→    }
+   683→    await new Promise((r) => setTimeout(r, 1_100)); // respect 1 req/s
+   684→  }
+   685→  return fetched;
+   686→}
+   687→
+   688→/* ------------------------------------------------------------------ *
+   689→ * Tier 5 — crowd-learned openings. Brand-new seasons often have NO
+   690→ * skip data anywhere (AniSkip 404s for months on niche shows), so the
+   691→ * fixed 8-90s guess lands in the middle of their long cold-opens.
+   692→ * Instead, viewers who manually scrub forward past the opening get
+   693→ * recorded (see POST /api/skip-vote) and the median scrub target
+   694→ * becomes this anime's Skip Intro end for everyone. Self-healing:
+   695→ * the more people watch, the sharper the button gets.
+   696→ * ---------------------------------------------------------------- */
+   697→
+   698→const CROWD_MIN_VOTES_EP = 2; // per-episode median needs at least this many
+   699→const CROWD_MIN_VOTES_ANIME = 4; // anime-wide fallback needs more agreement
+   700→const CROWD_VOTE_MAX_AGE_MS = 60 * 24 * 60 * 60 * 1000; // tastes/encodes drift
+   701→const CROWD_KEEP_PER_ANIME = 200; // storage cap per anime
+   702→
+   703→export const SKIP_VOTE_TARGET_MIN = 30;
+   704→export const SKIP_VOTE_TARGET_MAX = 420;
+   705→
+   706→/**
+   707→ * Record one implied OP-end vote. Best-effort: validates the catalog entry
+   708→ * and the target range, caps rows per anime, never throws.
+   709→ */
+   710→export async function recordSkipVote(malId: number, ep: number, target: number): Promise<boolean> {
+   711→  try {
+   712→    if (!Number.isFinite(malId) || malId <= 0 || !Number.isFinite(ep) || ep < 1 || ep > 2000) return false;
+   713→    if (!Number.isFinite(target)) return false;
+   714→    const t = Math.round(target);
+   715→    if (t < SKIP_VOTE_TARGET_MIN || t > SKIP_VOTE_TARGET_MAX) return false;
+   716→    const anime = await db.anime.findUnique({ where: { malId }, select: { malId: true } });
+   717→    if (!anime) return false;
+   718→    await db.skipVote.create({ data: { malId, ep, target: t } });
+   719→    // prune: keep the newest KEEP votes for this anime (votes are cheap to drop)
+   720→    const count = await db.skipVote.count({ where: { malId } });
+   721→    if (count > CROWD_KEEP_PER_ANIME) {
+   722→      const old = await db.skipVote.findMany({
+   723→        where: { malId },
+   724→        orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+   725→        take: count - CROWD_KEEP_PER_ANIME,
+   726→        select: { id: true },
+   727→      });
+   728→      if (old.length) await db.skipVote.deleteMany({ where: { id: { in: old.map((r) => r.id) } } });
+   729→    }
+   730→    return true;
+   731→  } catch {
+   732→    return false;
+   733→  }
+   734→}
+   735→
+   736→function medianNum(values: number[]): number | null {
+   737→  if (!values.length) return null;
+   738→  const s = [...values].sort((a, b) => a - b);
+   739→  return s[Math.floor(s.length / 2)];
+   740→}
+   741→
+   742→/**
+   743→ * The crowd's OP-end for one episode: median of this episode's recent votes,
+   744→ * else (with more agreement) the anime-wide median — openings are the same
+   745→ * video across episodes. Returns whole seconds or null when thin/old.
+   746→ */
+   747→export async function crowdIntroTarget(malId: number, ep: number): Promise<number | null> {
+   748→  try {
+   749→    const from = new Date(Date.now() - CROWD_VOTE_MAX_AGE_MS);
+   750→    const rows = await db.skipVote.findMany({
+   751→      where: { malId, createdAt: { gte: from } },
+   752→      select: { ep: true, target: true },
+   753→      orderBy: { createdAt: "desc" },
+   754→      take: 400,
+   755→    });
+   756→    const epTargets = rows.filter((r) => r.ep === ep).map((r) => r.target);
+   757→    if (epTargets.length >= CROWD_MIN_VOTES_EP) return medianNum(epTargets);
+   758→    const all = rows.map((r) => r.target);
+   759→    if (all.length >= CROWD_MIN_VOTES_ANIME) return medianNum(all);
+   760→    return null;
+   761→  } catch {
+   762→    return null;
+   763→  }
+   764→}
+   765→

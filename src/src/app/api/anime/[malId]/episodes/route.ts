@@ -133,6 +133,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       dubThrough: { s1: total, s2: total },
       dubMissing: [] as number[],
       backupDub: [],
+      // NOT ANIME — the SUB/DUB naming is meaningless here. `serverNames`
+      // maps each internal server id to the embedded SITE its player pulls
+      // from (owner: "remove the names of zoko and kiwi — use the names of
+      // the embedded they are on"): Server 1 = WCO, Server 2 = LookMovie2
+      // (its own resolver — a second site, which is why there are 2 players).
+      // Presence of this map is also the UI's "western show" naming signal:
+      // the episode sheet says "Server 1"/"Server 2" and the player's server
+      // panel shows the site names instead of Zoko/Kiwi.
+      serverNames: { zoko: "WCO", kiwi: "LookMovie2" },
       episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
       newlyAdded: 0,
       freshnessPending: false,
