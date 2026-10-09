@@ -618,6 +618,37 @@ async function expectJson(name, path, init, validate, timeout) {
     }
   }
 
+  // ---- 5h) cast sender features shipped in the client bundle ----
+  // The app is a single-page bundle: WatchView + the cast lib ride the root
+  // chunks. String literals and public SDK property names survive minification,
+  // so grepping the shipped JS proves the cast batch (captions on the TV,
+  // caption toggle, auto-skip/auto-next panel, TV progress tracking) deployed.
+  {
+    try {
+      const home = await req("/");
+      const html = await home.text();
+      const chunkUrls = [...new Set([...html.matchAll(/\/_next\/static\/[^"']+\.js/g)].map((m) => m[0]))];
+      let js = "";
+      for (const u of chunkUrls.slice(0, 60)) {
+        const r = await req(u, {}, 20_000);
+        if (r.ok) js += await r.text();
+      }
+      const markers = [
+        ["cast caption toggle (EditTracksInfoRequest)", "EditTracksInfoRequest"],
+        ["cast caption track style (textTrackStyle)", "textTrackStyle"],
+        ["cast settings panel", "Cast settings"],
+        ["cast captions row hint", "No captions for this episode"],
+        ["cast auto-next row", "Auto next episode"],
+        ["cast auto-skip row", "Auto-skip intro"],
+      ];
+      for (const [name, needle] of markers) {
+        record(`client bundle: ${name}`, js.includes(needle), needle);
+      }
+    } catch (err) {
+      record("client bundle: cast features", false, String(err).slice(0, 160));
+    }
+  }
+
   // ---- 6) self-heal endpoint (runs a real catalog sync) ----
   await expectJson("GET /api/cron (self-test)", "/api/cron", {}, (r, b) => b?.ok === true && Array.isArray(b?.checks) && Array.isArray(b?.fixes), 60_000);
 

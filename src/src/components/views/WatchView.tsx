@@ -4,15 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Hls, { type Level } from "hls.js";
 import {
   ChevronLeft, Download, Lock, Unlock, SlidersHorizontal, Gauge, Scan, SkipBack, SkipForward,
-  Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward,
+  Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward, Settings,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { zokoPlayerUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer } from "@/lib/zoko";
-import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings } from "@/lib/client-store";
+import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings, updateAppSettings } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
-  onCastMediaError, type CastState,
+  onCastMediaError, castSetCaptions, castCaptionsAvailable, castCaptionsActive,
+  castSetAutoNextHandler, type CastState, type CastProgressDescriptor,
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
@@ -256,6 +257,15 @@ export default function WatchView({
   const [dlSrc, setDlSrc] = useState<{ src: string; label: string } | null>(null);
   const [speed, setSpeed] = useState(1);
   const [subsOn, setSubsOn] = useState(true);
+  // ref mirror — the hls.js effect's cast hand-off reads the CURRENT caption
+  // preference without re-binding on every subsOn flip
+  const subsOnRef = useRef(subsOn);
+  subsOnRef.current = subsOn;
+  // cast settings panel (gear in the corner of the cast controls) — captions
+  // on/off + auto-skip intro + auto next episode, all live while the TV plays
+  const [castPanelOpen, setCastPanelOpen] = useState(false);
+  const [castCapsOn, setCastCapsOn] = useState(true);
+  const [castCapsAvailable, setCastCapsAvailable] = useState(false);
   // which caption language the user picked (index into stream.subtitles);
   // null = auto (the real English track when the source has it, else the
   // source's own default — see pickSubtitleTrack)
@@ -314,6 +324,17 @@ export default function WatchView({
   // the episode to the TV on MANIFEST_PARSED — must read the latest title)
   const castTitleRef = useRef(castTitle);
   castTitleRef.current = castTitle;
+  // Continue-Watching ownership while casting — ALWAYS current. The lib-level
+  // cast tracker reads this on every save, so browsing away from the watch
+  // page (or auto-advancing episodes) can never write a stale episode/position
+  const castProgressRef = useRef<CastProgressDescriptor>({
+    malId: anime.malId, episode, lang, server,
+    title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+  });
+  castProgressRef.current = {
+    malId: anime.malId, episode, lang, server,
+    title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+  };
 
   /* -------- auto-hide the in-player controls (like a real video app) -------- */
   const showUi = useCallback((autoHide = true) => {
@@ -699,6 +720,26 @@ export default function WatchView({
     if (castState === "casting") videoRef.current?.pause();
   }, [castState]);
 
+  /* -------- cast auto-next: the lib tracker detects the TV hitting the end
+     (IDLE/FINISHED or within 2s of the duration) and calls this hook when
+     Settings -> Autoplay next episode is ON. Navigating re-runs the stream
+     resolve, whose cast hand-off side-loads the next episode into the LIVE
+     session — the TV never disconnects between episodes. -------- */
+  useEffect(() => {
+    castSetAutoNextHandler(() => {
+      if (episode < total) onEpisodeChange(episode + 1, lang, server);
+    });
+    return () => castSetAutoNextHandler(null);
+  }, [episode, total, onEpisodeChange, lang, server]);
+
+  /* -------- cast settings panel actions -------- */
+  const toggleCastCaptions = async () => {
+    const next = !castCapsOn;
+    setCastCapsOn(next); // optimistic — the receiver corrects us on failure
+    const ok = await castSetCaptions(next);
+    if (!ok) setCastCapsOn(!next);
+  };
+
   /* -------- receiver-side playback failures surface as a player toast -------- */
   useEffect(() => {
     let timer: number | null = null;
@@ -978,6 +1019,28 @@ export default function WatchView({
   const saveNow = useCallback(
     (opts?: { keepalive?: boolean; completed?: boolean }) => {
       if (iframeFallback) return;
+      if (castStateRef.current === "casting") {
+        // the TV owns playback — the local <video> is a PAUSED bystander, and
+        // saving its position (pagehide, unmount flush) used to REGRESS the
+        // progress the cast tracker had already written. Save the TV's second.
+        const pos = castPosition();
+        if (pos == null) return;
+        saveProgressDetailed(
+          {
+            malId: anime.malId,
+            episode,
+            lang,
+            server,
+            position: pos,
+            duration: castDuration() || 0,
+            title: anime.title,
+            image: anime.image,
+            total: anime.totalEpisodes || episode,
+          },
+          opts,
+        );
+        return;
+      }
       const v = videoRef.current;
       const pos = v ? v.currentTime : lastPosRef.current;
       const dur = (v && v.duration) || lastDurRef.current || 0;
@@ -1054,48 +1117,14 @@ export default function WatchView({
     };
   }, [anime.malId, anime.title, anime.image, iframeFallback]);
 
-  /* -------- cast progress heartbeat (positions come from the TV) -------- */
-  useEffect(() => {
-    if (castState !== "casting") return;
-    let lastPos: number | null = castPosition();
-    let castActiveAt = Date.now();
-    const id = window.setInterval(() => {
-      const pos = castPosition();
-      const now = Date.now();
-      const delta = Math.min(120, (now - castActiveAt) / 1000);
-      if (pos == null || pos === lastPos) {
-        // TV paused or unreachable — wall time between these ticks doesn't count
-        lastPos = pos;
-        castActiveAt = now;
-        return;
-      }
-      lastPos = pos;
-      castActiveAt = now;
-      if (delta >= 1) {
-        recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta });
-      }
-      saveProgressDetailed({
-        malId: anime.malId,
-        episode,
-        lang,
-        server,
-        position: pos,
-        duration: castDuration() || 0,
-        title: anime.title,
-        image: anime.image,
-        total: anime.totalEpisodes || episode,
-      });
-    }, 10_000);
-    return () => {
-      window.clearInterval(id);
-      // flush any residual playing time since the last tick
-      const delta = Math.min(120, (Date.now() - castActiveAt) / 1000);
-      const pos = castPosition();
-      if (delta >= 1 && pos != null && pos !== lastPos) {
-        recordWatchSeconds({ malId: anime.malId, title: anime.title, image: anime.image, delta });
-      }
-    };
-  }, [castState, anime.malId, anime.title, anime.image, anime.totalEpisodes, episode, lang, server]);
+  /* -------- cast progress + watch time: OWNED BY cast.ts --------
+     The lib-level tracker (started on every castLoad/castLoadNext) keeps
+     writing Continue Watching for as long as the session lives — even when
+     this page unmounts because the user browses elsewhere mid-episode. The
+     old component heartbeat died on navigation and its unmount flush saved
+     the STALE local position over the TV's progress. saveNow above is cast-
+     aware, so THIS component's pagehide/unmount flushes still land the exact
+     TV second instead of a regression. */
 
   /* -------- cast remote: position/duration/playing straight from the TV.
      Polled 2×/s — fast enough for a smooth-feeling bar (the receiver
@@ -1170,6 +1199,8 @@ export default function WatchView({
           imageUrl: anime.image,
           startTime: pendingSeekRef.current ?? resumeAtRef.current,
           captions: cap ? { url: captionUrl(cap.src), label: cap.label || "English" } : undefined,
+          captionsOn: subsOnRef.current,
+          progress: castProgressRef.current,
         }).then((ok2) => {
           if (!ok2) {
             setCastMsg("Couldn't load this episode on the TV — Stop casting, then cast again");
@@ -1558,10 +1589,16 @@ export default function WatchView({
       captions: subTrack
         ? { url: captionUrl(subTrack.src), label: subTrack.label || "English" }
         : undefined,
+      captionsOn: subsOn,
+      progress: castProgressRef.current,
     });
     if (res.ok) {
       videoRef.current?.pause();
       setCastMsg(null);
+      // reflect what the receiver actually got (no caption track = grey toggle)
+      setCastCapsAvailable(castCaptionsAvailable());
+      setCastCapsOn(castCaptionsActive());
+      setCastPanelOpen(false);
     } else {
       setCastMsg(res.error ?? "Cast failed");
       window.setTimeout(() => setCastMsg(null), 12_000);
@@ -1627,9 +1664,35 @@ export default function WatchView({
   // back into the OP doesn't yo-yo the viewer forward again. Cast state is
   // read through the ref (declared with the player hooks, well above) so the
   // effect can sit beside the skip-window derivations.
+  // CASTING: the TV owns the clock — the same settings drive castSeek() off
+  // the cast position poll (castUi) instead of the local video's timeupdate.
   const autoSkipKeyRef = useRef("");
   useEffect(() => {
-    if (castStateRef.current === "casting" || iframeFallback) return;
+    if (iframeFallback) return;
+    if (castStateRef.current === "casting" || castState === "casting") {
+      const pos = castUi.pos;
+      const inIntro = Boolean(introSkip && pos >= introSkip.start - 1 && pos <= introSkip.end);
+      const inOutro = Boolean(outroSkip && pos >= outroSkip.start && pos <= outroSkip.end);
+      if (!inIntro && !inOutro) {
+        // left both windows — re-arm for the next appearance (seek-back too)
+        if (autoSkipKeyRef.current.startsWith("c:")) autoSkipKeyRef.current = "";
+        return;
+      }
+      if (appSettings.autoSkipIntro && inIntro && introSkip && castUi.playing) {
+        const key = `c:i:${episode}:${introSkip.start}`;
+        if (autoSkipKeyRef.current !== key) {
+          autoSkipKeyRef.current = key;
+          void castSeek(Math.max(introSkip.start, introSkip.end - 3));
+        }
+      } else if (appSettings.autoSkipOutro && inOutro && outroSkip && castUi.playing) {
+        const key = `c:o:${episode}:${outroSkip.start}`;
+        if (autoSkipKeyRef.current !== key) {
+          autoSkipKeyRef.current = key;
+          void castSeek(outroSkip.end);
+        }
+      }
+      return;
+    }
     if (appSettings.autoSkipIntro && showSkipIntro && introSkip) {
       const key = `i:${episode}:${introSkip.start}`;
       if (autoSkipKeyRef.current !== key) {
@@ -1643,7 +1706,7 @@ export default function WatchView({
         seekTo(outroSkip.end);
       }
     }
-  }, [appSettings.autoSkipIntro, appSettings.autoSkipOutro, showSkipIntro, showSkipOutro, introSkip, outroSkip, episode, iframeFallback]);
+  }, [appSettings.autoSkipIntro, appSettings.autoSkipOutro, showSkipIntro, showSkipOutro, introSkip, outroSkip, episode, iframeFallback, castState, castUi]);
   // Zoko tags EVERY subtitle track lang:"en" and often lists English NOT first
   // (FMA:B ep1: Arabic, Chinese, Chinese, Danish, Dutch, English, ...) — pick
   // the real English track instead of blindly playing subtitles[0]. A manual
@@ -1837,6 +1900,93 @@ export default function WatchView({
                 className="absolute inset-0 bg-black/90 backdrop-blur-sm flex flex-col z-30"
                 onClick={(e) => e.stopPropagation()}
               >
+                {/* settings gear — corner of the cast controls. Captions on/off,
+                    auto-skip intro and auto next episode, live while the TV plays. */}
+                <button
+                  onClick={() => setCastPanelOpen((v) => !v)}
+                  className={`absolute top-4 right-4 z-40 w-11 h-11 rounded-full border flex items-center justify-center transition active:scale-95 ${castPanelOpen ? "bg-[#d32f2f] border-[#d32f2f]" : "bg-white/10 border-white/15 hover:bg-white/20"}`}
+                  aria-label="Cast playback settings"
+                >
+                  <Settings className={`w-5 h-5 ${castPanelOpen ? "text-white" : "text-gray-200"}`} />
+                </button>
+                {castPanelOpen ? (
+                  <div className="absolute top-16 right-4 z-40 w-[min(300px,calc(100%-2rem))] rounded-2xl border border-white/10 bg-[#141414]/95 shadow-2xl overflow-hidden">
+                    <p className="px-4 pt-3 pb-1 text-[10.5px] font-bold uppercase tracking-[0.18em] text-gray-500">
+                      Cast settings
+                    </p>
+                    {/* Captions — toggles the track on the RECEIVER live */}
+                    <button
+                      onClick={() => void toggleCastCaptions()}
+                      disabled={!castCapsAvailable}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] disabled:opacity-40"
+                    >
+                      <Subtitles className="w-[18px] h-[18px] shrink-0 text-gray-400" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[13.5px] font-semibold text-gray-100">Captions</span>
+                        <span className="block mt-0.5 text-[10.5px] leading-snug text-gray-500">
+                          {castCapsAvailable ? "Subtitles on the TV" : "No captions for this episode"}
+                        </span>
+                      </span>
+                      <span
+                        className="relative shrink-0 w-[42px] h-[25px] rounded-full transition-colors"
+                        style={{ background: castCapsOn ? "var(--app-accent)" : "#333" }}
+                        aria-hidden
+                      >
+                        <span
+                          className="absolute top-[3px] w-[19px] h-[19px] rounded-full bg-white shadow transition-all"
+                          style={{ left: castCapsOn ? 20 : 3 }}
+                        />
+                      </span>
+                    </button>
+                    {/* Auto-skip intro — same persisted setting as in-app playback */}
+                    <button
+                      onClick={() => updateAppSettings({ autoSkipIntro: !appSettings.autoSkipIntro })}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] border-t border-white/5"
+                    >
+                      <FastForward className="w-[18px] h-[18px] shrink-0 text-gray-400" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[13.5px] font-semibold text-gray-100">Auto-skip intro</span>
+                        <span className="block mt-0.5 text-[10.5px] leading-snug text-gray-500">
+                          {appSettings.autoSkipIntro ? "The TV jumps the opening" : "Play the opening"}
+                        </span>
+                      </span>
+                      <span
+                        className="relative shrink-0 w-[42px] h-[25px] rounded-full transition-colors"
+                        style={{ background: appSettings.autoSkipIntro ? "var(--app-accent)" : "#333" }}
+                        aria-hidden
+                      >
+                        <span
+                          className="absolute top-[3px] w-[19px] h-[19px] rounded-full bg-white shadow transition-all"
+                          style={{ left: appSettings.autoSkipIntro ? 20 : 3 }}
+                        />
+                      </span>
+                    </button>
+                    {/* Auto next episode — same persisted setting as in-app playback */}
+                    <button
+                      onClick={() => updateAppSettings({ autoNext: !appSettings.autoNext })}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-white/[0.04] border-t border-white/5"
+                    >
+                      <SkipForward className="w-[18px] h-[18px] shrink-0 text-gray-400" />
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-[13.5px] font-semibold text-gray-100">Auto next episode</span>
+                        <span className="block mt-0.5 text-[10.5px] leading-snug text-gray-500">
+                          {appSettings.autoNext ? "Rolls straight into the next one" : "Stop when the episode ends"}
+                        </span>
+                      </span>
+                      <span
+                        className="relative shrink-0 w-[42px] h-[25px] rounded-full transition-colors"
+                        style={{ background: appSettings.autoNext ? "var(--app-accent)" : "#333" }}
+                        aria-hidden
+                      >
+                        <span
+                          className="absolute top-[3px] w-[19px] h-[19px] rounded-full bg-white shadow transition-all"
+                          style={{ left: appSettings.autoNext ? 20 : 3 }}
+                        />
+                      </span>
+                    </button>
+                  </div>
+                ) : null}
+
                 <div className="shrink-0 flex flex-col items-center gap-2 pt-12 md:pt-14 px-6 text-center">
                   <span className="w-12 h-12 rounded-full bg-[#d32f2f]/15 border border-[#d32f2f]/60 flex items-center justify-center">
                     <Cast className="w-6 h-6 text-[#ff5252]" />

@@ -1,5 +1,7 @@
 "use client";
 
+import { saveProgressDetailed, recordWatchSeconds, readAppSettings } from "@/lib/client-store";
+
 /**
  * Chromecast sender via Google's Cast Application Framework (CAF).
  *
@@ -58,6 +60,102 @@ let demoHook: {
   seek(s: number): boolean;
   loadNext(): boolean;
 } | null = null;
+
+/* ---- cast progress ownership --------------------------------------------
+ * While casting, the TV is the playback surface — the phone's <video> is a
+ * paused bystander. WatchView used to own progress saving, but its heartbeat
+ * died the moment the user navigated away from the watch page (very common:
+ * cast, then browse), and the pagehide/unmount flush read the STALE local
+ * position and REGRESSED the saved TV progress. Now cast.ts owns it: every
+ * load carries a progress descriptor and a module-level tracker keeps
+ * writing Continue Watching for as long as the session lives — page
+ * navigation inside the SPA can't touch it.
+ * ----------------------------------------------------------------------- */
+export interface CastProgressDescriptor {
+  malId: number;
+  episode: number;
+  lang: "sub" | "dub";
+  server: string;
+  title?: string;
+  image?: string | null;
+  total?: number;
+}
+
+let progressDesc: CastProgressDescriptor | null = null;
+let progressTimer: number | null = null;
+let trackerLastPos: number | null = null;
+let trackerActiveAt = 0;
+// fires once per loaded media — bumped on every castLoad/castLoadNext so a
+// finished episode can't auto-advance twice
+let autoNextEpoch = 0;
+let autoNextFiredEpoch = -1;
+let autoNextHandler: (() => void) | null = null;
+
+/** Register the "roll into the next episode" hook (WatchView navigates; the
+ * stream effect then side-loads the next episode into the live session). */
+export function castSetAutoNextHandler(fn: (() => void) | null): void {
+  autoNextHandler = fn;
+}
+
+function stopProgressTracker() {
+  if (progressTimer != null) {
+    window.clearInterval(progressTimer);
+    progressTimer = null;
+  }
+}
+
+function startProgressTracker() {
+  if (typeof window === "undefined" || demoHook) return;
+  stopProgressTracker();
+  trackerLastPos = castPosition();
+  trackerActiveAt = Date.now();
+  progressTimer = window.setInterval(() => {
+    if (currentState !== "casting" || !progressDesc) return;
+    const pos = castPosition();
+    const now = Date.now();
+    if (pos == null || pos === trackerLastPos) {
+      // paused, buffering or unreachable — wall time between these ticks
+      // must not accrue as watch time
+      trackerLastPos = pos;
+      trackerActiveAt = now;
+    } else {
+      const delta = Math.min(120, (now - trackerActiveAt) / 1000);
+      trackerLastPos = pos;
+      trackerActiveAt = now;
+      if (delta >= 1) {
+        recordWatchSeconds({ malId: progressDesc.malId, title: progressDesc.title ?? "", image: progressDesc.image ?? null, delta });
+      }
+      saveProgressDetailed({
+        malId: progressDesc.malId,
+        episode: progressDesc.episode,
+        lang: progressDesc.lang,
+        server: progressDesc.server,
+        position: pos,
+        duration: castDuration() || 0,
+        title: progressDesc.title,
+        image: progressDesc.image,
+        total: progressDesc.total,
+      });
+    }
+    // ---- auto next episode (mirrors the in-player ended handler) ----
+    if (progressDesc && autoNextHandler) {
+      const dur = castDuration() ?? 0;
+      const st = statusOf(refs.media);
+      const finished = st?.playerState === "IDLE" && st?.idleReason === "FINISHED";
+      const atEnd = dur > 0 && pos != null && pos >= dur - 2;
+      if ((finished || atEnd) && autoNextFiredEpoch !== autoNextEpoch) {
+        if (readAppSettings().autoNext) {
+          autoNextFiredEpoch = autoNextEpoch;
+          try {
+            autoNextHandler();
+          } catch {
+            /* navigation is best-effort */
+          }
+        }
+      }
+    }
+  }, 10_000);
+}
 
 /* receiver-side playback failure (HLS the TV couldn't load etc.) */
 const mediaErrorListeners = new Set<(msg: string) => void>();
@@ -239,6 +337,10 @@ function configureContext() {
           noteTrail("session-ended", s === S.SESSION_END_FAILED ? e?.errorCode : undefined);
           refs.session = null;
           refs.media = null;
+          progressDesc = null;
+          captionsTrackId = null;
+          captionsActive = false;
+          stopProgressTracker();
           setState("idle");
         }
       },
@@ -267,23 +369,94 @@ export interface CastMediaRequest {
   subtitle?: string;
   /** Side-loaded caption track the receiver fetches directly (absolute URL). */
   captions?: { url: string; label?: string };
+  /** Captions active the moment the TV starts playing (default true). */
+  captionsOn?: boolean;
   imageUrl?: string | null;
   /** Resume point, seconds. */
   startTime?: number;
+  /** Continue-Watching ownership: who/where this TV playback is. */
+  progress?: CastProgressDescriptor;
+}
+
+/* ---- captions state (toggleable from the phone while the TV plays) ------ */
+let captionsTrackId: number | null = null;
+let captionsActive = false;
+
+/** Does the current cast session carry a side-loaded caption track? */
+export function castCaptionsAvailable(): boolean {
+  return captionsTrackId != null;
+}
+
+/** Are captions currently active on the TV? */
+export function castCaptionsActive(): boolean {
+  return captionsActive;
+}
+
+/**
+ * Turn the TV's caption track on/off mid-session (EditTracksInfo replaces
+ * the active-track set). Returns false when there is no live media or no
+ * caption track was side-loaded for this episode.
+ */
+export async function castSetCaptions(on: boolean): Promise<boolean> {
+  if (demoHook) return captionsTrackId != null;
+  try {
+    const chromeCast = (window as any).chrome?.cast;
+    const media = refs.media;
+    if (!chromeCast || !media || captionsTrackId == null) return false;
+    const req = new chromeCast.media.EditTracksInfoRequest(on ? [captionsTrackId] : []);
+    await media.editTracksInfo?.(req);
+    captionsActive = on;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The DMR resolves track contentIds against nothing useful — a RELATIVE
+ * caption URL (our proxy-wrapped provider VTTs) silently never fetches and
+ * the TV just plays with no subtitles. Absolutize every caption URL here,
+ * the single choke point for both load paths. */
+function absoluteUrl(u: string): string {
+  try {
+    return new URL(u, window.location.origin).toString();
+  } catch {
+    return u;
+  }
+}
+
+/** Legible default for the big screen: white with a black outline. */
+function tvTrackStyle(chromeCast: any): any | undefined {
+  try {
+    return new chromeCast.media.TextTrackStyle({
+      foregroundColor: "#FFFFFF",
+      backgroundColor: "#00000000",
+      edgeColor: "#000000FF",
+      edgeType: "OUTLINE",
+      fontFamily: "Sans-Serif",
+      fontScale: 1.0,
+    });
+  } catch {
+    return undefined;
+  }
 }
 
 /** Side-load a WebVTT caption track onto the Default Media Receiver. */
-function attachCaptions(chromeCast: any, mediaInfo: any, request: any, captions?: { url: string; label?: string }) {
+function attachCaptions(chromeCast: any, mediaInfo: any, request: any, captions?: { url: string; label?: string }, on = true) {
+  captionsTrackId = null;
+  captionsActive = false;
   if (!captions?.url || !chromeCast.media.Track) return;
   try {
     const track = new chromeCast.media.Track(0, chromeCast.media.TrackType.TEXT);
     track.subtype = chromeCast.media.TextTrackType?.SUBTITLES ?? "SUBTITLES";
     track.name = captions.label || "English";
     track.language = "en";
-    track.contentId = captions.url;
+    track.contentId = absoluteUrl(captions.url);
     track.contentType = "text/vtt";
     mediaInfo.tracks = [track];
-    request.activeTrackIds = [0];
+    mediaInfo.textTrackStyle = tvTrackStyle(chromeCast);
+    request.activeTrackIds = on ? [0] : [];
+    captionsTrackId = 0;
+    captionsActive = on;
   } catch {
     /* captions are best-effort — video still casts without them */
   }
@@ -391,6 +564,8 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     }
     if (!refs.session) throw new Error("No Chromecast selected");
 
+    progressDesc = req.progress ?? null;
+    autoNextEpoch++;
     const loaded = await loadMediaWithRecovery(context, chromeCast, req);
     const client = resolveClient(refs.session, loaded);
     refs.media = client;
@@ -406,6 +581,7 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
       }
     });
     armStuckLoadWatchdog();
+    startProgressTracker();
     setState("casting");
     return { ok: true };
   } catch (err: unknown) {
@@ -441,23 +617,7 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
  * retry once — the user just sees the cast succeed.
  */
 async function loadMediaWithRecovery(context: any, chromeCast: any, req: CastMediaRequest): Promise<any> {
-  const build = () => {
-    // the Default Media Receiver sniffs better with the honest type: our SP
-    // sources are progressive MP4s, everything else is an HLS master
-    const type = /\.m3u8($|\?)/i.test(req.src) ? "application/x-mpegurl" : "video/mp4";
-    const mediaInfo = new chromeCast.media.MediaInfo(req.src, type);
-    const metadata = new chromeCast.media.GenericMediaMetadata();
-    metadata.title = req.title;
-    if (req.subtitle) metadata.subtitle = req.subtitle;
-    if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
-    mediaInfo.metadata = metadata;
-    mediaInfo.streamType = chromeCast.media.StreamType.BUFFERED;
-    const request = new chromeCast.media.LoadRequest(mediaInfo);
-    request.autoplay = true;
-    request.currentTime = Math.max(0, req.startTime ?? 0);
-    attachCaptions(chromeCast, mediaInfo, request, req.captions);
-    return request;
-  };
+  const build = () => buildLoadRequest(chromeCast, req);
   try {
     return await refs.session.loadMedia(build());
   } catch (err) {
@@ -473,6 +633,24 @@ async function loadMediaWithRecovery(context: any, chromeCast: any, req: CastMed
   }
 }
 
+function buildLoadRequest(chromeCast: any, req: CastMediaRequest): any {
+  // the Default Media Receiver sniffs better with the honest type: our SP
+  // sources are progressive MP4s, everything else is an HLS master
+  const type = /\.m3u8($|\?)/i.test(req.src) ? "application/x-mpegurl" : "video/mp4";
+  const mediaInfo = new chromeCast.media.MediaInfo(req.src, type);
+  const metadata = new chromeCast.media.GenericMediaMetadata();
+  metadata.title = req.title;
+  if (req.subtitle) metadata.subtitle = req.subtitle;
+  if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
+  mediaInfo.metadata = metadata;
+  mediaInfo.streamType = chromeCast.media.StreamType.BUFFERED;
+  const request = new chromeCast.media.LoadRequest(mediaInfo);
+  request.autoplay = true;
+  request.currentTime = Math.max(0, req.startTime ?? 0);
+  attachCaptions(chromeCast, mediaInfo, request, req.captions, req.captionsOn ?? true);
+  return request;
+}
+
 /** Load another episode into the live cast session (no re-prompt). */
 export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
   if (demoHook) return demoHook.loadNext();
@@ -484,19 +662,12 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     // a session that died since the last episode (phone slept, Wi-Fi blip)
     // must not explode inside loadMedia — verify it is still alive first
     if (!refreshLiveSession(context) || !refs.session) return false;
-    const type = /\.m3u8($|\?)/i.test(req.src) ? "application/x-mpegurl" : "video/mp4";
-    const mediaInfo = new chromeCast.media.MediaInfo(req.src, type);
-    const metadata = new chromeCast.media.GenericMediaMetadata();
-    metadata.title = req.title;
-    if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
-    mediaInfo.metadata = metadata;
-    const request = new chromeCast.media.LoadRequest(mediaInfo);
-    request.autoplay = true;
-    request.currentTime = Math.max(0, req.startTime ?? 0);
-    attachCaptions(chromeCast, mediaInfo, request, req.captions);
+    progressDesc = req.progress ?? progressDesc; // keep the old descriptor when none is given
+    autoNextEpoch++;
     // loadMedia resolves VOID in CAF — the client comes off the session
-    refs.media = resolveClient(refs.session, await refs.session.loadMedia(request));
+    refs.media = resolveClient(refs.session, await refs.session.loadMedia(buildLoadRequest(chromeCast, req)));
     armStuckLoadWatchdog();
+    startProgressTracker();
     return true;
   } catch {
     // the session died mid-series — drop it so the next Cast tap re-prompts
@@ -510,6 +681,28 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
 /** Stop casting and give playback back to the device. */
 export function castStop(): void {
   disarmStuckWatchdog();
+  // final Continue-Watching write at the exact second the TV was at — the
+  // tracker dies with the session, this flush must not be skipped
+  if (progressDesc && !demoHook) {
+    const pos = castPosition();
+    if (pos != null) {
+      saveProgressDetailed({
+        malId: progressDesc.malId,
+        episode: progressDesc.episode,
+        lang: progressDesc.lang,
+        server: progressDesc.server,
+        position: pos,
+        duration: castDuration() || 0,
+        title: progressDesc.title,
+        image: progressDesc.image,
+        total: progressDesc.total,
+      });
+    }
+  }
+  progressDesc = null;
+  captionsTrackId = null;
+  captionsActive = false;
+  stopProgressTracker();
   try {
     refs.media = null;
     refs.session?.endCurrentSession?.(true);
