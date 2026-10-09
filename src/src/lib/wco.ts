@@ -28,6 +28,7 @@
 
 import { execFile } from "node:child_process";
 import { db } from "@/lib/db";
+import { WCO_NODES_PRIMARY, WCO_NODES_REST } from "@/lib/stream-proxy-registry";
 import { WCO_SP_EPISODES, WCO_SP_SEASON_RANGES, WCO_SP_TOTAL, WCO_SP_DEAD_SLUGS, type WcoEpisode } from "@/lib/wco-sp-episodes";
 
 const SITE = "https://www.wcostream.tv";
@@ -197,6 +198,74 @@ async function getvidFinal(server: string | undefined, enc: string | undefined):
   return url;
 }
 
+/* ---- server-fetchable gateway verification (the cast/load fix) ----------
+ * The getvid&json response pins playback to ONE uNN gateway, but ~80% of
+ * the pool 403s datacenter IPs — where the playback proxy, these resolvers
+ * and the Chromecast receiver all run. A resolve that lands on a blocked
+ * gateway plays nowhere: the in-app player spins forever and the TV sits
+ * on its cast loading screen with dead remote controls (owner's cast
+ * report, 2026-10-09). Tokens are node-agnostic, so probe the pool with
+ * the SAME transport the proxy uses (plain fetch + Range) and rewrite
+ * every URL's host to a gateway the server can actually fetch.
+ * ----------------------------------------------------------------------- */
+
+async function wcoNodeOk(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": UA, Referer: WCO_REFERER, Accept: "*/*", Range: "bytes=0-1" },
+      cache: "no-store",
+      redirect: "follow",
+      signal: AbortSignal.timeout(3_500),
+    });
+    void res.body?.cancel().catch(() => undefined);
+    return res.status === 200 || res.status === 206;
+  } catch {
+    return false;
+  }
+}
+
+/** Re-host a WCO getvid URL onto `node`; null when `url` isn't a WCO URL. */
+function wcoOnNode(url: string, node: string): string | null {
+  try {
+    const u = new URL(url);
+    if (!/\.wcostream\.com$/i.test(u.hostname) || !/^\/getvid$/i.test(u.pathname)) return null;
+    u.hostname = `${node}.wcostream.com`;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Probe `stream.src` across the gateway pool (current node first, then the
+ * verified-healthy set) and re-host the whole stream — src, every quality
+ * encode and the caption track — onto the first gateway that answers from
+ * the server side. One gateway serves every token (they are node-agnostic),
+ * so a single verified host covers the entire ladder. If nothing answers,
+ * return the stream unchanged: playback will surface the failure honestly.
+ */
+async function wcoVerifyServerFetchable(stream: WcoStream): Promise<WcoStream> {
+  const current = stream.src.match(/^https:\/\/(u\d+)\.wcostream\.com\//i)?.[1] ?? null;
+  const pool = [current, ...WCO_NODES_PRIMARY, ...WCO_NODES_REST.slice(0, 2)]
+    .filter((n): n is string => !!n)
+    .filter((n, i, arr) => arr.indexOf(n) === i)
+    .slice(0, 8);
+  for (const node of pool) {
+    const candidate = wcoOnNode(stream.src, node);
+    if (!candidate) return stream; // not a WCO getvid URL — nothing to verify
+    if (!(await wcoNodeOk(candidate))) continue;
+    if (candidate === stream.src) return stream; // pinned node already healthy
+    const rehost = (u: string) => wcoOnNode(u, node) ?? u;
+    return {
+      ...stream,
+      src: candidate,
+      qualities: stream.qualities?.map((q) => ({ ...q, src: rehost(q.src) })),
+      subtitles: stream.subtitles.map((s) => ({ ...s, src: rehost(s.src) })),
+    };
+  }
+  return stream;
+}
+
 /**
  * Resolve one episode of a WCO entry (malId = 999900 + season) to a direct
  * MP4. Episodes imported by the freshness scrape aren't in the baked
@@ -256,11 +325,11 @@ export async function wcoStreamSlug(slug: string, key: string): Promise<WcoStrea
       );
       const live = probed.filter((q): q is { height: number; src: string } => !!q.src);
       if (live.length) {
-        const out: WcoStream = {
+        const out = await wcoVerifyServerFetchable({
           src: live[0].src,
           subtitles,
           qualities: live.map((q) => ({ height: q.height, src: q.src })),
-        };
+        });
         cache.set(key, { data: out, expires: Date.now() + TTL_MS });
         return out;
       }

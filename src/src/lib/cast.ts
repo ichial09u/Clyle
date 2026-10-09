@@ -75,6 +75,46 @@ function notifyMediaError(msg: string) {
   });
 }
 
+/* ---- stuck-load watchdog ------------------------------------------------
+ * loadMedia() resolving only means the receiver ACCEPTED the request. If
+ * the media URL can't actually be fetched by the TV (CDN blocks the
+ * proxy's datacenter IP, dead gateway), the receiver sits on its loading
+ * screen forever while the remote shows dead 0:00/0:00 controls — exactly
+ * the owner's cast report (2026-10-09). Watch the status briefly after
+ * each load: no duration and no position progress within 12s = the stream
+ * never loaded — say so with an actionable message instead of leaving
+ * silent dead controls. Disarms itself the moment the media is real.
+ * ----------------------------------------------------------------------- */
+let stuckWatchdog: number | null = null;
+function disarmStuckWatchdog() {
+  if (stuckWatchdog != null) {
+    window.clearInterval(stuckWatchdog);
+    stuckWatchdog = null;
+  }
+}
+function armStuckLoadWatchdog() {
+  if (typeof window === "undefined" || demoHook) return;
+  disarmStuckWatchdog();
+  const startedAt = Date.now();
+  stuckWatchdog = window.setInterval(() => {
+    if (currentState !== "casting") {
+      disarmStuckWatchdog();
+      return;
+    }
+    const dur = castDuration();
+    const pos = castPosition();
+    if ((dur != null && dur > 0) || (pos != null && pos > 0)) {
+      disarmStuckWatchdog(); // media is real and moving — normal remote operation
+      return;
+    }
+    if (Date.now() - startedAt > 12_000) {
+      disarmStuckWatchdog();
+      noteTrail("stuck-loading");
+      notifyMediaError("The TV can't load this stream — try Server 2, or stop casting and cast again");
+    }
+  }, 1_000);
+}
+
 /**
  * Squeeze every byte of meaning out of a cast failure. CAF rejections come
  * in many shapes: undefined, empty object, {errorCode}, {code, description},
@@ -365,6 +405,7 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
         notifyMediaError("The TV couldn't play this stream — try another server or quality");
       }
     });
+    armStuckLoadWatchdog();
     setState("casting");
     return { ok: true };
   } catch (err: unknown) {
@@ -455,6 +496,7 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     attachCaptions(chromeCast, mediaInfo, request, req.captions);
     // loadMedia resolves VOID in CAF — the client comes off the session
     refs.media = resolveClient(refs.session, await refs.session.loadMedia(request));
+    armStuckLoadWatchdog();
     return true;
   } catch {
     // the session died mid-series — drop it so the next Cast tap re-prompts
@@ -467,6 +509,7 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
 
 /** Stop casting and give playback back to the device. */
 export function castStop(): void {
+  disarmStuckWatchdog();
   try {
     refs.media = null;
     refs.session?.endCurrentSession?.(true);

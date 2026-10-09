@@ -50,6 +50,28 @@ export const PROXY_SUFFIXES: string[] = [
   ".wcostream.com", // WCO source (South Park) — video hosts rotate (e01/u14/…), plain signed URLs
 ];
 
+/**
+ * WCO (South Park) video gateway pool. The getvid&json response pins the
+ * playback URL to ONE `uNN` gateway, but the gateways are interchangeable:
+ * the same evid token serves from any of them (verified 2026-10-09 across
+ * u10/u13/u29/u32/u42). The catch: ~80% of the pool 403s datacenter IPs —
+ * exactly where our resolvers, the playback proxy and the Chromecast
+ * receiver all live — so a resolve that lands on a blocked gateway plays
+ * nowhere (in-app spinner forever; TV stuck on its cast loading screen
+ * with dead remote controls — the owner's 2026-10-09 cast report).
+ * PRIMARY = gateways verified answering 206 through the production proxy
+ * (datacenter IP) on 2026-10-09, healthy-first order. REST = the remaining
+ * live hostnames (DNS-checked same day) as last-resort fallbacks for when
+ * the healthy set rots; retries stay capped so a dead pool can't stall a
+ * request for more than a few seconds (blocked nodes answer 403 in ~300ms).
+ */
+export const WCO_NODES_PRIMARY = ["u13", "u15", "u19", "u28", "u29", "u30"];
+export const WCO_NODES_REST = [
+  "u10", "u11", "u12", "u14", "u16", "u17", "u18", "u20", "u21", "u22", "u23",
+  "u24", "u25", "u26", "u27", "u31", "u32", "u33", "u34", "u35", "u36", "u37",
+  "u38", "u39", "u40", "u41", "u42", "u43", "u44",
+];
+
 /** Allow a host for proxying, remembering which Referer it expects. */
 export function allowHostWithReferer(hostname: string, referer: string | undefined): void {
   const h = hostname.toLowerCase();

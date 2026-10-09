@@ -6,6 +6,8 @@ import {
   refererForHost,
   isAllowedHost,
   PROXY_SUFFIXES,
+  WCO_NODES_PRIMARY,
+  WCO_NODES_REST,
   ZOKO_REFERER,
 } from "@/lib/stream-proxy-registry";
 import { flixStoredMaster, FLIX_REFERER } from "@/lib/flixcloud";
@@ -505,6 +507,46 @@ export async function GET(req: Request) {
       signal: AbortSignal.timeout(25_000),
     }).catch(() => null);
     if (!res) continue; // transient transport failure — retry
+    // WCO video gateways: ~80% of the uNN pool 403s datacenter IPs (where
+    // this lambda and the cast receiver live), and getvid&json pins the URL
+    // to one gateway at random. Tokens are NODE-AGNOSTIC (same evid serves
+    // from any gateway — verified 2026-10-09), so on a dead gateway retry
+    // the same evid across the healthy-first pool instead of handing the
+    // player/TV a 502 (the "cast stuck loading, remote dead" report).
+    // Blocked nodes answer 403 in ~300ms, so the sweep costs ~2-3s worst case.
+    if (
+      /\.wcostream\.com$/i.test(target.hostname) &&
+      /^\/getvid$/i.test(target.pathname) &&
+      (res.status === 403 || res.status === 404 || res.status >= 500)
+    ) {
+      void res.body?.cancel().catch(() => undefined);
+      const current = target.hostname.replace(/\.wcostream\.com$/i, "");
+      const pool = [...WCO_NODES_PRIMARY, ...WCO_NODES_REST.slice(0, 3)].filter((n) => n !== current);
+      let recovered: Response | null = null;
+      let winner: URL | null = null;
+      for (const node of pool) {
+        const candidate = new URL(target.toString());
+        candidate.hostname = `${node}.wcostream.com`;
+        const retry = await fetch(candidate.toString(), {
+          headers: upstreamHeaders,
+          cache: "no-store",
+          redirect: "follow",
+          signal: AbortSignal.timeout(25_000),
+        }).catch(() => null);
+        if (retry && retry.status !== 403 && retry.status !== 404 && retry.status < 500) {
+          recovered = retry;
+          winner = candidate;
+          break;
+        }
+        void retry?.body?.cancel().catch(() => undefined);
+        if (retry && retry.status === 404) break; // token invalid for this client — hosts won't help
+      }
+      if (recovered && winner) {
+        target = winner;
+        upstream = recovered;
+        break;
+      }
+    }
     upstream = res;
     break;
   }

@@ -84,7 +84,10 @@ export async function GET(req: Request) {
   // SpCaption) rides along as the episode's caption track — the player's
   // CC panel and drift sync pick it up like any other source's subs.
   const animeRow = await db.anime.findUnique({ where: { malId }, select: { source: true } });
-  if (animeRow?.source === "wco") {
+  // the retired single-entry aggregator (999999) lost its Anime row when the
+  // franchise spread out per season — stale deep links / session stacks must
+  // still resolve (wcoStream maps 999999 by flat number), not 404
+  if (animeRow?.source === "wco" || (!animeRow && malId >= 999900 && malId <= 999999)) {
     const wantLm2 = server === "kiwi"; // Server 2 = LookMovie2
     // BOTH sites play PROXIED — that is the path proven on real devices, and
     // with the proxy's Range passthrough the <video> element can seek inside
