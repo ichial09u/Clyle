@@ -257,7 +257,14 @@ async function respond(
   malId: number,
   ep: number,
   lang: Lang,
-  stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
+  stream: {
+    src: string;
+    subtitles: Array<{ lang: string; label: string; src: string }>;
+    skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } };
+    /** per-quality direct sources (South Park's WCO encodes / LM2 masters) —
+     * passed straight to the player's quality sheet + download chips */
+    qualities?: Array<{ height: number; src: string }>;
+  },
   serverUsed: ServerId,
   provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | "wco" | "lm2" | ServerId,
   referer?: string | null,
@@ -274,15 +281,22 @@ async function respond(
   // options: old shows list 360p only, never a 1080p that doesn't exist.
   // Only resolvable for direct URLs (proxy-served synthesized masters are
   // skipped — the fallback ladder applies there).
-  const heights = /^https?:\/\//i.test(stream.src)
-    ? await episodeHeights(malId, ep, lang, stream.src, referer).catch(() => null)
-    : null;
+  // South Park arrives with the ladder ALREADY resolved per-encode
+  // (stream.qualities) — progressive MP4s have no master to parse, so the
+  // runtime probe below would fetch a whole movie for nothing.
+  const qualitySrcs = stream.qualities?.length ? [...stream.qualities].sort((a, b) => b.height - a.height) : null;
+  const heights = qualitySrcs
+    ? qualitySrcs.map((q) => q.height)
+    : /^https?:\/\//i.test(stream.src)
+      ? await episodeHeights(malId, ep, lang, stream.src, referer).catch(() => null)
+      : null;
   return NextResponse.json(
     {
       ...enriched,
       serverUsed,
       provider,
       ...(heights && heights.length ? { heights } : {}),
+      ...(qualitySrcs ? { qualitySrcs } : {}),
       // backup dub sources need their Referer riding along on every proxy
       // fetch (rf param) — the player forwards it on the first playlist call
       ...(referer ? { referer } : {}),

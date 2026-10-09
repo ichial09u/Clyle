@@ -16,13 +16,15 @@
  * Run from the inner project root:  cd /home/z/my-project/src && node ../scripts/deploy-vercel-api.mjs
  */
 import { createHash } from "node:crypto";
-import { readFileSync, statSync } from "node:fs";
+import { readFileSync, statSync, writeFileSync, unlinkSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { join } from "node:path";
 
 const TOKEN = "vcp_1QC4skvTCp5i2AzJJGXjz7JxfsEYtoHn6RpGwguTLKdzZbvOFN1Oyy1I";
 const TEAM = "team_GNdBOfbmGh6IvtRPBoDbSGtK";
 const PROJECT_NAME = "temporary-spry-granite-1f0h7ae";
+const PROD_URL = `https://${PROJECT_NAME}.vercel.app`;
+const OWNER_TOKEN = "clyle-owner-4f8e2d1c9b7a6f3e";
 const ROOT = process.cwd();
 
 const EXCLUDE = [
@@ -45,6 +47,51 @@ const api = async (path, init = {}) => {
   });
   return res;
 };
+
+// ---------- pre-deploy data merge ----------
+// Every deployment packages src/db/custom.db. Serverless instances start
+// from THAT copy, and the ntfy global log they harvest only retains ~12h —
+// so anything the live site accumulated since the last deploy (watch
+// seconds behind "Most Watched", comments, users, per-device progress,
+// push subs) had to be carried forward HERE or fresh instances started
+// stale and different devices landed on different lists. The old zip
+// deploy did this (build-deploy-zip.sh); the raw-API switch dropped it.
+// Restore it: pull /api/export from the CURRENT production and max-merge
+// into the repo DB before any file is hashed or uploaded.
+async function mergeProdData() {
+  const tmp = join(ROOT, "db", "prod-export.tmp.json");
+  try {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 60_000);
+    const res = await fetch(`${PROD_URL}/api/export`, {
+      headers: { "x-clyle-owner": OWNER_TOKEN },
+      signal: ac.signal,
+      cache: "no-store",
+    });
+    clearTimeout(timer);
+    if (!res.ok) throw new Error(`export ${res.status}`);
+    const text = await res.text();
+    JSON.parse(text); // validate before saving
+    writeFileSync(tmp, text);
+  } catch (err) {
+    console.warn(`pre-deploy merge: production export unavailable (${err instanceof Error ? err.message : err}) — deploying the local DB as-is`);
+    return;
+  }
+  try {
+    const out = execSync("node ../scripts/merge-comments.mjs db/prod-export.tmp.json", {
+      cwd: ROOT, // src/ — resolves @prisma/client from src/node_modules
+      encoding: "utf8",
+      env: { ...process.env, DATABASE_URL: "file:/home/z/my-project/src/db/custom.db" },
+      maxBuffer: 32 * 1024 * 1024,
+    });
+    console.log(out.trim().split("\n").slice(-6).join("\n"));
+  } catch (err) {
+    console.warn("pre-deploy merge: merge-comments.mjs failed — deploying the local DB as-is:", err instanceof Error ? err.message : err);
+  } finally {
+    try { unlinkSync(tmp); } catch { /* ignore */ }
+  }
+}
+await mergeProdData();
 
 // ---------- manifest ----------
 const all = execSync("git ls-files", { cwd: ROOT, encoding: "utf8", maxBuffer: 256 * 1024 * 1024 })

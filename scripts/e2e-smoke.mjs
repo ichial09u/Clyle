@@ -202,6 +202,7 @@ async function expectJson(name, path, init, validate, timeout) {
     let spSrc = "";
     let spSubs = [];
     let spSkip;
+    let spQualities = [];
     const sp = await expectJson(
       "GET /api/stream South Park S1E1 (proxied WCO MP4 + vendored CC + intro skip)",
       "/api/stream?malId=999901&ep=1&lang=sub&server=zoko",
@@ -214,10 +215,20 @@ async function expectJson(name, path, init, validate, timeout) {
         spSrc = typeof b?.src === "string" ? b.src : "";
         spSubs = Array.isArray(b?.subtitles) ? b.subtitles : [];
         spSkip = b?.skip;
+        spQualities = Array.isArray(b?.qualitySrcs) ? b.qualitySrcs : [];
         return ok;
       },
     );
     record("South Park stream resolve latency sane", sp ? Date.now() - t0 < 30_000 : false, sp ? `${Date.now() - t0}ms` : "no stream");
+    // quality task: the payload must carry the episode's REAL encode ladder —
+    // every entry a resolvable source with a sane height, sorted best-first
+    {
+      const ok =
+        spQualities.length >= 1 &&
+        spQualities.every((q) => Number.isFinite(q?.height) && q.height > 0 && typeof q?.src === "string" && q.src.startsWith("https://")) &&
+        spQualities.every((q, i) => i === 0 || spQualities[i - 1].height >= q.height);
+      record("South Park S1E1 payload carries real quality ladder (qualitySrcs)", ok, JSON.stringify(spQualities.map((q) => q.height)).slice(0, 60));
+    }
     // CC task: WCO ships no caption tracks for the show — the vendored English
     // WebVTT (SpCaption, baked in the packaged DB) must ride the payload and
     // the same-origin captions route must serve a real VTT document.

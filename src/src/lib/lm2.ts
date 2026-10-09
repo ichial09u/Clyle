@@ -46,6 +46,8 @@ const inFlight = new Map<string, Promise<Lm2Stream | null>>();
 export interface Lm2Stream {
   src: string;
   subtitles: Array<{ lang: string; label: string; src: string }>;
+  /** every quality master that answered #EXTM this resolve (best first) */
+  qualities?: Array<{ height: number; src: string }>;
 }
 
 /**
@@ -140,7 +142,10 @@ interface AccessPayload {
  * (~1-in-3 live, verified by repeated probes 2026-10-09). Resolving = retry
  * access until a master whose body starts with #EXTM shows up.
  */
-async function liveStreamFromAccess(fetchPayload: () => Promise<AccessPayload | null>, attempts = 10): Promise<{ src: string } | null> {
+async function liveStreamFromAccess(
+  fetchPayload: () => Promise<AccessPayload | null>,
+  attempts = 10,
+): Promise<{ src: string; qualities: Array<{ height: number; src: string }> } | null> {
   for (let i = 0; i < attempts; i++) {
     const payload = await fetchPayload();
     if (!payload?.success || !payload.streams) continue;
@@ -149,10 +154,19 @@ async function liveStreamFromAccess(fetchPayload: () => Promise<AccessPayload | 
       .map(([k, v]) => [k.replace(/\D/g, ""), v] as const)
       .filter(([q, v]) => v && /^https?:\/\//.test(v) && ["1080", "720", "480", "360"].includes(q))
       .sort((a, b) => Number(b[0]) - Number(a[0]));
-    for (const [, url] of byQuality) {
-      const out = await curlGet(url as string, {}, 20_000);
-      if (out && out.status === 200 && out.body.trimStart().startsWith("#EXTM")) return { src: url as string };
-    }
+    if (!byQuality.length) continue;
+    // The storage cluster answers live-HLS or 200-wrapped "WRONG HASH!"
+    // PER FETCH, and each quality is its own master — so probe them ALL in
+    // parallel and keep every survivor. The best live one plays; the rest
+    // feed the player's quality sheet (owner: real 360/480/720/1080 ladder).
+    const probed = await Promise.all(
+      byQuality.map(async ([q, url]) => {
+        const out = await curlGet(url as string, {}, 20_000);
+        return out && out.status === 200 && out.body.trimStart().startsWith("#EXTM") ? { height: Number(q), src: url as string } : null;
+      }),
+    );
+    const live = probed.filter((x): x is { height: number; src: string } => !!x);
+    if (live.length) return { src: live[0].src, qualities: live };
   }
   return null;
 }
@@ -202,7 +216,7 @@ export async function lm2Stream(malId: number, ep: number): Promise<Lm2Stream | 
     // English captions ride the app's own /api/captions/sp route (vendored
     // SpCaption) — LM2's /storage4 VTT paths are session-bound and useless
     // for the player.
-    return { src: live.src, subtitles: [] };
+    return { src: live.src, subtitles: [], qualities: live.qualities };
   })();
 
   inFlight.set(key, job);

@@ -12,7 +12,12 @@
  * Usage: node scripts/merge-comments.mjs db/export-comments.tmp.json
  */
 import { readFileSync, unlinkSync } from "node:fs";
-import { PrismaClient } from "@prisma/client";
+import { createRequire } from "node:module";
+
+// ESM resolves bare specifiers relative to THIS file (scripts/ has no
+// node_modules) — anchor the resolution at the app's package.json instead,
+// so the deploy script can spawn this from any cwd.
+const { PrismaClient } = createRequire("/home/z/my-project/src/package.json")("@prisma/client");
 
 const db = new PrismaClient();
 const file = process.argv[2];

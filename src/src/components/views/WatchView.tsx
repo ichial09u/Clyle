@@ -29,7 +29,7 @@ type DeviceDl = { phase: "fetching" | "done" | "error"; received: number; total:
 const isProgressiveSrc = (src?: string | null): boolean =>
   !!src && !/\.m3u8($|\?)/i.test(src) && !src.startsWith("/api/");
 
-type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[]; /** true = play the raw URL in <video> (WCO MP4s: fingerprint-gated for server fetches, browser-direct works; no CORS needed without crossOrigin) */ direct?: boolean };
+type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[]; /** true = play the raw URL in <video> (WCO MP4s: fingerprint-gated for server fetches, browser-direct works; no CORS needed without crossOrigin) */ direct?: boolean; /** per-quality DIRECT sources for non-HLS episodes (South Park's WCO encodes 360/720/1080, LM2's per-quality masters) — the quality sheet swaps between them by reloading the <video>/hls with the picked src */ qualitySrcs?: Array<{ height: number; src: string }> };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -246,6 +246,14 @@ export default function WatchView({
   const [buffered, setBuffered] = useState(0);
   const [levels, setLevels] = useState<Array<Level>>([]);
   const [quality, setQuality] = useState<"auto" | number>("auto");
+  // non-HLS quality picking (South Park): index into stream.qualitySrcs that
+  // the player is currently running (null = the resolver's original pick).
+  // Switching RELOADS the source (an MP4 can't jump renditions like hls.js
+  // does) — the spot is staged first so the reload resumes exactly here.
+  const [manualQ, setManualQ] = useState<number | null>(null);
+  const manualSwapRef = useRef(false); // the attach effect must not reset the selection on its own re-run
+  // which source the download sheet exports (null = the playing one)
+  const [dlSrc, setDlSrc] = useState<{ src: string; label: string } | null>(null);
   const [speed, setSpeed] = useState(1);
   const [subsOn, setSubsOn] = useState(true);
   // which caption language the user picked (index into stream.subtitles);
@@ -462,6 +470,34 @@ export default function WatchView({
     window.addEventListener("pointerdown", reassert);
     const video = videoRef.current;
     video?.addEventListener("play", attempt);
+    /* -------- the "flipped back to vertical mid-playback" bug --------
+       The OS can drop the landscape lock while the player is OPEN (app
+       switch, incoming call, PWA weirdness, a roam between Wi-Fi networks)
+       — the device then rotates to portrait on its own while the episode
+       keeps playing. None of the resume events above fire for that, so the
+       player stayed vertical until the user poked the screen. Listen to the
+       orientation itself: the moment it reads portrait while we're mounted,
+       re-assert the landscape lock (burst-retried, since the first attempt
+       right after a rotate can land while the activity is still settling).
+       Devices without a lock (iOS Safari) silently ignore it, as everywhere
+       else in this file. */
+    const onOrient = () => {
+      try {
+        const type = screen.orientation?.type ?? "";
+        if (type.startsWith("portrait")) {
+          // burst-retry: the first re-lock right after a rotate can land
+          // while the activity is still settling and silently no-op
+          [0, 250, 700, 1_400].forEach((d) =>
+            window.setTimeout(() => {
+              if (!stopped) attempt();
+            }, d),
+          );
+        }
+      } catch {
+        /* no Orientation API — nothing to react to */
+      }
+    };
+    screen.orientation?.addEventListener?.("change", onOrient);
     return () => {
       stopped = true;
       document.removeEventListener("visibilitychange", onVis);
@@ -469,6 +505,7 @@ export default function WatchView({
       window.removeEventListener("focus", reassert);
       window.removeEventListener("pointerdown", reassert);
       video?.removeEventListener("play", attempt);
+      screen.orientation?.removeEventListener?.("change", onOrient);
     };
   }, []);
 
@@ -758,6 +795,7 @@ export default function WatchView({
 
   const startDeviceDownload = async () => {
     if (!stream?.src || deviceDl?.phase === "fetching") return;
+    const dlSrc2 = dlSrc?.src ?? stream.src;
     const ctrl = new AbortController();
     deviceDlAbortRef.current = ctrl;
     setDeviceDl({ phase: "fetching", received: 0, total: 0 });
@@ -766,7 +804,7 @@ export default function WatchView({
       // bounded 8 MB Range windows (the same seek-fix path playback uses) —
       // live progress, cancelable, then handed to the browser as a real .mp4.
       // (The old flow shipped the viewer out to a third-party download page.)
-      const url = proxyUrl(stream.src, "seg", stream.referer, stream.pk);
+      const url = proxyUrl(dlSrc2, "seg", stream.referer, stream.pk);
       const WIN = 8 * 1024 * 1024;
       const chunks: BlobPart[] = [];
       let received = 0;
@@ -800,7 +838,8 @@ export default function WatchView({
       const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = objUrl;
-      a.download = `${(anime.title || "episode").replace(/[\\/:*?"<>|]+/g, "").trim()} — E${episode}.mp4`;
+      const qTag = dlSrc && !/original/i.test(dlSrc.label) ? ` ${dlSrc.label}` : "";
+      a.download = `${(anime.title || "episode").replace(/[\\/:*?"<>|]+/g, "").trim()} — E${episode}${qTag}.mp4`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -891,7 +930,7 @@ export default function WatchView({
           // dropping it used to push the whole file through the proxy, whose
           // seg path ignored Range (200 full-body), so EVERY forward seek
           // (progress bar, Skip Intro) reset the media element to 0.
-          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined, direct: data.direct === true });
+          setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined, direct: data.direct === true, qualitySrcs: Array.isArray(data.qualitySrcs) ? data.qualitySrcs : undefined });
           // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
           // network) kick in when neither Zoko nor Kiwi carries a real dub —
           // say so, it explains any minor differences (sub style, quality ladder)
@@ -1104,7 +1143,19 @@ export default function WatchView({
     let destroyed = false;
 
     setLevels([]);
-    setQuality("auto");
+    // a NEW stream (episode/server/language change) resets the quality pick;
+    // a re-run caused by a manual quality swap keeps it
+    if (!manualSwapRef.current) {
+      setManualQ(null);
+      setQuality("auto");
+      setDlSrc(null);
+    }
+    manualSwapRef.current = false;
+    // the source actually playing: the manual quality pick when set, else the
+    // resolver's original (its best/first encode)
+    const qsrcs = stream.qualitySrcs ?? [];
+    const manualSrc = manualQ != null && qsrcs[manualQ] ? qsrcs[manualQ].src : null;
+    const playSrc = manualSrc ?? stream.src;
 
     const startPlayback = () => {
       if (destroyed) return;
@@ -1139,13 +1190,15 @@ export default function WatchView({
       video.play().catch(() => undefined);
     };
 
-    if (stream.src && !/\.m3u8($|\?)/i.test(stream.src)) {
+    if (playSrc && !/\.m3u8($|\?)/i.test(playSrc)) {
       // progressive source (SupaPlay DUB backfill ships signed MP4s) —
       // hls.js can't take these; the native video element plays them directly.
       // WCO sources (direct: true) play the RAW URL — their CDN fingerprints
       // out server-side fetches (proxy = 403) while real browsers stream fine.
       setLevels([]);
-      video.src = stream.direct ? stream.src : proxyUrl(stream.src, "seg", stream.referer);
+      // manual quality picks for a direct-source episode are the SAME kind of
+      // URL (WCO getvid MP4s) — equally safe to play browser-direct
+      video.src = stream.direct ? playSrc : proxyUrl(playSrc, "seg", stream.referer);
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (Hls.isSupported()) {
       const hls = new Hls({
@@ -1162,7 +1215,7 @@ export default function WatchView({
       hlsRef.current = hls;
       let netRetries = 0; // fatal-network recoveries before we give up honestly
       let mediaRetries = 0; // fatal-media recoveries before the honest Retry UI
-      hls.loadSource(proxyUrl(stream.src, "m3u8", stream.referer, stream.pk));
+      hls.loadSource(proxyUrl(playSrc, "m3u8", stream.referer, stream.pk));
       hls.attachMedia(video);
       // dual-audio masters (the FlixCloud dub embeds carry Japanese + English
       // tracks with Japanese flagged default): lang=dub must actually SPEAK
@@ -1207,7 +1260,7 @@ export default function WatchView({
       });
     } else if (video.canPlayType("application/vnd.apple.mpegurl")) {
       // Safari native HLS
-      video.src = proxyUrl(stream.src, "m3u8", stream.referer, stream.pk);
+      video.src = proxyUrl(playSrc, "m3u8", stream.referer, stream.pk);
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (!destroyed) {
       setStreamError(true);
@@ -1220,7 +1273,7 @@ export default function WatchView({
       video.removeAttribute("src");
       video.load();
     };
-  }, [stream, iframeFallback]);
+  }, [stream, iframeFallback, manualQ]);
 
   /* -------- video element events -------- */
   useEffect(() => {
@@ -1410,7 +1463,24 @@ export default function WatchView({
     // it across the switch — hls.currentLevel changes are seamless and do
     // NOT restart playback
     saveNow();
-    if (hlsRef.current) hlsRef.current.currentLevel = q === "auto" ? -1 : q;
+    if (hlsRef.current && levels.length > 0) {
+      hlsRef.current.currentLevel = q === "auto" ? -1 : q;
+      setManualQ(null);
+      return;
+    }
+    // no hls renditions: per-quality sources (South Park's WCO encodes,
+    // LM2's per-quality masters). MP4s can't switch renditions in place —
+    // stage the spot, then reload the player with the picked source; the
+    // attach effect resumes exactly where playback was.
+    const qsrcs = stream?.qualitySrcs ?? [];
+    if (qsrcs.length) {
+      const idx = q === "auto" ? null : typeof q === "number" && qsrcs[q] ? q : null;
+      if (idx === manualQ) return;
+      manualSwapRef.current = idx != null; // keep the checkmark through the reload
+      stageSpot();
+      setManualQ(idx);
+      setPanel(null);
+    }
   };
 
   /** Save the current spot so an upcoming stream swap resumes EXACTLY here
@@ -2073,7 +2143,7 @@ export default function WatchView({
                       // same payload validation as the main resolve path — a
                       // 200-with-no-src used to rebuild the u=undefined playlist
                       if (d && typeof d.src === "string" && d.src) {
-                        setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined, direct: d.direct === true });
+                        setStream({ src: d.src, subtitles: d.subtitles ?? [], skip: d.skip, referer: d.referer ?? null, pk: d.pk ?? null, heights: Array.isArray(d.heights) ? d.heights : undefined, direct: d.direct === true, qualitySrcs: Array.isArray(d.qualitySrcs) ? d.qualitySrcs : undefined });
                       } else {
                         setStreamError(true);
                       }
@@ -2307,19 +2377,31 @@ export default function WatchView({
                   </li>
                   {/* ALL levels the stream offers — highest first. Switching is
                       seamless: hls jumps rendition without restarting the
-                      video, and the spot is saved the moment you tap. */}
-                  {[...levels]
-                    .map((l, i) => ({ l, i }))
-                    .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0) || (b.l.bitrate ?? 0) - (a.l.bitrate ?? 0))
-                    .map(({ l, i }) => (
-                      <li key={i}>
-                        <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
-                          {quality === i ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
-                          {l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`}
-                        </button>
-                      </li>
-                    ))}
-                  {levels.length === 0 ? (
+                      video, and the spot is saved the moment you tap.
+                      No renditions? Then per-quality sources (South Park's
+                      WCO encodes / LM2 masters) — picking one reloads the
+                      player with that source and resumes the exact spot. */}
+                  {levels.length > 0
+                    ? [...levels]
+                        .map((l, i) => ({ l, i }))
+                        .sort((a, b) => (b.l.height ?? 0) - (a.l.height ?? 0) || (b.l.bitrate ?? 0) - (a.l.bitrate ?? 0))
+                        .map(({ l, i }) => (
+                          <li key={i}>
+                            <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
+                              {quality === i ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                              {l.height ? `${l.height}p` : `${Math.round((l.bitrate ?? 0) / 1000)}k`}
+                            </button>
+                          </li>
+                        ))
+                    : (stream?.qualitySrcs ?? []).map((qs, i) => (
+                        <li key={qs.src}>
+                          <button onClick={() => applyQuality(i)} className={`flex items-center gap-2 text-[13px] ${quality === i ? "text-[#ff5252]" : "text-gray-300"}`}>
+                            {quality === i ? <Check className="w-4 h-4 text-[#d32f2f]" /> : <span className="w-4 h-4 rounded-sm border border-[#3a3a3a] inline-block" />}
+                            {qs.height}p
+                          </button>
+                        </li>
+                      ))}
+                  {levels.length === 0 && !(stream?.qualitySrcs ?? []).length ? (
                     <li className="text-[11.5px] text-gray-500">Single quality for this episode</li>
                   ) : null}
                 </ul>
@@ -2474,6 +2556,30 @@ export default function WatchView({
                   const mb = (n: number) => `${(n / 1048576).toFixed(1)} MB`;
                   return (
                     <>
+                      {/* per-quality export for direct-file episodes — pick
+                          the encode, Clyle downloads exactly that file */}
+                      {(stream?.qualitySrcs ?? []).length > 0 ? (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <button
+                            onClick={() => setDlSrc(null)}
+                            className={`px-3 py-1.5 rounded-full text-[11.5px] font-semibold border transition ${dlSrc === null ? "bg-[#d32f2f] border-[#d32f2f] text-white" : "bg-[#1c1c1c] border-[#333] text-gray-300 hover:border-[#555]"}`}
+                          >
+                            Original
+                          </button>
+                          {(stream?.qualitySrcs ?? []).map((qs) => {
+                            const active = dlSrc?.src === qs.src;
+                            return (
+                              <button
+                                key={qs.src}
+                                onClick={() => setDlSrc({ src: qs.src, label: `${qs.height}p` })}
+                                className={`px-3 py-1.5 rounded-full text-[11.5px] font-semibold border transition ${active ? "bg-[#d32f2f] border-[#d32f2f] text-white" : "bg-[#1c1c1c] border-[#333] text-gray-300 hover:border-[#555]"}`}
+                              >
+                                {qs.height}p
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : null}
                       {deviceDl?.phase === "fetching" ? (
                         <>
                           <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">

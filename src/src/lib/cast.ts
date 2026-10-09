@@ -302,6 +302,39 @@ function refreshLiveSession(context: any): boolean {
   return false;
 }
 
+/**
+ * CAF's CastSession.loadMedia() resolves VOID — the controllable object is
+ * the RemoteMediaClient handed out by session.getMediaSession(). Treating
+ * the resolution itself as the media object is what produced the owner's
+ * "Cannot read properties of undefined (reading 'addUpdateListener')"
+ * cast failure (the media HAD loaded on the TV; the sender then crashed on
+ * undefined). Legacy v2 callers get the Media object back, so accept both
+ * shapes: prefer the session's client, fall back to whatever loadMedia
+ * returned.
+ */
+function resolveClient(session: any, loaded: any): any {
+  try {
+    const viaSession = session?.getMediaSession?.();
+    if (viaSession) return viaSession;
+  } catch {
+    /* fall through to the loaded shape */
+  }
+  return loaded ?? null;
+}
+
+/** MediaStatus accessor for both API shapes (RemoteMediaClient.getMediaStatus()
+ * vs the v2 Media object's .status property). */
+function statusOf(media: any): any {
+  if (!media) return null;
+  try {
+    const st = media.getMediaStatus?.();
+    if (st) return st;
+  } catch {
+    /* fall through */
+  }
+  return media.status ?? null;
+}
+
 /** Ask the user to pick a device, then load the episode. Returns success. */
 export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; error?: string }> {
   try {
@@ -318,12 +351,16 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     }
     if (!refs.session) throw new Error("No Chromecast selected");
 
-    const media = await loadMediaWithRecovery(context, chromeCast, req);
-    refs.media = media;
-    media.addUpdateListener?.(() => {
+    const loaded = await loadMediaWithRecovery(context, chromeCast, req);
+    const client = resolveClient(refs.session, loaded);
+    refs.media = client;
+    // the load ALREADY succeeded once loadMedia resolved — a missing client
+    // must never fail the cast (worst case: remote controls degrade to the
+    // receiver's own UI)
+    client?.addUpdateListener?.(() => {
       // if playback finished / errored on the big screen, keep state honest
-      const st = media.status?.playerState;
-      if (st === "IDLE" && media.status?.idleReason === "ERROR") {
+      const st = statusOf(client);
+      if (st?.playerState === "IDLE" && st?.idleReason === "ERROR") {
         noteTrail("receiver-media-error");
         notifyMediaError("The TV couldn't play this stream — try another server or quality");
       }
@@ -364,7 +401,10 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
  */
 async function loadMediaWithRecovery(context: any, chromeCast: any, req: CastMediaRequest): Promise<any> {
   const build = () => {
-    const mediaInfo = new chromeCast.media.MediaInfo(req.src, "application/x-mpegurl");
+    // the Default Media Receiver sniffs better with the honest type: our SP
+    // sources are progressive MP4s, everything else is an HLS master
+    const type = /\.m3u8($|\?)/i.test(req.src) ? "application/x-mpegurl" : "video/mp4";
+    const mediaInfo = new chromeCast.media.MediaInfo(req.src, type);
     const metadata = new chromeCast.media.GenericMediaMetadata();
     metadata.title = req.title;
     if (req.subtitle) metadata.subtitle = req.subtitle;
@@ -403,7 +443,8 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     // a session that died since the last episode (phone slept, Wi-Fi blip)
     // must not explode inside loadMedia — verify it is still alive first
     if (!refreshLiveSession(context) || !refs.session) return false;
-    const mediaInfo = new chromeCast.media.MediaInfo(req.src, "application/x-mpegurl");
+    const type = /\.m3u8($|\?)/i.test(req.src) ? "application/x-mpegurl" : "video/mp4";
+    const mediaInfo = new chromeCast.media.MediaInfo(req.src, type);
     const metadata = new chromeCast.media.GenericMediaMetadata();
     metadata.title = req.title;
     if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
@@ -412,7 +453,8 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     request.autoplay = true;
     request.currentTime = Math.max(0, req.startTime ?? 0);
     attachCaptions(chromeCast, mediaInfo, request, req.captions);
-    refs.media = await refs.session.loadMedia(request);
+    // loadMedia resolves VOID in CAF — the client comes off the session
+    refs.media = resolveClient(refs.session, await refs.session.loadMedia(request));
     return true;
   } catch {
     // the session died mid-series — drop it so the next Cast tap re-prompts
@@ -441,7 +483,10 @@ export function castPosition(): number | null {
   if (demoHook) return demoHook.position();
   try {
     const t = refs.media?.getEstimatedTime?.();
-    return typeof t === "number" && Number.isFinite(t) ? t : null;
+    if (typeof t === "number" && Number.isFinite(t)) return t;
+    // v2 Media shape: .currentTime property
+    const legacy = refs.media?.currentTime;
+    return typeof legacy === "number" && Number.isFinite(legacy) ? legacy : null;
   } catch {
     return null;
   }
@@ -450,7 +495,8 @@ export function castPosition(): number | null {
 export function castDuration(): number | null {
   if (demoHook) return demoHook.duration();
   try {
-    const d = refs.media?.duration;
+    // RemoteMediaClient: status.media.duration · legacy v2 Media: .duration
+    const d = statusOf(refs.media)?.media?.duration ?? refs.media?.duration;
     return typeof d === "number" && Number.isFinite(d) ? d : null;
   } catch {
     return null;
@@ -463,7 +509,7 @@ export function castDuration(): number | null {
 export function castIsPlaying(): boolean {
   if (demoHook) return demoHook.isPlaying();
   try {
-    const st = refs.media?.status?.playerState;
+    const st = statusOf(refs.media)?.playerState;
     return st === "PLAYING" || st === "BUFFERING";
   } catch {
     return false;

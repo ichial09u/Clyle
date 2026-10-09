@@ -48,6 +48,9 @@ const inFlight = new Map<string, Promise<WcoStream | null>>();
 export interface WcoStream {
   src: string;
   subtitles: Array<{ lang: string; label: string; src: string }>;
+  /** every encode WCO hosts for this episode (best first) — feeds the
+   * player's quality sheet and the per-quality download chips */
+  qualities?: Array<{ height: number; src: string }>;
 }
 
 export function wcoEpisodeByNumber(ep: number): WcoEpisode | null {
@@ -236,16 +239,30 @@ export async function wcoStreamSlug(slug: string, key: string): Promise<WcoStrea
     for (const fullhd of [true, false]) {
       const link = await getvidlink(params.v, fullhd);
       if (!link) continue;
-      // quality ladder: fhd -> hd -> enc (the player's own order)
+      // WCO hosts each quality as its OWN encode behind a getvid token
+      // (enc=360p, hd=720p, fhd=1080p — older episodes only carry enc).
+      // Resolve them ALL in parallel (one small "&json" call each) so the
+      // quality sheet offers the REAL ladder — never a fabricated 1080p
+      // that doesn't exist, never hiding a 360p that does.
       const subtitles: WcoStream["subtitles"] = [];
       if (link.sub) subtitles.push({ lang: "en", label: "English", src: `${link.server}/getvid?evid=${link.sub}` });
-      for (const enc of [link.fhd, link.hd, link.enc]) {
-        const final = await getvidFinal(link.server, enc);
-        if (final) {
-          const out: WcoStream = { src: final, subtitles };
-          cache.set(key, { data: out, expires: Date.now() + TTL_MS });
-          return out;
-        }
+      const ladder: Array<{ height: number; evid?: string }> = [
+        { height: 1080, evid: link.fhd },
+        { height: 720, evid: link.hd },
+        { height: 360, evid: link.enc },
+      ];
+      const probed = await Promise.all(
+        ladder.map(async (q) => ({ height: q.height, src: await getvidFinal(link.server, q.evid) })),
+      );
+      const live = probed.filter((q): q is { height: number; src: string } => !!q.src);
+      if (live.length) {
+        const out: WcoStream = {
+          src: live[0].src,
+          subtitles,
+          qualities: live.map((q) => ({ height: q.height, src: q.src })),
+        };
+        cache.set(key, { data: out, expires: Date.now() + TTL_MS });
+        return out;
       }
     }
     return null;

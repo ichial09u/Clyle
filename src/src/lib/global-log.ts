@@ -200,6 +200,34 @@ export async function flushNow(): Promise<void> {
 
 let harvesting: Promise<void> | null = null;
 
+/**
+ * One poll of the log with a GENEROUS timeout. 8s used to be enough for the
+ * sandbox but cold Vercel lambdas routinely miss it (DNS + TLS + ntfy hiccups
+ * take >8s), and a failed harvest silently serves LOCAL state — which is
+ * exactly how two devices landed on different "Most Watched" lists (each hit
+ * a different instance, each with a different last-successful-harvest).
+ * The cursor only advances after a successful parse, so retrying is free.
+ */
+async function pollLog(since: string): Promise<string | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1_500));
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 15_000);
+    try {
+      const res = await fetch(`https://ntfy.sh/${TOPIC}/json?poll=1&since=${encodeURIComponent(since)}`, {
+        signal: ac.signal,
+        cache: "no-store",
+      });
+      if (res.ok) return await res.text();
+    } catch {
+      /* retry */
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return null;
+}
+
 /** Replay the global log into this instance's SQLite (idempotent). */
 export async function harvest(): Promise<void> {
   if (harvesting) return harvesting;
@@ -214,19 +242,8 @@ export async function harvest(): Promise<void> {
       // ~98% of the retained log — Most Watched diverged per instance and
       // subscription/news state started mostly empty until users re-toggled.
       const since = meta?.value ?? "12h";
-      const ac = new AbortController();
-      const timer = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
-      let text: string;
-      try {
-        const res = await fetch(`https://ntfy.sh/${TOPIC}/json?poll=1&since=${encodeURIComponent(since)}`, {
-          signal: ac.signal,
-          cache: "no-store",
-        });
-        if (!res.ok) return;
-        text = await res.text();
-      } finally {
-        clearTimeout(timer);
-      }
+      const text = await pollLog(since);
+      if (text == null) return; // both attempts failed — serve local state, retry on the next read
 
       let lastId: string | null = null;
       for (const line of text.split("\n")) {
