@@ -79,12 +79,20 @@ export interface CastProgressDescriptor {
   title?: string;
   image?: string | null;
   total?: number;
+  /** The exact title string we load with — used to verify the receiver is
+   * still playing OUR episode before adopting progress tracking on a
+   * resumed session (the TV might be on something else). */
+  castTitle?: string;
 }
 
 let progressDesc: CastProgressDescriptor | null = null;
 let progressTimer: number | null = null;
 let trackerLastPos: number | null = null;
 let trackerActiveAt = 0;
+// resumed-session sync watchdog: when a live session has no receiver status
+// for 12s straight, say so once instead of leaving silent dead controls
+let noStatusSince: number | null = null;
+let syncToastShown = false;
 // fires once per loaded media — bumped on every castLoad/castLoadNext so a
 // finished episode can't auto-advance twice
 let autoNextEpoch = 0;
@@ -104,13 +112,105 @@ function stopProgressTracker() {
   }
 }
 
+/**
+ * (Re)acquire the receiver's media client from a live session. THE fix for
+ * the "remote controls dead while the TV plays" report: a page reload (or
+ * PWA re-open) RESUMES the live cast session, but the media client was only
+ * ever acquired inside the load paths — on a resumed session refs.media
+ * stayed null, so position/duration never reached the remote and every
+ * control (pause, ±10s, scrub) was a silent no-op while the TV played on.
+ */
+function wireMediaErrorListener(client: any) {
+  client?.addUpdateListener?.(() => {
+    const st = statusOf(client);
+    if (st?.playerState === "IDLE" && st?.idleReason === "ERROR") {
+      noteTrail("receiver-media-error");
+      notifyMediaError("The TV couldn't play this stream — try another server or quality");
+    }
+  });
+}
+
+function attachRemoteMedia(session: any): boolean {
+  try {
+    const client = session?.getMediaSession?.();
+    if (!client) return false;
+    const isNew = refs.media !== client;
+    refs.media = client;
+    if (isNew) wireMediaErrorListener(client);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Self-heal the remote from OUTSIDE a load: healthy sessions are untouched;
+ * a casting session whose media client is missing/stale gets re-acquired
+ * from CastContext. Called from the UI poll (fast) and the tracker (10s).
+ */
+export function castReattach(): boolean {
+  if (currentState !== "casting") return false;
+  if (refs.media && statusOf(refs.media)) return true; // healthy — nothing to do
+  try {
+    const live = cfw()?.CastContext.getInstance?.()?.getCurrentSession?.();
+    if (live) refs.session = live;
+    return attachRemoteMedia(refs.session);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Continue-Watching adoption for RESUMED sessions: the TV is already playing
+ * (loaded by the previous page life) and this fresh page has no descriptor.
+ * Once the receiver reports a real status — and its title matches OUR open
+ * episode — adopt the caller's descriptor so TV progress keeps saving.
+ */
+export function castEnsureTracking(desc: CastProgressDescriptor): void {
+  if (currentState !== "casting" || progressDesc || !desc) return;
+  try {
+    const st = statusOf(refs.media);
+    if (!st) return; // no confirmed receiver state — never guess
+    const receiverTitle = st?.media?.metadata?.title;
+    if (desc.castTitle && receiverTitle && receiverTitle !== desc.castTitle) return;
+    progressDesc = desc;
+    startProgressTracker();
+  } catch {
+    /* ignore */
+  }
+}
+
 function startProgressTracker() {
   if (typeof window === "undefined" || demoHook) return;
-  stopProgressTracker();
+  if (progressTimer != null) return; // already watching this session
   trackerLastPos = castPosition();
   trackerActiveAt = Date.now();
   progressTimer = window.setInterval(() => {
-    if (currentState !== "casting" || !progressDesc) return;
+    if (currentState !== "casting") return;
+    // ---- self-heal + sync watchdog (covers RESUMED sessions) ----
+    // a page reload rejoins the live session with a null/stale media client;
+    // re-acquire it, and if the receiver never reports a status, say so once
+    if (!refs.media || !statusOf(refs.media)) {
+      try {
+        const live = cfw()?.CastContext.getInstance?.()?.getCurrentSession?.();
+        if (live) {
+          refs.session = live;
+          attachRemoteMedia(live);
+        }
+      } catch {
+        /* ignore */
+      }
+      if (noStatusSince == null) noStatusSince = Date.now();
+      else if (!syncToastShown && Date.now() - noStatusSince > 12_000) {
+        syncToastShown = true;
+        noteTrail("no-status");
+        notifyMediaError("Can't sync with the TV's playback — Stop casting, then cast this episode again");
+      }
+    } else {
+      noStatusSince = null;
+      syncToastShown = false;
+    }
+    if (!progressDesc) return; // resumed session not yet adopted — controls only
     const pos = castPosition();
     const now = Date.now();
     if (pos == null || pos === trackerLastPos) {
@@ -326,6 +426,11 @@ function configureContext() {
         if (s === S.SESSION_STARTED || s === S.SESSION_RESUMED) {
           noteTrail("session-started");
           refs.session = e.session ?? context.getCurrentSession();
+          // RESUMED (page reload / PWA re-open while the TV plays): adopt the
+          // receiver's CURRENT media client right here — waiting for a load
+          // left the remote dead at 0:00/0:00 with no-op controls
+          attachRemoteMedia(refs.session);
+          startProgressTracker();
           setState("casting");
         } else if (s === S.SESSION_START_FAILED) {
           // THIS is where the real reason hides when requestSession rejects empty
@@ -340,6 +445,8 @@ function configureContext() {
           progressDesc = null;
           captionsTrackId = null;
           captionsActive = false;
+          noStatusSince = null;
+          syncToastShown = false;
           stopProgressTracker();
           setState("idle");
         }
@@ -567,19 +674,12 @@ export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; er
     progressDesc = req.progress ?? null;
     autoNextEpoch++;
     const loaded = await loadMediaWithRecovery(context, chromeCast, req);
-    const client = resolveClient(refs.session, loaded);
-    refs.media = client;
-    // the load ALREADY succeeded once loadMedia resolved — a missing client
-    // must never fail the cast (worst case: remote controls degrade to the
-    // receiver's own UI)
-    client?.addUpdateListener?.(() => {
-      // if playback finished / errored on the big screen, keep state honest
-      const st = statusOf(client);
-      if (st?.playerState === "IDLE" && st?.idleReason === "ERROR") {
-        noteTrail("receiver-media-error");
-        notifyMediaError("The TV couldn't play this stream — try another server or quality");
-      }
-    });
+    if (!attachRemoteMedia(refs.session)) {
+      // loadMedia resolving only proves the REQUEST was accepted (CAF resolves
+      // VOID) — the controllable client rides on the session
+      refs.media = resolveClient(refs.session, loaded);
+      wireMediaErrorListener(refs.media);
+    }
     armStuckLoadWatchdog();
     startProgressTracker();
     setState("casting");
@@ -664,8 +764,12 @@ export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
     if (!refreshLiveSession(context) || !refs.session) return false;
     progressDesc = req.progress ?? progressDesc; // keep the old descriptor when none is given
     autoNextEpoch++;
-    // loadMedia resolves VOID in CAF — the client comes off the session
-    refs.media = resolveClient(refs.session, await refs.session.loadMedia(buildLoadRequest(chromeCast, req)));
+    // loadMedia resolves VOID in CAF — prefer the session's client
+    const loadedNext = await refs.session.loadMedia(buildLoadRequest(chromeCast, req));
+    if (!attachRemoteMedia(refs.session)) {
+      refs.media = resolveClient(refs.session, loadedNext);
+      wireMediaErrorListener(refs.media);
+    }
     armStuckLoadWatchdog();
     startProgressTracker();
     return true;
@@ -702,6 +806,8 @@ export function castStop(): void {
   progressDesc = null;
   captionsTrackId = null;
   captionsActive = false;
+  noStatusSince = null;
+  syncToastShown = false;
   stopProgressTracker();
   try {
     refs.media = null;

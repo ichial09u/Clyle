@@ -13,7 +13,8 @@ import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
   onCastMediaError, castSetCaptions, castCaptionsAvailable, castCaptionsActive,
-  castSetAutoNextHandler, type CastState, type CastProgressDescriptor,
+  castSetAutoNextHandler, castReattach, castEnsureTracking,
+  type CastState, type CastProgressDescriptor,
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
 import { artUrl } from "@/lib/art";
@@ -330,10 +331,12 @@ export default function WatchView({
   const castProgressRef = useRef<CastProgressDescriptor>({
     malId: anime.malId, episode, lang, server,
     title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+    castTitle,
   });
   castProgressRef.current = {
     malId: anime.malId, episode, lang, server,
     title: anime.title, image: anime.image, total: anime.totalEpisodes || episode,
+    castTitle,
   };
 
   /* -------- auto-hide the in-player controls (like a real video app) -------- */
@@ -1006,6 +1009,33 @@ export default function WatchView({
     };
   }, [anime.malId, episode, lang, server]);
 
+  /* -------- keep the CAST url fresh (WCO evids expire) --------
+     The TV fetches through our proxy, and a pinned getvid evid dies after a
+     while — a watch page that sat open past that hands the receiver a 404
+     link and it sticks at 0:00 forever ("controls don't work"). Re-resolve
+     quietly every 15 min and refresh ONLY castMediaUrlRef: the local player's
+     `stream` state is untouched, so phone playback never interrupts. The
+     next Cast tap / episode hand-off then carries a link the TV can fetch. */
+  useEffect(() => {
+    const refresh = async () => {
+      try {
+        const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}`);
+        if (!res.ok) return;
+        const data = (await res.json()) as Resolved;
+        if (!data || typeof data.src !== "string" || !data.src) return;
+        const isProxied = data.src.startsWith("/api/");
+        const isHls = /\.m3u8($|\?|%3f)/i.test(data.src) || isProxied;
+        castMediaUrlRef.current = isProxied
+          ? `${window.location.origin}${data.src}`
+          : `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}${data.referer ? `&rf=${encodeURIComponent(data.referer)}` : ""}${data.pk ? `&pk=${encodeURIComponent(data.pk)}` : ""}`;
+      } catch {
+        /* best effort — the pinned url stays until the next tick */
+      }
+    };
+    const id = window.setInterval(refresh, 15 * 60 * 1000);
+    return () => window.clearInterval(id);
+  }, [anime.malId, episode, lang, server]);
+
   /* -------- persist watch progress (heartbeat / pause / exit / ended) --------
      EXIT-FLUSH TRAP (fixed): React detaches JSX refs (videoRef.current = null)
      BEFORE unmount effect cleanups run, so the old "flush on unmount" read
@@ -1137,8 +1167,14 @@ export default function WatchView({
       setCastScrub(null);
       return;
     }
-    const tick = () =>
+    const tick = () => {
+      // self-heal FIRST: a page reload / PWA re-open resumes the live session
+      // without a media client — re-acquire it here (fast path, every 500ms)
+      // and adopt Continue-Watching tracking once the receiver reports status
+      castReattach();
+      castEnsureTracking(castProgressRef.current);
       setCastUi({ pos: castPosition() ?? 0, dur: castDuration() ?? 0, playing: castIsPlaying() });
+    };
     tick();
     const id = window.setInterval(tick, 500);
     return () => window.clearInterval(id);

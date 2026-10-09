@@ -640,6 +640,7 @@ async function expectJson(name, path, init, validate, timeout) {
         ["cast captions row hint", "No captions for this episode"],
         ["cast auto-next row", "Auto next episode"],
         ["cast auto-skip row", "Auto-skip intro"],
+        ["cast resumed-session sync watchdog", "Can't sync with the TV"],
       ];
       for (const [name, needle] of markers) {
         record(`client bundle: ${name}`, js.includes(needle), needle);
