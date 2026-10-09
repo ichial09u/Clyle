@@ -21,7 +21,7 @@ PASS  GET /api/anime/999923/episodes (S23: E10 Christmas Snow restored via LM2 f
 PASS  GET /api/anime/999924/episodes (S24: both Post COVID specials dead at source)
 PASS  GET /api/anime/999900/episodes (Movies & Specials entry, 3 items)
 PASS  GET /api/stream South Park S1E1 (proxied WCO MP4 + vendored CC + intro skip)
-PASS  South Park stream resolve latency sane — 229ms
+PASS  South Park stream resolve latency sane — 233ms
 PASS  South Park S1E1 payload carries real quality ladder (qualitySrcs) — [1080,720,360]
 PASS  South Park S1E1 carries vendored English CC (same-origin VTT) — [{"lang":"en","label":"English","src":"/api/captions/sp/999901/1.vtt"}]
 PASS  GET /api/captions/sp/999901/1.vtt (real WebVTT, 50+ cues) — 626 cues
@@ -76,7 +76,8 @@ PASS  client bundle: cast settings panel — Cast settings
 PASS  client bundle: cast captions row hint — No captions for this episode
 PASS  client bundle: cast auto-next row — Auto next episode
 PASS  client bundle: cast auto-skip row — Auto-skip intro
+PASS  client bundle: cast resumed-session sync watchdog — Can't sync with the TV
 PASS  GET /api/cron (self-test)
 
-74/74 checks passed · catalog: 1180 eps for One Piece
+75/75 checks passed · catalog: 1180 eps for One Piece
 [32mAll green.[0m
