@@ -107,6 +107,42 @@ async function expectJson(name, path, init, validate, timeout) {
   await expectJson("GET /api/latest", "/api/latest", {}, (r, b) => r.ok && b != null);
   await expectJson("GET /api/genres", "/api/genres", {}, (r, b) => r.ok && b != null);
 
+  // ---- 2b) South Park (WCO source, synthetic id 999999) ------------------
+  // One entry carries all 29 seasons + movie + specials; playback flows
+  // through lib/wco.ts (western cartoon — no AniList/MAL/Zoko existence).
+  await expectJson("GET /api/genres (South Park tile pinned)", "/api/genres", {}, (r, b) => {
+    const sp = (b?.genres ?? []).find((g) => g.name === "South Park");
+    return r.ok && !!sp && sp.count >= 1;
+  });
+  await expectJson(
+    "GET /api/anime/999999 (South Park entry, instant details)",
+    "/api/anime/999999",
+    {},
+    (r, b) => r.ok && b?.anime?.title === "South Park" && b?.pending === false,
+  );
+  await expectJson(
+    "GET /api/anime/999999/episodes (338 eps + season dropdown)",
+    "/api/anime/999999/episodes",
+    {},
+    (r, b) => r.ok && b?.total >= 330 && Array.isArray(b?.seasons) && b.seasons.length === 30 && b?.hasDub === true,
+  );
+  {
+    const t0 = Date.now();
+    const sp = await expectJson(
+      "GET /api/stream South Park ep1 (WCO direct MP4)",
+      "/api/stream?malId=999999&ep=1&lang=sub&server=zoko",
+      {},
+      (r, b) => r.ok && b?.provider === "wco" && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct === true,
+    );
+    record("South Park stream resolve latency sane", sp ? Date.now() - t0 < 30_000 : false, sp ? `${Date.now() - t0}ms` : "no stream");
+  }
+  await expectJson(
+    "GET /api/anime/2304 (SD Gundam intact — protected-source guard)",
+    "/api/anime/2304",
+    {},
+    (r, b) => r.ok && b?.anime?.title === "Kidou Senshi SD Gundam Mk-IV",
+  );
+
   // ---- 3a) franchise search (accent/space folding + franchise completeness) ----
   await expectJson(
     "GET /api/search?q=one piece (franchise surfaces flagship)",

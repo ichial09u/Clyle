@@ -11,6 +11,7 @@ import { cachedBackupDubSummary, warmBackupDubSummary } from "@/lib/anivexa";
 import { flixDubThrough } from "@/lib/flixcloud";
 import { backupServerId, type BackupServerId } from "@/lib/backup-servers";
 import { getDubAudioVerdict } from "@/lib/dub-audio";
+import { WCO_SP_SEASON_RANGES } from "@/lib/wco-sp-episodes";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,84 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
 
   const anime = await db.anime.findUnique({ where: { malId } });
   if (!anime) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  // ---- WCO source (South Park) ------------------------------------------
+  // A western cartoon has no AniList/Jikan/Zoko presence: the AniList
+  // freshness race and the Zoko sub/dub probes below would all fail (and
+  // the probes would store false verdicts that HIDE the buttons). Instead:
+  // the grid answers from local rows, seasons come from the baked WCO
+  // manifest, and a memoized background refresh re-scrapes WCO for new
+  // episodes of the airing season.
+  if (anime.source === "wco") {
+    const episodes = await db.episode.findMany({
+      where: { animeId: malId, lang: "sub" },
+      orderBy: { number: "asc" },
+      select: { number: true, title: true, aired: true, addedAt: true },
+    });
+    const total = episodes.length > 0 ? episodes[episodes.length - 1].number : anime.totalEpisodes;
+
+    // background refresh (10-min memo): new episodes of the airing season
+    // land in the DB for the NEXT view (and the client's refetch below)
+    const wcoMemo = Date.now() - (lastFreshRun.get(malId) ?? 0) < FRESHNESS_MEMO_MS;
+    if (!wcoMemo) {
+      lastFreshRun.set(malId, Date.now());
+      after(async () => {
+        try {
+          const { wcoFreshEpisodes } = await import("@/lib/wco");
+          const fresh = await wcoFreshEpisodes();
+          if (!fresh.length) return;
+          let next = episodes.length ? episodes[episodes.length - 1].number : 0;
+          let changed = false;
+          for (const f of fresh) {
+            next += 1;
+            await db.episode.upsert({
+              where: { animeId_number_lang: { animeId: malId, number: next, lang: "sub" } },
+              update: { title: f.title },
+              create: { animeId: malId, number: next, title: f.title, lang: "sub" },
+            });
+            changed = true;
+          }
+          if (changed) {
+            await db.anime.update({ where: { malId }, data: { totalEpisodes: next } }).catch(() => undefined);
+          }
+        } catch {
+          /* background best-effort */
+        }
+      });
+    }
+
+    // seasons for the dropdown: the baked ranges cover S1..S29 + Movies &
+    // Specials; episodes beyond the baked manifest (arriving weekly) extend
+    // the LAST TV season's range
+    const seasons = WCO_SP_SEASON_RANGES.map((r) => ({
+      season: r.season,
+      label: r.season === 0 ? "Movies & Specials" : `Season ${r.season}`,
+      from: r.from,
+      to: total > r.to && r.season === 29 ? total : r.to,
+    })).filter((r) => r.season !== 0 || r.from <= total);
+
+    return NextResponse.json({
+      malId,
+      title: anime.titleEnglish?.trim() || anime.title,
+      type: anime.type,
+      airing: anime.airing,
+      durationMin: anime.durationMin,
+      total,
+      // WCO serves the natively-English track for both selections
+      hasDub: true,
+      dubServers: ["zoko" as const],
+      hasSub: true,
+      subServers: ["zoko" as const],
+      dubThrough: { s1: total, s2: total },
+      dubMissing: [] as number[],
+      backupDub: [],
+      seasons,
+      episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
+      newlyAdded: 0,
+      freshnessPending: false,
+    });
+  }
+
 
   // freshness check for airing shows — pulls the aired episode count from AniList.
   // BUDGET (the slow-buttons complaint): AniList inline used to block the grid

@@ -4,6 +4,7 @@ import { megaplayDub, verifyRealMegaplayDub } from "@/lib/megaplay";
 import { anikotoDub, verifyRealAnikotoDub } from "@/lib/anikoto";
 import { supaplayDub } from "@/lib/supaplay";
 import { anivexaDubStream } from "@/lib/anivexa";
+import { wcoStream, WCO_REFERER } from "@/lib/wco";
 import { flixDubStream, FLIX_REFERER, flixDubThrough } from "@/lib/flixcloud";
 import {
   isBackupServer,
@@ -59,6 +60,18 @@ export async function GET(req: Request) {
 
   if (!Number.isFinite(malId) || malId <= 0 || !Number.isFinite(ep) || ep <= 0) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
+  }
+
+  // ---- WCO source (South Park) ------------------------------------------
+  // Western cartoon: no AniList/MAL mapping on any chain site — playback
+  // flows through the app's own WCO resolver for BOTH languages (the show
+  // is natively English; SUB and DUB both play the same track). Answered
+  // BEFORE the Zoko machinery so no chain probes burn time on it.
+  const animeRow = await db.anime.findUnique({ where: { malId }, select: { source: true } });
+  if (animeRow?.source === "wco") {
+    const stream = await wcoStream(ep);
+    if (!stream) return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
+    return respond(malId, ep, lang, stream, "zoko", "wco", WCO_REFERER, undefined, true);
   }
 
   if (lang === "sub") {
@@ -179,9 +192,10 @@ async function respond(
   lang: Lang,
   stream: { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } } },
   serverUsed: ServerId,
-  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | ServerId,
+  provider: "zoko" | "kiwi" | "supaplay" | "yenime" | "megaplay-embed" | "flix" | "wco" | ServerId,
   referer?: string | null,
   pk?: string,
+  direct?: boolean,
 ) {
   // enrich Zoko's sparse skip data (OP/ED timings) with the vendored AniSkip
   // dataset + a cached live AniSkip query for brand-new/uncovered episodes
@@ -208,6 +222,9 @@ async function respond(
       // FlixCloud playlists arrive XOR-obfuscated; the proxy peels that with
       // this per-video key (rides along like rf, propagates to children)
       ...(pk ? { pk } : {}),
+      // WCO: the <video> element must hit the CDN directly (server-side
+      // fetches are fingerprint-gated) — the player skips the proxy entirely
+      ...(direct ? { direct: true } : {}),
       // a friendly display name for the toast ("DUB via AniNeko (backup)")
       ...(isBackupServer(provider) ? { providerName: backupServerName(provider) } : {}),
     },

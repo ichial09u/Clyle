@@ -110,6 +110,15 @@ export const OG_MAX_YEAR = 2009;
 export const POKEMON_GENRE = "Pokémon";
 
 /**
+ * "South Park" — a pseudo-genre tile on the Genres grid (Pokémon pattern):
+ * the whole franchise (one entry carrying all 29 seasons + the movie + the
+ * specials) is tagged with it, /api/genres pins its wordmark tile, and
+ * /api/genre/South Park serves the entry. Playback flows through the WCO
+ * source (lib/wco.ts) — South Park has no AniList/Zoko presence.
+ */
+export const SOUTHPARK_GENRE = "South Park";
+
+/**
  * The OG vault is NICHE-ONLY — "animes people haven't heard about in a while
  * or at all", not the pre-2010 greatest hits. A title is too famous for the
  * vault when EITHER fame signal says so:

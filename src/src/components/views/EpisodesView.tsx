@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ArrowUpDown, MonitorPlay, Search, X } from "lucide-react";
 import type { AnimeLite, EpisodesPayload } from "@/lib/types";
@@ -49,6 +49,9 @@ export default function EpisodesView({
   const [desc, setDesc] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null); // episode awaiting server choice
+  // season dropdown (franchise entries like South Park carry every season on
+  // one row) — null = flat list (payload has no seasons)
+  const [seasonIdx, setSeasonIdx] = useState<number | null>(null);
   const progressVersion = useProgressVersion();
 
   // The grid used to sit on skeletons FOREVER when this one fetch failed
@@ -114,12 +117,15 @@ export default function EpisodesView({
   const episodesData = loadedFor === anime.malId ? data : null;
 
   const numbers = useMemo(() => {
-    const total = episodesData?.total ?? anime.totalEpisodes ?? 0;
+    const seasons = episodesData?.seasons;
+    const range = seasons && seasonIdx != null ? seasons[seasonIdx] : null;
+    const from = range ? range.from : 1;
+    const to = range ? range.to : (episodesData?.total ?? anime.totalEpisodes ?? 0);
     const list: number[] = [];
-    for (let n = 1; n <= total; n++) list.push(n);
+    for (let n = from; n <= to; n++) list.push(n);
     const filtered = filter ? list.filter((n) => String(n).includes(filter)) : list;
     return desc ? [...filtered].reverse() : filtered;
-  }, [episodesData, anime.totalEpisodes, desc, filter]);
+  }, [episodesData, anime.totalEpisodes, desc, filter, seasonIdx]);
 
   // episode-number → title lookup: the old `episodes.find()` inside the grid
   // was O(episodes²) per render (One Piece = 1100 buttons × 1100 scans)
@@ -130,6 +136,22 @@ export default function EpisodesView({
   }, [episodesData]);
 
   const epProgress = progressVersion >= 0 ? getEpProgressAll(anime.malId) : {};
+
+  // default the dropdown to the season the viewer is furthest into (run
+  // once per loaded payload — never override a season they picked themselves)
+  const seasonTouched = useRef(false);
+  useEffect(() => {
+    const seasons = episodesData?.seasons;
+    if (!seasons?.length || seasonTouched.current) return;
+    let furthest = 0;
+    for (const [k, v] of Object.entries(epProgress)) {
+      const n = parseInt(k, 10);
+      if (Number.isFinite(n) && n > furthest && (v.pos > 0 || v.completed)) furthest = n;
+    }
+    const idx = seasons.findIndex((s) => furthest >= s.from && furthest <= s.to);
+    setSeasonIdx(idx >= 0 ? idx : 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadedFor]);
 
   const newEpisodes = useMemo(
     () => computeNewEpisodes(episodesData?.episodes ?? []),
@@ -203,6 +225,27 @@ export default function EpisodesView({
         </div>
         {/* red loading line while the episode list is being fetched */}
         {!episodesData && !loadFailed ? <div className="load-line h-[2px] mx-3 mb-1.5 rounded-full bg-white/10" /> : null}
+        {/* season dropdown — franchise entries (South Park) carry every
+            season on one row; a native select keeps it one-tap on phones */}
+        {episodesData?.seasons?.length ? (
+          <div className="px-4 pb-2.5">
+            <select
+              value={seasonIdx ?? 0}
+              onChange={(e) => {
+                seasonTouched.current = true;
+                setSeasonIdx(parseInt(e.target.value, 10));
+              }}
+              aria-label="Select season"
+              className="w-full appearance-none rounded-md bg-[#1c1c1c] ring-1 ring-inset ring-white/10 hover:ring-white/25 px-3 py-2 text-[13.5px] font-semibold text-gray-100 outline-none cursor-pointer"
+            >
+              {episodesData.seasons.map((s, i) => (
+                <option key={s.season} value={i} className="bg-[#1c1c1c]">
+                  {s.label} · {s.to - s.from + 1}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         {filter !== null ? (
           <div className="px-4 pb-2.5">
             <div className="flex items-center bg-[#1c1c1c] rounded-md px-3">

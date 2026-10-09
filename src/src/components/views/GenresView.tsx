@@ -14,6 +14,9 @@ import type { GenreInfo } from "@/lib/types";
  * background + cropped classic wordmark overlay, OWNER-APPROVED, keep
  * exactly as-is (it was lost once when a later session reverted it; do NOT
  * "normalize" it away again).
+ * South Park is the SECOND exception (owner request 2026-10-09, same
+ * franchise-tile pattern): the uploaded town-sign scene as the tile
+ * background + the wooden-sign logo on top.
  * e2e-smoke guards the removed Crunchyroll sync route; genre grid itself is
  * asserted only via GET /api/genres (shape). */
 
@@ -86,6 +89,31 @@ export default function GenresView({ onSelect }: { onSelect: (genre: string) => 
                 alt="Pokémon"
                 draggable={false}
                 className="relative z-10 h-[26px] w-auto max-w-[86%] object-contain drop-shadow-[0_2px_3px_rgba(0,0,0,0.7)]"
+              />
+            </button>
+          ) : g.name === "South Park" ? (
+            // South Park — franchise tile (owner request, 2026-10-09): the
+            // uploaded town-sign scene as the tile background, wooden-sign
+            // logo (white background removed) on top.
+            <button
+              key={g.name}
+              onClick={() => onSelect(g.name)}
+              aria-label="South Park"
+              className="group relative flex h-[48px] items-center justify-center rounded-md overflow-hidden bg-[#12141d] ring-1 ring-inset ring-white/10 hover:ring-white/30 hover:-translate-y-0.5 hover:shadow-[0_8px_20px_rgba(0,0,0,0.55)] active:scale-95 transition duration-200"
+            >
+              <img
+                src="/tiles/southpark-bg.jpg"
+                alt=""
+                aria-hidden
+                draggable={false}
+                className="absolute inset-0 h-full w-full object-cover transition duration-200 group-hover:brightness-110"
+              />
+              <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/50 via-black/10 to-black/30" />
+              <img
+                src="/tiles/southpark-logo.png"
+                alt="South Park"
+                draggable={false}
+                className="relative z-10 h-[30px] w-auto max-w-[70%] object-contain drop-shadow-[0_2px_3px_rgba(0,0,0,0.8)]"
               />
             </button>
           ) : (

@@ -5,6 +5,14 @@ import { tvmazeEpisodeTitles } from "@/lib/tvmaze";
 import { notifySyncResult } from "@/lib/push";
 
 /**
+ * Row sources the app itself fully owns — metadata syncs must never touch
+ * them (see the guard in upsertAnime). "wco" = South Park: a western
+ * cartoon with no AniList/MAL existence, so any upstream payload that
+ * shares its id belongs to a DIFFERENT show.
+ */
+const PROTECTED_SOURCES = new Set<string>(["wco"]);
+
+/**
  * Catalog sync — keeps the Zoko catalog up to date:
  *
  *  1. Episode import: every airing anime in the catalog is checked against
@@ -122,6 +130,13 @@ export async function upsertAnime(a: JikanAnime, opts: { inCatalog: boolean; sou
     await db.anime.updateMany({ where: { malId: a.mal_id }, data: { inCatalog: false } });
     return a.mal_id;
   }
+  // PROTECTED SOURCE GUARD — rows the app itself fully owns (South Park's
+  // "wco" entry: a western cartoon no AniList/MAL chain knows) must never be
+  // touched by metadata syncs. The /api/home sweep upserts EVERY anime the
+  // AniList feed mentions; before this guard it kept re-overwriting the
+  // South Park row with whatever real MAL title shared its synthetic id.
+  const existing = await db.anime.findUnique({ where: { malId: a.mal_id }, select: { source: true } });
+  if (existing && PROTECTED_SOURCES.has(existing.source)) return a.mal_id;
   const row = toRow(a);
   await db.anime.upsert({
     where: { malId: a.mal_id },

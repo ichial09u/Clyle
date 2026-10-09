@@ -40,6 +40,7 @@ const MEGAP_SUFFIX_REFERERS: Array<[string, string]> = [
 export const PROXY_SUFFIXES: string[] = [
   ...MEGAP_SUFFIX_REFERERS.map(([suffix]) => suffix),
   ".hakunaymatata.com", // SupaPlay's moviebox video CDN (signed MP4s)
+  ".wcostream.com", // WCO source (South Park) — video hosts rotate (e01/u14/…), plain signed URLs
 ];
 
 /** Allow a host for proxying, remembering which Referer it expects. */

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { anilistToJikan, animeByGenre } from "@/lib/anilist";
 import { lite } from "@/lib/serialize";
-import { OG_GENRE, POKEMON_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
+import { OG_GENRE, POKEMON_GENRE, SOUTHPARK_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +43,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
   }
 
   const like = `%"${genre.replace(/[%_"]/g, "")}"%`;
+
+  // South Park — franchise tile (Pokémon pattern). One entry carries ALL
+  // seasons + movie + specials (WCO source), so the "grid" is a single
+  // card; no AniList suggestions exist for a western cartoon.
+  if (genre === SOUTHPARK_GENRE) {
+    const rows = await db.anime.findMany({
+      where: { inCatalog: true, genres: { contains: like } },
+      orderBy: [{ year: { sort: "asc", nulls: "last" } }],
+      take: 10,
+    });
+    return NextResponse.json({ genre, catalog: rows.map(lite), suggestions: [] });
+  }
 
   // Pokémon serves in WATCH ORDER — release-chronological (Indigo League →
   // the movies of that era → the next series...), the way a franchise

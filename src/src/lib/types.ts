@@ -91,6 +91,13 @@ export interface EpisodesPayload {
   episodes: EpisodeInfo[];
   newlyAdded: number;
   /**
+   * Season structure for franchise entries that carry MANY seasons on ONE
+   * row (South Park: 29 seasons + movies & specials on a single entry).
+   * Present = the episode grid renders a season dropdown instead of one
+   * giant flat wall of numbers; every range is inclusive [from, to].
+   */
+  seasons?: Array<{ season: number; label: string; from: number; to: number }>;
+  /**
    * true = this show is airing and a brand-new episode may have JUST aired,
    * but the freshness check (AniList) was too slow to wait for inline — the
    * import is finishing in the background and the client should refetch

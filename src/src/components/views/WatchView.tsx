@@ -19,7 +19,7 @@ import { artUrl } from "@/lib/art";
 import { enqueueEpisodeSave, getSavedEpisode, type SaveState } from "@/lib/offline-download";
 
 type Panel = null | "quality" | "speed" | "subs";
-type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[] };
+type Resolved = { src: string; subtitles: Array<{ lang: string; label: string; src: string }>; skip?: { intro?: { start: number; end: number }; outro?: { start: number; end: number } }; provider?: string; referer?: string | null; providerName?: string; pk?: string | null; heights?: number[]; /** true = play the raw URL in <video> (WCO MP4s: fingerprint-gated for server fetches, browser-direct works; no CORS needed without crossOrigin) */ direct?: boolean };
 
 const SPEEDS = [0.25, 0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -1000,9 +1000,11 @@ export default function WatchView({
 
     if (stream.src && !/\.m3u8($|\?)/i.test(stream.src)) {
       // progressive source (SupaPlay DUB backfill ships signed MP4s) —
-      // hls.js can't take these; the native video element plays them directly
+      // hls.js can't take these; the native video element plays them directly.
+      // WCO sources (direct: true) play the RAW URL — their CDN fingerprints
+      // out server-side fetches (proxy = 403) while real browsers stream fine.
       setLevels([]);
-      video.src = proxyUrl(stream.src, "seg", stream.referer);
+      video.src = stream.direct ? stream.src : proxyUrl(stream.src, "seg", stream.referer);
       video.addEventListener("loadedmetadata", startPlayback, { once: true });
     } else if (Hls.isSupported()) {
       const hls = new Hls({
@@ -1165,6 +1167,9 @@ export default function WatchView({
   const saveKey = `${anime.malId}:${episode}:${lang}:${server}`;
   useEffect(() => {
     if (!ready || !stream || iframeFallback || offline) return;
+    // WCO sources play browser-direct and their CDN 403s server-side fetches —
+    // the proxy-walking offline save can't run there (honest skip, no stall)
+    if (stream.direct) return;
     const isHls = /\.m3u8($|\?)/i.test(stream.src) || stream.src.startsWith("/api/");
     enqueueEpisodeSave({
       key: saveKey,

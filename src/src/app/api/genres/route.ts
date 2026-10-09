@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { POPULAR_GENRES, OG_GENRE, POKEMON_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
+import { POPULAR_GENRES, OG_GENRE, POKEMON_GENRE, SOUTHPARK_GENRE, ogNicheVaultWhere } from "@/lib/catalog-seed";
 
 export const dynamic = "force-dynamic";
 
@@ -33,15 +33,31 @@ export async function GET() {
   const pokeCount = await db.anime.count({
     where: { inCatalog: true, genres: { contains: `%"${POKEMON_GENRE}"%` } },
   });
+  // South Park — same franchise-tile pattern (one entry, all seasons, WCO
+  // source); pinned right after Pokémon
+  const spCount = await db.anime.count({
+    where: { inCatalog: true, genres: { contains: `%"${SOUTHPARK_GENRE}"%` } },
+  });
   const genres = [
     ...(pokeCount > 0 ? [{ name: POKEMON_GENRE, count: pokeCount }] : []),
+    ...(spCount > 0 ? [{ name: SOUTHPARK_GENRE, count: spCount }] : []),
     { name: OG_GENRE, count: ogCount },
     ...POPULAR_GENRES.map((name) => ({ name, count: counts.get(name) ?? 0 })),
   ]
     .filter((g) => g.count > 0)
     .sort((a, b) => b.count - a.count)
-    // re-pin the Pokémon tile to the front after the size sort
-    .sort((a, b) => (a.name === POKEMON_GENRE ? -1 : b.name === POKEMON_GENRE ? 1 : 0));
+    // re-pin the franchise tiles to the front after the size sort
+    .sort((a, b) =>
+      a.name === POKEMON_GENRE
+        ? -1
+        : b.name === POKEMON_GENRE
+          ? 1
+          : a.name === SOUTHPARK_GENRE
+            ? -1
+            : b.name === SOUTHPARK_GENRE
+              ? 1
+              : 0,
+    );
   // identical-for-everyone global data — let the CDN absorb the per-mount
   // refetch storm (the client used to full-scan the catalog on every open)
   return NextResponse.json({ genres }, { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } });
