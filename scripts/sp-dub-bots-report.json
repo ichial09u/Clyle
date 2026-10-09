@@ -1,6 +1,6 @@
 {
   "base": "https://temporary-spry-granite-1f0h7ae.vercel.app",
-  "elapsed": "431",
+  "elapsed": "433",
   "entries": [
     999900,
     999901,
@@ -37,9 +37,9 @@
     {
       "id": 999900,
       "title": "South Park: Movies & Specials",
-      "ep": 3,
+      "ep": 1,
       "gatedExpected": true,
-      "label": "Movies & Specials E3",
+      "label": "Movies & Specials E1",
       "ok": true,
       "gated": true,
       "detail": {
@@ -47,7 +47,7 @@
         "subPath": "FAIL(http=404,{\"error\":\"stream unavailable\"})",
         "bytes": "GATED(known)"
       },
-      "ms": 7152
+      "ms": 5949
     },
     {
       "id": 999900,
@@ -62,14 +62,14 @@
         "subPath": "FAIL(http=404,{\"error\":\"stream unavailable\"})",
         "bytes": "GATED(known)"
       },
-      "ms": 7223
+      "ms": 8087
     },
     {
       "id": 999900,
       "title": "South Park: Movies & Specials",
-      "ep": 1,
+      "ep": 3,
       "gatedExpected": true,
-      "label": "Movies & Specials E1",
+      "label": "Movies & Specials E3",
       "ok": true,
       "gated": true,
       "detail": {
@@ -77,24 +77,7 @@
         "subPath": "FAIL(http=404,{\"error\":\"stream unavailable\"})",
         "bytes": "GATED(known)"
       },
-      "ms": 7281
-    },
-    {
-      "id": 999901,
-      "title": "South Park Season 1",
-      "ep": 2,
-      "gatedExpected": false,
-      "label": "Season 1 E2",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17748
+      "ms": 9875
     },
     {
       "id": 999901,
@@ -111,7 +94,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19042
+      "ms": 18635
     },
     {
       "id": 999901,
@@ -128,41 +111,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19369
+      "ms": 18811
     },
     {
       "id": 999901,
       "title": "South Park Season 1",
-      "ep": 13,
+      "ep": 2,
       "gatedExpected": false,
-      "label": "Season 1 E13",
+      "label": "Season 1 E2",
       "ok": true,
       "gated": false,
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17667
-    },
-    {
-      "id": 999902,
-      "title": "South Park Season 2",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 2 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17691
+      "ms": 18813
     },
     {
       "id": 999901,
@@ -179,14 +145,14 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19541
+      "ms": 19000
     },
     {
-      "id": 999902,
-      "title": "South Park Season 2",
-      "ep": 2,
+      "id": 999901,
+      "title": "South Park Season 1",
+      "ep": 13,
       "gatedExpected": false,
-      "label": "Season 2 E2",
+      "label": "Season 1 E13",
       "ok": true,
       "gated": false,
       "detail": {
@@ -196,14 +162,14 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17695
+      "ms": 17370
     },
     {
       "id": 999902,
       "title": "South Park Season 2",
-      "ep": 9,
+      "ep": 1,
       "gatedExpected": false,
-      "label": "Season 2 E9",
+      "label": "Season 2 E1",
       "ok": true,
       "gated": false,
       "detail": {
@@ -213,7 +179,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17654
+      "ms": 17584
     },
     {
       "id": 999902,
@@ -230,24 +196,41 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17339
+      "ms": 17573
     },
     {
-      "id": 999903,
-      "title": "South Park Season 3",
-      "ep": 1,
+      "id": 999902,
+      "title": "South Park Season 2",
+      "ep": 2,
       "gatedExpected": false,
-      "label": "Season 3 E1",
+      "label": "Season 2 E2",
       "ok": true,
       "gated": false,
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17749
+      "ms": 18746
+    },
+    {
+      "id": 999902,
+      "title": "South Park Season 2",
+      "ep": 9,
+      "gatedExpected": false,
+      "label": "Season 2 E9",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 19104
     },
     {
       "id": 999902,
@@ -260,11 +243,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18011
+      "ms": 18491
+    },
+    {
+      "id": 999903,
+      "title": "South Park Season 3",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 3 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18946
     },
     {
       "id": 999903,
@@ -277,11 +277,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 19010
+    },
+    {
+      "id": 999903,
+      "title": "South Park Season 3",
+      "ep": 16,
+      "gatedExpected": false,
+      "label": "Season 3 E16",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
         "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17500
+      "ms": 17444
     },
     {
       "id": 999903,
@@ -298,7 +315,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19382
+      "ms": 18690
     },
     {
       "id": 999903,
@@ -315,24 +332,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19007
-    },
-    {
-      "id": 999903,
-      "title": "South Park Season 3",
-      "ep": 16,
-      "gatedExpected": false,
-      "label": "Season 3 E16",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 19168
+      "ms": 17409
     },
     {
       "id": 999904,
@@ -345,28 +345,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17482
-    },
-    {
-      "id": 999904,
-      "title": "South Park Season 4",
-      "ep": 9,
-      "gatedExpected": false,
-      "label": "Season 4 E9",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17560
+      "ms": 19007
     },
     {
       "id": 999904,
@@ -383,7 +366,58 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19205
+      "ms": 19005
+    },
+    {
+      "id": 999904,
+      "title": "South Park Season 4",
+      "ep": 9,
+      "gatedExpected": false,
+      "label": "Season 4 E9",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17431
+    },
+    {
+      "id": 999905,
+      "title": "South Park Season 5",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 5 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17193
+    },
+    {
+      "id": 999904,
+      "title": "South Park Season 4",
+      "ep": 17,
+      "gatedExpected": false,
+      "label": "Season 4 E17",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17542
     },
     {
       "id": 999904,
@@ -400,41 +434,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18824
-    },
-    {
-      "id": 999905,
-      "title": "South Park Season 5",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 5 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 18822
-    },
-    {
-      "id": 999904,
-      "title": "South Park Season 4",
-      "ep": 17,
-      "gatedExpected": false,
-      "label": "Season 4 E17",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 19269
+      "ms": 18684
     },
     {
       "id": 999905,
@@ -447,11 +447,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17721
+      "ms": 18785
     },
     {
       "id": 999905,
@@ -468,7 +468,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18991
+      "ms": 18691
     },
     {
       "id": 999905,
@@ -485,7 +485,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18841
+      "ms": 18655
     },
     {
       "id": 999905,
@@ -502,24 +502,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17850
-    },
-    {
-      "id": 999906,
-      "title": "South Park Season 6",
-      "ep": 2,
-      "gatedExpected": false,
-      "label": "Season 6 E2",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17479
+      "ms": 17413
     },
     {
       "id": 999906,
@@ -532,11 +515,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17312
+    },
+    {
+      "id": 999906,
+      "title": "South Park Season 6",
+      "ep": 2,
+      "gatedExpected": false,
+      "label": "Season 6 E2",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
         "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19135
+      "ms": 19099
     },
     {
       "id": 999906,
@@ -553,24 +553,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18947
-    },
-    {
-      "id": 999906,
-      "title": "South Park Season 6",
-      "ep": 17,
-      "gatedExpected": false,
-      "label": "Season 6 E17",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17479
+      "ms": 19356
     },
     {
       "id": 999906,
@@ -587,7 +570,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19445
+      "ms": 18772
+    },
+    {
+      "id": 999906,
+      "title": "South Park Season 6",
+      "ep": 17,
+      "gatedExpected": false,
+      "label": "Season 6 E17",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18920
     },
     {
       "id": 999907,
@@ -600,11 +600,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19309
+      "ms": 17172
     },
     {
       "id": 999907,
@@ -617,11 +617,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19109
+      "ms": 17394
     },
     {
       "id": 999907,
@@ -638,7 +638,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19031
+      "ms": 18831
+    },
+    {
+      "id": 999908,
+      "title": "South Park Season 8",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 8 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17353
     },
     {
       "id": 999907,
@@ -655,7 +672,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18981
+      "ms": 18922
     },
     {
       "id": 999907,
@@ -668,28 +685,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17719
-    },
-    {
-      "id": 999908,
-      "title": "South Park Season 8",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 8 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
         "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19032
+      "ms": 18853
     },
     {
       "id": 999908,
@@ -702,11 +702,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17948
+      "ms": 18932
     },
     {
       "id": 999908,
@@ -723,7 +723,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18798
+      "ms": 18857
     },
     {
       "id": 999908,
@@ -740,41 +740,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19096
-    },
-    {
-      "id": 999908,
-      "title": "South Park Season 8",
-      "ep": 14,
-      "gatedExpected": false,
-      "label": "Season 8 E14",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17802
-    },
-    {
-      "id": 999909,
-      "title": "South Park Season 9",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 9 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17613
+      "ms": 19074
     },
     {
       "id": 999909,
@@ -791,7 +757,41 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 22653
+      "ms": 17221
+    },
+    {
+      "id": 999909,
+      "title": "South Park Season 9",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 9 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17695
+    },
+    {
+      "id": 999908,
+      "title": "South Park Season 8",
+      "ep": 14,
+      "gatedExpected": false,
+      "label": "Season 8 E14",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 19011
     },
     {
       "id": 999909,
@@ -804,11 +804,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18961
+      "ms": 17514
     },
     {
       "id": 999909,
@@ -825,7 +825,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17611
+      "ms": 17480
     },
     {
       "id": 999909,
@@ -838,28 +838,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19256
-    },
-    {
-      "id": 999910,
-      "title": "South Park Season 10",
-      "ep": 2,
-      "gatedExpected": false,
-      "label": "Season 10 E2",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 18487
+      "ms": 17366
     },
     {
       "id": 999910,
@@ -872,11 +855,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18777
+      "ms": 17345
+    },
+    {
+      "id": 999910,
+      "title": "South Park Season 10",
+      "ep": 2,
+      "gatedExpected": false,
+      "label": "Season 10 E2",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17602
     },
     {
       "id": 999910,
@@ -889,11 +889,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19274
+      "ms": 17262
     },
     {
       "id": 999910,
@@ -910,7 +910,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17812
+      "ms": 17471
     },
     {
       "id": 999910,
@@ -923,28 +923,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 19442
-    },
-    {
-      "id": 999911,
-      "title": "South Park Season 11",
-      "ep": 7,
-      "gatedExpected": false,
-      "label": "Season 11 E7",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
         "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17495
+      "ms": 17423
     },
     {
       "id": 999911,
@@ -961,7 +944,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19025
+      "ms": 19049
     },
     {
       "id": 999911,
@@ -978,7 +961,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19634
+      "ms": 18678
+    },
+    {
+      "id": 999911,
+      "title": "South Park Season 11",
+      "ep": 7,
+      "gatedExpected": false,
+      "label": "Season 11 E7",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18877
     },
     {
       "id": 999911,
@@ -991,11 +991,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17650
+      "ms": 18668
     },
     {
       "id": 999911,
@@ -1008,11 +1008,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18690
+      "ms": 18612
     },
     {
       "id": 999912,
@@ -1029,7 +1029,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19127
+      "ms": 18951
     },
     {
       "id": 999912,
@@ -1046,7 +1046,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18959
+      "ms": 18725
     },
     {
       "id": 999912,
@@ -1063,7 +1063,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19124
+      "ms": 18694
     },
     {
       "id": 999912,
@@ -1080,7 +1080,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19255
+      "ms": 18686
     },
     {
       "id": 999912,
@@ -1093,28 +1093,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17758
-    },
-    {
-      "id": 999913,
-      "title": "South Park Season 13",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 13 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17727
+      "ms": 18985
     },
     {
       "id": 999913,
@@ -1131,7 +1114,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17593
+      "ms": 17406
+    },
+    {
+      "id": 999913,
+      "title": "South Park Season 13",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 13 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18620
     },
     {
       "id": 999913,
@@ -1144,11 +1144,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17757
+      "ms": 18846
     },
     {
       "id": 999913,
@@ -1165,7 +1165,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17658
+      "ms": 17346
     },
     {
       "id": 999913,
@@ -1178,11 +1178,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17393
+      "ms": 18799
     },
     {
       "id": 999914,
@@ -1195,11 +1195,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17694
+      "ms": 18784
     },
     {
       "id": 999914,
@@ -1212,11 +1212,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17753
+      "ms": 19030
     },
     {
       "id": 999914,
@@ -1229,11 +1229,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17527
+      "ms": 18989
     },
     {
       "id": 999914,
@@ -1246,11 +1246,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17440
+      "ms": 18672
     },
     {
       "id": 999914,
@@ -1263,11 +1263,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17430
+      "ms": 18874
     },
     {
       "id": 999915,
@@ -1280,11 +1280,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17557
+      "ms": 18658
     },
     {
       "id": 999915,
@@ -1297,11 +1297,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17888
+      "ms": 18781
     },
     {
       "id": 999915,
@@ -1314,11 +1314,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17915
+      "ms": 18860
     },
     {
       "id": 999915,
@@ -1331,11 +1331,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17599
+      "ms": 19055
     },
     {
       "id": 999915,
@@ -1348,11 +1348,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17413
+      "ms": 18585
     },
     {
       "id": 999916,
@@ -1369,7 +1369,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17518
+      "ms": 17352
     },
     {
       "id": 999916,
@@ -1386,7 +1386,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17670
+      "ms": 17472
     },
     {
       "id": 999916,
@@ -1403,7 +1403,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17649
+      "ms": 17689
     },
     {
       "id": 999916,
@@ -1416,11 +1416,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17887
+      "ms": 18853
     },
     {
       "id": 999916,
@@ -1433,11 +1433,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17522
+      "ms": 19011
     },
     {
       "id": 999917,
@@ -1450,11 +1450,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17543
+      "ms": 18879
     },
     {
       "id": 999917,
@@ -1467,11 +1467,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17643
+      "ms": 18878
     },
     {
       "id": 999917,
@@ -1484,11 +1484,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17504
+      "ms": 18922
     },
     {
       "id": 999917,
@@ -1501,11 +1501,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17599
+      "ms": 18976
     },
     {
       "id": 999918,
@@ -1522,7 +1522,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17622
+      "ms": 17699
     },
     {
       "id": 999917,
@@ -1539,24 +1539,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19320
-    },
-    {
-      "id": 999918,
-      "title": "South Park Season 18",
-      "ep": 5,
-      "gatedExpected": false,
-      "label": "Season 18 E5",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17421
+      "ms": 18977
     },
     {
       "id": 999918,
@@ -1569,11 +1552,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17445
+    },
+    {
+      "id": 999918,
+      "title": "South Park Season 18",
+      "ep": 5,
+      "gatedExpected": false,
+      "label": "Season 18 E5",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
         "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19323
+      "ms": 18817
     },
     {
       "id": 999918,
@@ -1586,11 +1586,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18877
+      "ms": 17276
     },
     {
       "id": 999918,
@@ -1603,11 +1603,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18962
+      "ms": 17307
     },
     {
       "id": 999919,
@@ -1624,7 +1624,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19144
+      "ms": 18746
     },
     {
       "id": 999919,
@@ -1641,7 +1641,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19111
+      "ms": 18798
     },
     {
       "id": 999919,
@@ -1654,11 +1654,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18898
+      "ms": 17542
+    },
+    {
+      "id": 999919,
+      "title": "South Park Season 19",
+      "ep": 10,
+      "gatedExpected": false,
+      "label": "Season 19 E10",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17528
     },
     {
       "id": 999919,
@@ -1675,24 +1692,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18939
-    },
-    {
-      "id": 999919,
-      "title": "South Park Season 19",
-      "ep": 10,
-      "gatedExpected": false,
-      "label": "Season 19 E10",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 18961
+      "ms": 18585
     },
     {
       "id": 999920,
@@ -1705,11 +1705,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17301
+      "ms": 18799
     },
     {
       "id": 999920,
@@ -1726,7 +1726,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17805
+      "ms": 17172
     },
     {
       "id": 999920,
@@ -1743,7 +1743,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17497
+      "ms": 17338
     },
     {
       "id": 999920,
@@ -1756,11 +1756,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19149
+      "ms": 17303
     },
     {
       "id": 999920,
@@ -1777,7 +1777,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19020
+      "ms": 18701
     },
     {
       "id": 999921,
@@ -1794,7 +1794,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19507
+      "ms": 18677
     },
     {
       "id": 999921,
@@ -1807,11 +1807,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17692
+      "ms": 18790
+    },
+    {
+      "id": 999921,
+      "title": "South Park Season 21",
+      "ep": 5,
+      "gatedExpected": false,
+      "label": "Season 21 E5",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18760
     },
     {
       "id": 999921,
@@ -1828,24 +1845,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19243
-    },
-    {
-      "id": 999921,
-      "title": "South Park Season 21",
-      "ep": 5,
-      "gatedExpected": false,
-      "label": "Season 21 E5",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 19312
+      "ms": 18948
     },
     {
       "id": 999921,
@@ -1858,28 +1858,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19015
-    },
-    {
-      "id": 999922,
-      "title": "South Park Season 22",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 22 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "DIFF",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 19049
+      "ms": 17317
     },
     {
       "id": 999922,
@@ -1896,7 +1879,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17471
+      "ms": 17387
+    },
+    {
+      "id": 999922,
+      "title": "South Park Season 22",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 22 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18734
     },
     {
       "id": 999922,
@@ -1913,7 +1913,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17748
+      "ms": 17297
     },
     {
       "id": 999922,
@@ -1930,7 +1930,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17632
+      "ms": 17579
     },
     {
       "id": 999922,
@@ -1943,11 +1943,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19065
+      "ms": 17533
     },
     {
       "id": 999923,
@@ -1964,24 +1964,21 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19130
+      "ms": 18682
     },
     {
       "id": 999923,
       "title": "South Park Season 23",
-      "ep": 2,
+      "ep": 10,
       "gatedExpected": false,
-      "label": "Season 23 E2",
-      "ok": true,
+      "label": "Season 23 E10",
+      "ok": false,
       "gated": false,
       "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
+        "dub": "FAIL(http=404,{\"error\":\"stream unavailable\"})",
+        "subPath": "FAIL(http=404,{\"error\":\"stream unavailable\"})"
       },
-      "ms": 17882
+      "ms": 7994
     },
     {
       "id": 999923,
@@ -1998,24 +1995,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17440
-    },
-    {
-      "id": 999923,
-      "title": "South Park Season 23",
-      "ep": 8,
-      "gatedExpected": false,
-      "label": "Season 23 E8",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17614
+      "ms": 17365
     },
     {
       "id": 999923,
@@ -2032,24 +2012,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17985
+      "ms": 17408
     },
     {
-      "id": 999924,
-      "title": "South Park Season 24",
-      "ep": 1,
+      "id": 999923,
+      "title": "South Park Season 23",
+      "ep": 2,
       "gatedExpected": false,
-      "label": "Season 24 E1",
+      "label": "Season 23 E2",
       "ok": true,
       "gated": false,
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17386
+      "ms": 21452
     },
     {
       "id": 999924,
@@ -2062,11 +2042,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18965
+      "ms": 17306
     },
     {
       "id": 999925,
@@ -2079,11 +2059,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17408
+    },
+    {
+      "id": 999924,
+      "title": "South Park Season 24",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 24 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
         "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19288
+      "ms": 26484
     },
     {
       "id": 999925,
@@ -2096,11 +2093,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19067
+      "ms": 17509
     },
     {
       "id": 999925,
@@ -2117,24 +2114,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19112
-    },
-    {
-      "id": 999925,
-      "title": "South Park Season 25",
-      "ep": 6,
-      "gatedExpected": false,
-      "label": "Season 25 E6",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17696
+      "ms": 18720
     },
     {
       "id": 999925,
@@ -2151,41 +2131,24 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19096
+      "ms": 18916
     },
     {
-      "id": 999926,
-      "title": "South Park Season 26",
-      "ep": 3,
+      "id": 999925,
+      "title": "South Park Season 25",
+      "ep": 6,
       "gatedExpected": false,
-      "label": "Season 26 E3",
+      "label": "Season 25 E6",
       "ok": true,
       "gated": false,
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17479
-    },
-    {
-      "id": 999926,
-      "title": "South Park Season 26",
-      "ep": 2,
-      "gatedExpected": false,
-      "label": "Season 26 E2",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17808
+      "ms": 18859
     },
     {
       "id": 999926,
@@ -2202,7 +2165,41 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19409
+      "ms": 18963
+    },
+    {
+      "id": 999926,
+      "title": "South Park Season 26",
+      "ep": 2,
+      "gatedExpected": false,
+      "label": "Season 26 E2",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18890
+    },
+    {
+      "id": 999926,
+      "title": "South Park Season 26",
+      "ep": 3,
+      "gatedExpected": false,
+      "label": "Season 26 E3",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
+        "sameTrack": "DIFF",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 18900
     },
     {
       "id": 999926,
@@ -2215,11 +2212,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "DIFF",
+        "sameTrack": "OK",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19160
+      "ms": 17471
     },
     {
       "id": 999926,
@@ -2232,11 +2229,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17524
+      "ms": 18830
     },
     {
       "id": 999927,
@@ -2253,14 +2250,14 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18789
+      "ms": 18856
     },
     {
       "id": 999927,
       "title": "South Park Season 27",
-      "ep": 5,
+      "ep": 3,
       "gatedExpected": false,
-      "label": "Season 27 E5",
+      "label": "Season 27 E3",
       "ok": true,
       "gated": false,
       "detail": {
@@ -2270,7 +2267,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17633
+      "ms": 17313
     },
     {
       "id": 999927,
@@ -2287,14 +2284,14 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19443
+      "ms": 18894
     },
     {
       "id": 999927,
       "title": "South Park Season 27",
-      "ep": 3,
+      "ep": 5,
       "gatedExpected": false,
-      "label": "Season 27 E3",
+      "label": "Season 27 E5",
       "ok": true,
       "gated": false,
       "detail": {
@@ -2304,7 +2301,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19521
+      "ms": 18468
     },
     {
       "id": 999927,
@@ -2317,11 +2314,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17381
+      "ms": 19583
     },
     {
       "id": 999928,
@@ -2334,11 +2331,11 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
-        "sameTrack": "OK",
+        "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17409
+      "ms": 18984
     },
     {
       "id": 999928,
@@ -2355,7 +2352,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19129
+      "ms": 18737
     },
     {
       "id": 999928,
@@ -2372,24 +2369,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 17862
-    },
-    {
-      "id": 999929,
-      "title": "South Park Season 29",
-      "ep": 1,
-      "gatedExpected": false,
-      "label": "Season 29 E1",
-      "ok": true,
-      "gated": false,
-      "detail": {
-        "dub": "OK",
-        "subPath": "OK",
-        "sameTrack": "OK",
-        "bytes": "OK",
-        "withAppReferer": "404(expected)"
-      },
-      "ms": 17322
+      "ms": 17259
     },
     {
       "id": 999928,
@@ -2402,11 +2382,28 @@
       "detail": {
         "dub": "OK",
         "subPath": "OK",
+        "sameTrack": "OK",
+        "bytes": "OK",
+        "withAppReferer": "404(expected)"
+      },
+      "ms": 17507
+    },
+    {
+      "id": 999929,
+      "title": "South Park Season 29",
+      "ep": 1,
+      "gatedExpected": false,
+      "label": "Season 29 E1",
+      "ok": true,
+      "gated": false,
+      "detail": {
+        "dub": "OK",
+        "subPath": "OK",
         "sameTrack": "DIFF",
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 19399
+      "ms": 19265
     },
     {
       "id": 999929,
@@ -2423,7 +2420,7 @@
         "bytes": "OK",
         "withAppReferer": "404(expected)"
       },
-      "ms": 18995
+      "ms": 20673
     }
   ]
 }

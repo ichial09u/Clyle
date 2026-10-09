@@ -5,6 +5,7 @@ import { anikotoDub, verifyRealAnikotoDub } from "@/lib/anikoto";
 import { supaplayDub } from "@/lib/supaplay";
 import { anivexaDubStream } from "@/lib/anivexa";
 import { wcoStream, WCO_REFERER } from "@/lib/wco";
+import { lm2Stream } from "@/lib/lm2";
 import { flixDubStream, FLIX_REFERER, flixDubThrough } from "@/lib/flixcloud";
 import {
   isBackupServer,
@@ -71,11 +72,25 @@ export async function GET(req: Request) {
   // entry's season (0 = Movies & Specials); the resolver maps (entry, ep)
   // to the WCO slug, falling back to the Episode row's stored slug for
   // freshness-scraped episodes that aren't in the baked manifest.
+  // CC task: WCO ships no caption tracks for the show, so the vendored
+  // English WebVTT (harvested from the LM2 mirror catalog, stored in
+  // SpCaption) rides along as the episode's caption track — the player's
+  // CC panel and drift sync pick it up like any other source's subs.
   const animeRow = await db.anime.findUnique({ where: { malId }, select: { source: true } });
   if (animeRow?.source === "wco") {
     const stream = await wcoStream(malId, ep);
-    if (!stream) return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
-    return respond(malId, ep, lang, stream, "zoko", "wco", WCO_REFERER, undefined, true);
+    if (stream) {
+      return respond(malId, ep, lang, await withSpCaptions(malId, ep, stream), "zoko", "wco", WCO_REFERER, undefined, true);
+    }
+    // Fallback: LM2 mirror (resurrects WCO-dead episodes like S23E10
+    // "Christmas Snow", whose page WCO pulled). LM2 serves HLS — proxied
+    // playback, no direct flag. Its movie/special storage was "WRONG HASH"
+    // at wiring time, so gated titles still 404 honestly until it heals.
+    const lm2 = await lm2Stream(malId, ep).catch(() => null);
+    if (lm2) {
+      return respond(malId, ep, lang, await withSpCaptions(malId, ep, lm2), "zoko", "wco");
+    }
+    return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
 
   if (lang === "sub") {
@@ -187,6 +202,31 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
+}
+
+/**
+ * Attach the vendored English CC (SpCaption) to a South Park stream. The
+ * src is a same-origin /api/captions/sp URL — WatchView serves /-rooted
+ * caption sources directly (no proxy hop needed for our own origin).
+ */
+async function withSpCaptions<T extends { subtitles: Array<{ lang: string; label: string; src: string }> }>(
+  malId: number,
+  ep: number,
+  stream: T,
+): Promise<T> {
+  try {
+    const cap = await db.spCaption.findUnique({
+      where: { malId_ep: { malId, ep } },
+      select: { content: true },
+    });
+    if (!cap) return stream;
+    return {
+      ...stream,
+      subtitles: [{ lang: "en", label: "English", src: `/api/captions/sp/${malId}/${ep}.vtt` }, ...stream.subtitles],
+    };
+  } catch {
+    return stream; // captions are a bonus — never block playback on them
+  }
 }
 
 /** Enrich + send one resolved stream (skip data, provider, referer, no-store). */

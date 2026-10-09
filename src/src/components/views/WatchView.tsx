@@ -34,6 +34,13 @@ const proxyUrl = (u: string, type: "m3u8" | "seg" | "vtt", referer?: string | nu
     ? u
     : `/api/stream/proxy?type=${type}&u=${encodeURIComponent(u)}${referer ? `&rf=${encodeURIComponent(referer)}` : ""}${pk ? `&pk=${encodeURIComponent(pk)}` : ""}`;
 
+// Caption sources come in three shapes: (a) remote provider VTTs -> proxied
+// like any other src; (b) ALREADY a proxy URL (FlixCloud) -> untouched; (c)
+// SAME-ORIGIN /-rooted app URLs — the vendored South Park captions served by
+// /api/captions/sp — which need no proxy hop at all, just the origin prefix.
+const captionUrl = (u: string) =>
+  u.startsWith("/api/stream/proxy") || /^https?:\/\//.test(u) ? proxyUrl(u, "vtt") : `${window.location.origin}${u}`;
+
 function fmtTime(s: number): string {
   if (!Number.isFinite(s) || s < 0) return "0:00";
   const h = Math.floor(s / 3600);
@@ -992,7 +999,7 @@ export default function WatchView({
           title: castTitleRef.current,
           imageUrl: anime.image,
           startTime: pendingSeekRef.current ?? resumeAtRef.current,
-          captions: cap ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(cap.src)}`, label: cap.label || "English" } : undefined,
+          captions: cap ? { url: captionUrl(cap.src), label: cap.label || "English" } : undefined,
         }).then((ok2) => {
           if (!ok2) {
             setCastMsg("Couldn't load this episode on the TV — Stop casting, then cast again");
@@ -1189,7 +1196,7 @@ export default function WatchView({
     enqueueEpisodeSave({
       key: saveKey,
       playlistUrl: proxyUrl(stream.src, isHls ? "m3u8" : "seg", stream.referer, stream.pk),
-      subtitles: (stream.subtitles ?? []).slice(0, 2).map((s) => proxyUrl(s.src, "vtt")),
+      subtitles: (stream.subtitles ?? []).slice(0, 2).map((s) => captionUrl(s.src)),
       onProgress: (s) => setSaveState(s),
       resolveNext:
         episode < total
@@ -1204,7 +1211,7 @@ export default function WatchView({
               return {
                 key: `${anime.malId}:${episode + 1}:${lang}:${server}`,
                 playlistUrl: proxyUrl(d.src, nextHls ? "m3u8" : "seg", d.referer, d.pk),
-                subtitles: (d.subtitles ?? []).slice(0, 2).map((s) => proxyUrl(s.src, "vtt")),
+                subtitles: (d.subtitles ?? []).slice(0, 2).map((s) => captionUrl(s.src)),
               };
             }
           : undefined,
@@ -1347,7 +1354,7 @@ export default function WatchView({
       imageUrl: anime.image,
       startTime: videoRef.current ? videoRef.current.currentTime : resumeAtRef.current,
       captions: subTrack
-        ? { url: `${window.location.origin}/api/stream/proxy?type=vtt&u=${encodeURIComponent(subTrack.src)}`, label: subTrack.label || "English" }
+        ? { url: captionUrl(subTrack.src), label: subTrack.label || "English" }
         : undefined,
     });
     if (res.ok) {
@@ -1594,7 +1601,7 @@ export default function WatchView({
                   kind="subtitles"
                   srcLang={subTrack.lang || "en"}
                   label={subTrack.label || "English"}
-                  src={proxyUrl(subTrack.src, "vtt", stream?.referer)}
+                  src={captionUrl(subTrack.src)}
                   default
                 />
               ) : null}

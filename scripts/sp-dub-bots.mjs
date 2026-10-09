@@ -115,9 +115,21 @@ async function worker(wid) {
     // both language paths should resolve the SAME English track
     res.detail.sameTrack = dub.body?.src && sub.body?.src ? (dub.body.src === sub.body.src ? "OK" : "DIFF") : "n/a";
 
-    const fixedBrowser = await byteProbe(src, null); // the FIXED browser sends no referer
+    // Video probe. WCO streams are DIRECT MP4s (the fixed browser's no-referer
+    // reality — probe raw). Episodes the WCO fallback can't serve come back as
+    // LM2 HLS — the browser fetches those through OUR proxy (curl transport +
+    // node-retry against LM2's broken storage pool), so the probe must ride
+    // the proxy too: raw undici gets TLS-fingerprint-routed to dead nodes.
+    let probeUrl = src;
+    let probeReferer = null;
+    if (dub.body?.direct !== true) {
+      probeUrl = `${BASE}/api/stream/proxy?type=seg&u=${encodeURIComponent(src)}`;
+      probeReferer = undefined;
+    }
+    const fixedBrowser = await byteProbe(probeUrl, probeReferer); // the FIXED browser sends no referer
+    const minBytes = dub.body?.direct === true ? 1 : 1024; // direct Range probe = 1024B; proxied = a real playlist
     res.detail.bytes =
-      (fixedBrowser.status === 200 || fixedBrowser.status === 206) && /video|octet/.test(fixedBrowser.ct) && fixedBrowser.bytes > 0
+      (fixedBrowser.status === 200 || fixedBrowser.status === 206) && /video|octet|mpegurl/.test(fixedBrowser.ct + " application/octet-stream") && fixedBrowser.bytes >= minBytes
         ? "OK"
         : `FAIL(http=${fixedBrowser.status},ct=${fixedBrowser.ct},bytes=${fixedBrowser.bytes})`;
     // diagnostic only: the BUGGY browser behavior (our referer) should 404 while WCO's filter is up

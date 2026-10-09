@@ -400,6 +400,25 @@ model CaptionSync {
   @@index([checkedAt])
 }
 
+// Vendored English closed captions for the WCO source (South Park). WCO's
+// neptun chain ships no caption tracks for the show (getvidlink sub=null on
+// every probed episode), so the CC task harvested English WebVTT from the
+// LM2 mirror catalog (OpenSubtitles-sourced, one per episode) and vendors it
+// here, baked into the packaged DB. Served same-origin by
+// /api/captions/sp/[malId]/[ep] as a real VTT — no third-party dependency at
+// play time, offline-safe, and the CC panel renders it like any other track.
+model SpCaption {
+  malId    Int
+  ep       Int
+  content  String // full WebVTT document
+  source   String @default("lm2-opensubtitles")
+  cues     Int    @default(0)
+  checkedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@id([malId, ep])
+}
+
 // SkipDB (skipdb.tv) bridge — MAL -> IMDb title mapping resolved once per
 // anime (Wikidata P4086+P345 dump, Jikan external links as backup). SkipDB
 // is keyed by IMDb ids, so this mapping is what lets the catalog use it.

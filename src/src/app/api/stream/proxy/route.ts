@@ -37,6 +37,18 @@ const UA =
 const CDN_SUFFIXES = [".aniwatchtv.uk", ".zokoanime.video", ".1embed.buzz"];
 
 /**
+ * LM2 (lookmovie2) storage — South Park's fallback source — is PARTIALLY
+ * broken: behind srvNNN.horrowing.cyou a rotating pool of nodes serves the
+ * file, and the broken ones answer 200 "WRONG HASH!" text (playlists) or
+ * 4xx (segments/keys) for the SAME signed URL. Per-request retries converge
+ * (~1-in-3 nodes healthy, verified 2026-10-09), so the proxy retries these
+ * hosts aggressively before giving up on a playlist/segment.
+ */
+const LM2_RETRY_SUFFIXES = [".horrowing.cyou"];
+const LM2_MAX_ATTEMPTS = 10;
+const LM2_MIN_SEG_BYTES = 1024; // "WRONG HASH!" is 12 bytes; real media segments are >= tens of KB
+
+/**
  * Upstream headers for one host: each provider's CDN only accepts the
  * Referer its own player sends (Zoko -> zokoanime.video, Megaplay ->
  * megaplay.buzz, SupaPlay -> none). The registry remembers which is which;
@@ -333,12 +345,16 @@ function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string, 
 
 /** curl transport (Cloudflare 403-challenges undici on some FlixCloud paths —
  *  the AES-128 key files — while curl's TLS fingerprint passes). Returns the
- *  raw body on HTTP 200, else null. */
-function curlBuffer(url: string, referer: string, timeoutMs = 25_000): Promise<Buffer | null> {
+ *  raw body on HTTP 200, else null. referer=null sends NO Referer header at
+ *  all (LM2's signed URLs). */
+function curlBuffer(url: string, referer: string | null, timeoutMs = 25_000): Promise<Buffer | null> {
   return new Promise((resolve) => {
+    const args = ["-sS", "--max-time", String(Math.ceil(timeoutMs / 1000)), "-A", UA, "-H", "Accept: */*"];
+    if (referer != null) args.push("-H", `Referer: ${referer}`);
+    args.push("-w", "\n__STATUS__%{http_code}", url);
     execFile(
       "curl",
-      ["-sS", "--max-time", String(Math.ceil(timeoutMs / 1000)), "-A", UA, "-H", `Referer: ${referer}`, "-H", "Accept: */*", "-w", "\n__STATUS__%{http_code}", url],
+      args,
       { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs + 5_000, encoding: "buffer" },
       (err, stdout) => {
         try {
@@ -419,12 +435,65 @@ export async function GET(req: Request) {
     return new NextResponse("host not allowed", { status: 403 });
   }
 
-  const upstream = await fetch(target.toString(), {
-    headers: upstreamHeadersFor(target.hostname, hasRf ? rfParam : undefined),
-    cache: "no-store",
-    redirect: "follow",
-    signal: AbortSignal.timeout(25_000),
-  }).catch(() => null);
+  const upstreamHeaders = upstreamHeadersFor(target.hostname, hasRf ? rfParam : undefined);
+  const isM3u8Path = /\.m3u8($|\?)/i.test(target.pathname);
+  const lm2Retry = LM2_RETRY_SUFFIXES.some((s) => target.hostname.toLowerCase().endsWith(s));
+  const attempts = lm2Retry ? LM2_MAX_ATTEMPTS : 1;
+
+  let upstream: Response | null = null;
+  let m3u8Text: string | null = null; // playlists pre-read during the retry loop
+  let lm2Buffer: Buffer | null = null; // LM2 segments/keys land here
+  for (let i = 0; i < attempts; i++) {
+    if (lm2Retry) {
+      // undici's TLS fingerprint is routed to LM2's broken nodes (6/6
+      // "WRONG HASH!" vs curl's ~1-in-3 healthy) — these hosts go through
+      // curl, and only a verified-good answer ends the loop.
+      const buf = await curlBuffer(target.toString(), hasRf ? rfParam : null);
+      if (!buf) {
+        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+        continue;
+      }
+      if (isM3u8Path) {
+        const text = buf.toString("utf8");
+        if (!text.trimStart().startsWith("#EXTM")) {
+          await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+          continue;
+        }
+        m3u8Text = text;
+      } else if (buf.length < LM2_MIN_SEG_BYTES && !/\.key($|\?)/i.test(target.pathname)) {
+        // a 200-wrapped "WRONG HASH!" body — another broken node, go again
+        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+        continue;
+      } else {
+        lm2Buffer = buf;
+      }
+      upstream = new NextResponse(null, {
+        status: 200,
+        headers: { "content-type": isM3u8Path ? "application/vnd.apple.mpegurl" : "video/mp2t" },
+      }) as unknown as Response;
+      break;
+    }
+    const res = await fetch(target.toString(), {
+      headers: upstreamHeaders,
+      cache: "no-store",
+      redirect: "follow",
+      signal: AbortSignal.timeout(25_000),
+    }).catch(() => null);
+    if (!res) continue; // transient transport failure — retry
+    upstream = res;
+    break;
+  }
+
+  // LM2 segment/key bytes came through the curl transport — hand them out directly
+  if (lm2Buffer) {
+    return new NextResponse(new Uint8Array(lm2Buffer), {
+      headers: {
+        "Cache-Control": "public, max-age=86400, immutable",
+        "Access-Control-Allow-Origin": "*",
+        "Content-Type": "video/mp2t",
+      },
+    });
+  }
 
   // FlixCloud-backed session and undici got challenged (403 challenge page on
   // the AES-128 key files) — retry with curl's transport before giving up
@@ -458,10 +527,10 @@ export async function GET(req: Request) {
   }
 
   const contentType = upstream.headers.get("content-type") ?? "";
-  const isM3u8 = /\.m3u8($|\?)/i.test(target.pathname) || contentType.includes("mpegurl");
+  const isM3u8 = isM3u8Path || contentType.includes("mpegurl");
 
   if (isM3u8) {
-    const rawText = await upstream.text();
+    const rawText = m3u8Text ?? (await upstream.text());
     // FlixCloud: peel the XOR layer before any rewriting happens
     const text = flixDecrypt(rawText, pkParam);
     // this playlist's own referer is what all of its children expect
@@ -506,7 +575,6 @@ export async function GET(req: Request) {
   // The already-open single fetch stays open as the fallback; it is only
   // discarded once the parallel fetch has actually succeeded.
   const contentLength = parseInt(upstream.headers.get("content-length") ?? "", 10);
-  const upstreamHeaders = upstreamHeadersFor(target.hostname, hasRf ? rfParam : undefined);
   if (
     upstream.status === 200 &&
     Number.isFinite(contentLength) &&

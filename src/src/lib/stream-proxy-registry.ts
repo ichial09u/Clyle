@@ -37,8 +37,15 @@ const MEGAP_SUFFIX_REFERERS: Array<[string, string]> = [
  * function is invisible to the proxy's — the proxy must be able to allow
  * these hosts on its own (resolvers still register for per-host referers).
  */
+/** Host families served with NO Referer at all (plain signed URLs). */
+const NO_REFERER_SUFFIXES: Array<[string, string]> = [
+  [".horrowing.cyou", NO_REFERER], // LM2 (lookmovie2) SP fallback storage — srvNNN rotate
+  [".lookmovie2.to", NO_REFERER], // LM2 app host (movie session pages)
+];
+
 export const PROXY_SUFFIXES: string[] = [
   ...MEGAP_SUFFIX_REFERERS.map(([suffix]) => suffix),
+  ...NO_REFERER_SUFFIXES.map(([suffix]) => suffix),
   ".hakunaymatata.com", // SupaPlay's moviebox video CDN (signed MP4s)
   ".wcostream.com", // WCO source (South Park) — video hosts rotate (e01/u14/…), plain signed URLs
 ];
@@ -57,6 +64,9 @@ export function refererForHost(hostname: string): string | undefined {
   const explicit = hostReferers.get(h);
   if (explicit != null) return explicit;
   for (const [suffix, referer] of MEGAP_SUFFIX_REFERERS) {
+    if (h.endsWith(suffix)) return referer;
+  }
+  for (const [suffix, referer] of NO_REFERER_SUFFIXES) {
     if (h.endsWith(suffix)) return referer;
   }
   return undefined;

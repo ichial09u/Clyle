@@ -157,13 +157,14 @@ async function expectJson(name, path, init, validate, timeout) {
     {},
     (r, b) => r.ok && b?.total === 5 && Array.isArray(b?.numbers) && b.numbers.join(",") === "2,3,4,5",
   );
-  // Task 28: the fleet proved S23E10 pulled from WCO + both Post COVID
-  // specials' files dead at the CDN — the grid must not render dead tiles
+  // Task 28 proved S23E10 pulled from WCO + both Post COVID specials dead at
+  // the CDN. CC task: S23E10 returns via the LM2 fallback (real bytes + CC
+  // verified), so its row is restored — S24 stays dropped (both mirrors dead).
   await expectJson(
-    "GET /api/anime/999923/episodes (S23: E10 Christmas Snow pulled from source)",
+    "GET /api/anime/999923/episodes (S23: E10 Christmas Snow restored via LM2 fallback)",
     "/api/anime/999923/episodes",
     {},
-    (r, b) => r.ok && b?.total === 9 && Array.isArray(b?.numbers) && b.numbers.join(",") === "1,2,3,4,5,6,7,8,9",
+    (r, b) => r.ok && b?.total === 10 && Array.isArray(b?.numbers) && b.numbers.join(",") === "1,2,3,4,5,6,7,8,9,10",
   );
   await expectJson(
     "GET /api/anime/999924/episodes (S24: both Post COVID specials dead at source)",
@@ -180,17 +181,46 @@ async function expectJson(name, path, init, validate, timeout) {
   {
     const t0 = Date.now();
     let spSrc = "";
+    let spSubs = [];
+    let spSkip;
     const sp = await expectJson(
-      "GET /api/stream South Park S1E1 (WCO direct MP4)",
+      "GET /api/stream South Park S1E1 (WCO direct MP4 + vendored CC + intro skip)",
       "/api/stream?malId=999901&ep=1&lang=sub&server=zoko",
       {},
       (r, b) => {
         const ok = r.ok && b?.provider === "wco" && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct === true;
         spSrc = typeof b?.src === "string" ? b.src : "";
+        spSubs = Array.isArray(b?.subtitles) ? b.subtitles : [];
+        spSkip = b?.skip;
         return ok;
       },
     );
     record("South Park stream resolve latency sane", sp ? Date.now() - t0 < 30_000 : false, sp ? `${Date.now() - t0}ms` : "no stream");
+    // CC task: WCO ships no caption tracks for the show — the vendored English
+    // WebVTT (SpCaption, baked in the packaged DB) must ride the payload and
+    // the same-origin captions route must serve a real VTT document.
+    const cap = spSubs.find((s) => /English/i.test(s?.label ?? "") && /\/api\/captions\/sp\//.test(s?.src ?? ""));
+    record("South Park S1E1 carries vendored English CC (same-origin VTT)", !!cap, JSON.stringify(spSubs).slice(0, 140));
+    if (cap) {
+      try {
+        const t = setTimeout(() => AbortSignal.abort(), TIMEOUT_MS);
+        void t;
+        const res = await fetch(new URL(cap.src, BASE).toString(), { signal: AbortSignal.timeout(TIMEOUT_MS) });
+        const text = await res.text();
+        const ok = res.status === 200 && text.startsWith("WEBVTT") && (text.match(/-->/g) || []).length > 50;
+        record("GET /api/captions/sp/999901/1.vtt (real WebVTT, 50+ cues)", ok, ok ? `${(text.match(/-->/g) || []).length} cues` : `status ${res.status} head=${text.slice(0, 30)}`);
+      } catch (err) {
+        record("GET /api/captions/sp/999901/1.vtt (real WebVTT, 50+ cues)", false, String(err).slice(0, 160));
+      }
+    }
+    // Skip-intro task: SkipDB (public, tt0121955) is vendored into SkipDbFill
+    // and the stream payload must carry a plausible intro window for S1E1.
+    const iv = spSkip?.intro;
+    record(
+      "South Park S1E1 payload carries intro skip times (SkipDB tier)",
+      !!iv && Number.isFinite(iv.start) && Number.isFinite(iv.end) && iv.end > iv.start && iv.end - iv.start <= 180 && iv.start <= 320,
+      JSON.stringify(spSkip).slice(0, 140),
+    );
     // Task 28: WCO hotlink-filters foreign Referers (our origin -> 404 HTML,
     // which emptied the dub player). The fixed player sends none — the direct
     // MP4 must serve video bytes with NO Referer, exactly what
