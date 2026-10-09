@@ -27,6 +27,7 @@
  */
 
 import { execFile } from "node:child_process";
+import { db } from "@/lib/db";
 import { WCO_SP_EPISODES, WCO_SP_SEASON_RANGES, WCO_SP_TOTAL, type WcoEpisode } from "@/lib/wco-sp-episodes";
 
 const SITE = "https://www.wcostream.tv";
@@ -51,6 +52,28 @@ export interface WcoStream {
 
 export function wcoEpisodeByNumber(ep: number): WcoEpisode | null {
   return WCO_SP_EPISODES.find((e) => e.number === ep) ?? null;
+}
+
+/**
+ * Per-entry episode lookup (Task 27: the franchise is spread out — one entry
+ * per season, like every other show). malId = 999900 + season:
+ *   1..29 -> that season's episodes keyed by their REAL per-season number
+ *            (S28 starts at 2 — WCO never carried S28E1)
+ *   0     -> the Movies & Specials bucket (1..3)
+ * 999999 (the retired single-entry aggregator) still resolves by flat number
+ * so stale deep links / session stacks keep playing.
+ */
+export function wcoEpisodeForEntry(malId: number, ep: number): WcoEpisode | null {
+  if (malId === 999999) return wcoEpisodeByNumber(ep);
+  const season = malId - 999900;
+  if (season >= 1 && season <= 29) {
+    return WCO_SP_EPISODES.find((e) => e.season === season && e.episode === ep) ?? null;
+  }
+  if (season === 0) {
+    const specials = WCO_SP_EPISODES.filter((e) => e.season == null);
+    return specials[ep - 1] ?? null;
+  }
+  return null;
 }
 
 export function wcoSeasonRanges(): Array<{ season: number; from: number; to: number }> {
@@ -156,12 +179,29 @@ async function getvidFinal(server: string | undefined, enc: string | undefined):
   return /^https?:\/\//.test(url) ? url : null;
 }
 
-/** Resolve one episode (flat number) to a direct MP4. Cached ~20 min. */
-export async function wcoStream(ep: number): Promise<WcoStream | null> {
-  const target = wcoEpisodeByNumber(ep);
-  if (!target) return null;
+/**
+ * Resolve one episode of a WCO entry (malId = 999900 + season) to a direct
+ * MP4. Episodes imported by the freshness scrape aren't in the baked
+ * manifest — their slug ships on the Episode row (Episode.slug).
+ */
+export async function wcoStream(malId: number, ep: number): Promise<WcoStream | null> {
+  const target = wcoEpisodeForEntry(malId, ep);
+  let slug = target?.slug ?? null;
+  if (!slug) {
+    const row = await db.episode
+      .findUnique({
+        where: { animeId_number_lang: { animeId: malId, number: ep, lang: "sub" } },
+        select: { slug: true },
+      })
+      .catch(() => null);
+    slug = row?.slug ?? null;
+  }
+  if (!slug) return null;
+  return wcoStreamSlug(slug, `sp/${malId}/${ep}`);
+}
 
-  const key = `sp/${ep}`;
+/** Resolve one WCO page slug to a direct MP4. Cached ~4 min, negatives 30. */
+export async function wcoStreamSlug(slug: string, key: string): Promise<WcoStream | null> {
   const hit = cache.get(key);
   if (hit && hit.expires > Date.now()) return hit.data as WcoStream;
   const existing = inFlight.get(key);
@@ -170,7 +210,7 @@ export async function wcoStream(ep: number): Promise<WcoStream | null> {
   const job = (async (): Promise<WcoStream | null> => {
     // FHD first, SD fallback — getvidlink returns per-quality blobs; the
     // player picks whatever resolves
-    const params = await resolveEmbedParams(target.slug);
+    const params = await resolveEmbedParams(slug);
     if (!params) {
       // login-gated page (WCO gates the movies / some specials behind an
       // account) — negative-cache so those episodes 404 fast instead of

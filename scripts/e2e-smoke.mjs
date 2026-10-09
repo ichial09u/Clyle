@@ -107,28 +107,43 @@ async function expectJson(name, path, init, validate, timeout) {
   await expectJson("GET /api/latest", "/api/latest", {}, (r, b) => r.ok && b != null);
   await expectJson("GET /api/genres", "/api/genres", {}, (r, b) => r.ok && b != null);
 
-  // ---- 2b) South Park (WCO source, synthetic id 999999) ------------------
-  // One entry carries all 29 seasons + movie + specials; playback flows
+  // ---- 2b) South Park (WCO source, spread out per season) -----------------
+  // Task 27: one entry per season (malId 999901..999929) + Movies & Specials
+  // (999900), each with its own TMDB per-season poster; playback flows
   // through lib/wco.ts (western cartoon — no AniList/MAL/Zoko existence).
   await expectJson("GET /api/genres (South Park tile pinned)", "/api/genres", {}, (r, b) => {
     const sp = (b?.genres ?? []).find((g) => g.name === "South Park");
-    return r.ok && !!sp && sp.count >= 1;
+    return r.ok && !!sp && sp.count >= 29; // 29 seasons + Movies & Specials
   });
   await expectJson(
-    "GET /api/anime/999999 (South Park entry, instant details)",
-    "/api/anime/999999",
+    "GET /api/genre/South Park (30 season entries, chronological)",
+    "/api/genre/South%20Park",
     {},
-    (r, b) => r.ok && b?.anime?.title === "South Park" && b?.pending === false,
+    (r, b) => r.ok && Array.isArray(b?.catalog) && b.catalog.length >= 30 && b.catalog[0]?.title === "South Park Season 1",
   );
   await expectJson(
-    "GET /api/anime/999999/episodes (338 eps + seasons, dub-only payload)",
-    "/api/anime/999999/episodes",
+    "GET /api/anime/999901 (Season 1 entry, instant details + baked siblings)",
+    "/api/anime/999901",
     {},
     (r, b) =>
       r.ok &&
-      b?.total >= 330 &&
-      Array.isArray(b?.seasons) &&
-      b.seasons.length === 30 &&
+      b?.anime?.title === "South Park Season 1" &&
+      b?.pending === false &&
+      Array.isArray(b?.otherSeasons) &&
+      b.otherSeasons.length >= 25,
+  );
+  await expectJson(
+    "GET /api/anime/999901/episodes (13 eps, flat grid, dub-only payload)",
+    "/api/anime/999901/episodes",
+    {},
+    (r, b) =>
+      r.ok &&
+      b?.total === 13 &&
+      Array.isArray(b?.numbers) &&
+      b.numbers.length === 13 &&
+      b.numbers[0] === 1 &&
+      // flat grid: the old single-entry season dropdown is gone
+      b?.seasons === undefined &&
       b?.hasDub === true &&
       // owner: "don't show sub button at all for South Park" — the sheet and
       // the player toggle read this payload, so it must be dub-only
@@ -136,11 +151,23 @@ async function expectJson(name, path, init, validate, timeout) {
       Array.isArray(b?.subServers) &&
       b.subServers.length === 0,
   );
+  await expectJson(
+    "GET /api/anime/999928/episodes (S28 exact numbers — source has no E1)",
+    "/api/anime/999928/episodes",
+    {},
+    (r, b) => r.ok && b?.total === 5 && Array.isArray(b?.numbers) && b.numbers.join(",") === "2,3,4,5",
+  );
+  await expectJson(
+    "GET /api/anime/999900/episodes (Movies & Specials entry, 3 items)",
+    "/api/anime/999900/episodes",
+    {},
+    (r, b) => r.ok && b?.total === 3 && b?.hasSub === false && Array.isArray(b?.numbers) && b.numbers.length === 3,
+  );
   {
     const t0 = Date.now();
     const sp = await expectJson(
-      "GET /api/stream South Park ep1 (WCO direct MP4)",
-      "/api/stream?malId=999999&ep=1&lang=sub&server=zoko",
+      "GET /api/stream South Park S1E1 (WCO direct MP4)",
+      "/api/stream?malId=999901&ep=1&lang=sub&server=zoko",
       {},
       (r, b) => r.ok && b?.provider === "wco" && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct === true,
     );

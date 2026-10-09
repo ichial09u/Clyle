@@ -81,6 +81,12 @@ export interface EpisodesPayload {
    */
   dubMissing: number[];
   /**
+   * Exact episode numbers to render (per-season WCO entries — South Park
+   * S28 starts at 2, the source never carried E1). Absent = contiguous
+   * 1..total for every other show.
+   */
+  numbers?: number[];
+  /**
    * BACKUP DUB servers (the Anivexa network) for episodes our main chain
    * can't dub. One entry per provider that actually carries the dub over the
    * uncovered episodes — a title only ONE backup can dub shows exactly ONE

@@ -67,9 +67,13 @@ export async function GET(req: Request) {
   // flows through the app's own WCO resolver for BOTH languages (the show
   // is natively English; SUB and DUB both play the same track). Answered
   // BEFORE the Zoko machinery so no chain probes burn time on it.
+  // Task 27: the franchise is spread out — malId 999900+season picks the
+  // entry's season (0 = Movies & Specials); the resolver maps (entry, ep)
+  // to the WCO slug, falling back to the Episode row's stored slug for
+  // freshness-scraped episodes that aren't in the baked manifest.
   const animeRow = await db.anime.findUnique({ where: { malId }, select: { source: true } });
   if (animeRow?.source === "wco") {
-    const stream = await wcoStream(ep);
+    const stream = await wcoStream(malId, ep);
     if (!stream) return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
     return respond(malId, ep, lang, stream, "zoko", "wco", WCO_REFERER, undefined, true);
   }

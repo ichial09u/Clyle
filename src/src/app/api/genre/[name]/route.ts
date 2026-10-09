@@ -44,15 +44,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ name: s
 
   const like = `%"${genre.replace(/[%_"]/g, "")}"%`;
 
-  // South Park — franchise tile (Pokémon pattern). One entry carries ALL
-  // seasons + movie + specials (WCO source), so the "grid" is a single
-  // card; no AniList suggestions exist for a western cartoon.
+  // South Park — spread out per season (Task 27; owner reversed the single
+  // aggregator): 29 season entries + Movies & Specials, each with its own
+  // TMDB per-season poster. Chronological order, Movies & Specials last.
   if (genre === SOUTHPARK_GENRE) {
     const rows = await db.anime.findMany({
       where: { inCatalog: true, genres: { contains: like } },
-      orderBy: [{ year: { sort: "asc", nulls: "last" } }],
-      take: 10,
+      take: 60, // 30 entries today — headroom without an unbounded query
     });
+    rows.sort((a, b) => (a.malId === 999900 ? Infinity : a.malId) - (b.malId === 999900 ? Infinity : b.malId));
     return NextResponse.json({ genre, catalog: rows.map(lite), suggestions: [] });
   }
 

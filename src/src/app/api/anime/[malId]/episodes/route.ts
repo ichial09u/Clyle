@@ -11,7 +11,6 @@ import { cachedBackupDubSummary, warmBackupDubSummary } from "@/lib/anivexa";
 import { flixDubThrough } from "@/lib/flixcloud";
 import { backupServerId, type BackupServerId } from "@/lib/backup-servers";
 import { getDubAudioVerdict } from "@/lib/dub-audio";
-import { WCO_SP_SEASON_RANGES } from "@/lib/wco-sp-episodes";
 
 export const dynamic = "force-dynamic";
 
@@ -44,13 +43,15 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   const anime = await db.anime.findUnique({ where: { malId } });
   if (!anime) return NextResponse.json({ error: "not found" }, { status: 404 });
 
-  // ---- WCO source (South Park) ------------------------------------------
+  // ---- WCO source (South Park, one entry per season) ----------------------
   // A western cartoon has no AniList/Jikan/Zoko presence: the AniList
   // freshness race and the Zoko sub/dub probes below would all fail (and
   // the probes would store false verdicts that HIDE the buttons). Instead:
-  // the grid answers from local rows, seasons come from the baked WCO
-  // manifest, and a memoized background refresh re-scrapes WCO for new
-  // episodes of the airing season.
+  // the grid answers from local rows and a memoized background refresh
+  // re-scrapes WCO for new episodes of the airing season. (Task 27: the
+  // franchise is spread out — malId 999900 = Movies & Specials,
+  // 999901..999929 = Season 1..29 — so each entry is a flat grid like every
+  // other show; the old single-entry season dropdown is gone.)
   if (anime.source === "wco") {
     const episodes = await db.episode.findMany({
       where: { animeId: malId, lang: "sub" },
@@ -59,45 +60,56 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     });
     const total = episodes.length > 0 ? episodes[episodes.length - 1].number : anime.totalEpisodes;
 
-    // background refresh (10-min memo): new episodes of the airing season
-    // land in the DB for the NEXT view (and the client's refetch below)
-    const wcoMemo = Date.now() - (lastFreshRun.get(malId) ?? 0) < FRESHNESS_MEMO_MS;
+    // background refresh (10-min GLOBAL memo): one re-scrape of the WCO
+    // series page, with each new episode routed to its OWN entry — the
+    // airing S29 (999929) keyed by its real episode number, brand-new
+    // specials appended to Movies & Specials (999900)
+    const wcoMemo = Date.now() - (lastFreshRun.get(0) ?? 0) < FRESHNESS_MEMO_MS;
     if (!wcoMemo) {
-      lastFreshRun.set(malId, Date.now());
+      lastFreshRun.set(0, Date.now());
       after(async () => {
         try {
           const { wcoFreshEpisodes } = await import("@/lib/wco");
           const fresh = await wcoFreshEpisodes();
           if (!fresh.length) return;
-          let next = episodes.length ? episodes[episodes.length - 1].number : 0;
-          let changed = false;
+          const touched = new Map<number, number>();
+          let nextSpecial = -1;
           for (const f of fresh) {
-            next += 1;
-            await db.episode.upsert({
-              where: { animeId_number_lang: { animeId: malId, number: next, lang: "sub" } },
-              update: { title: f.title },
-              create: { animeId: malId, number: next, title: f.title, lang: "sub" },
-            });
-            changed = true;
+            if (f.season != null && f.season >= 1 && f.season <= 29 && f.episode != null) {
+              const target = 999900 + f.season;
+              await db.episode.upsert({
+                where: { animeId_number_lang: { animeId: target, number: f.episode, lang: "sub" } },
+                update: { title: f.title, slug: f.slug },
+                create: { animeId: target, number: f.episode, title: f.title, slug: f.slug, lang: "sub" },
+              });
+              touched.set(target, Math.max(touched.get(target) ?? 0, f.episode));
+            } else {
+              // a new special/movie — append to the Movies & Specials entry
+              if (nextSpecial < 0) {
+                const last = await db.episode.findFirst({
+                  where: { animeId: 999900, lang: "sub" },
+                  orderBy: { number: "desc" },
+                  select: { number: true },
+                });
+                nextSpecial = (last?.number ?? 0) + 1;
+              }
+              await db.episode.upsert({
+                where: { animeId_number_lang: { animeId: 999900, number: nextSpecial, lang: "sub" } },
+                update: { title: f.title, slug: f.slug },
+                create: { animeId: 999900, number: nextSpecial, title: f.title, slug: f.slug, lang: "sub" },
+              });
+              touched.set(999900, nextSpecial);
+              nextSpecial += 1;
+            }
           }
-          if (changed) {
-            await db.anime.update({ where: { malId }, data: { totalEpisodes: next } }).catch(() => undefined);
+          for (const [id, max] of touched) {
+            await db.anime.update({ where: { malId: id }, data: { totalEpisodes: max } }).catch(() => undefined);
           }
         } catch {
           /* background best-effort */
         }
       });
     }
-
-    // seasons for the dropdown: the baked ranges cover S1..S29 + Movies &
-    // Specials; episodes beyond the baked manifest (arriving weekly) extend
-    // the LAST TV season's range
-    const seasons = WCO_SP_SEASON_RANGES.map((r) => ({
-      season: r.season,
-      label: r.season === 0 ? "Movies & Specials" : `Season ${r.season}`,
-      from: r.from,
-      to: total > r.to && r.season === 29 ? total : r.to,
-    })).filter((r) => r.season !== 0 || r.from <= total);
 
     return NextResponse.json({
       malId,
@@ -106,6 +118,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       airing: anime.airing,
       durationMin: anime.durationMin,
       total,
+      // per-season entries can have number gaps (S28 starts at 2 — WCO never
+      // carried S28E1): the grid renders EXACTLY these numbers instead of a
+      // contiguous 1..total range. Absent for every other show.
+      numbers: episodes.map((e) => e.number),
       // WCO serves the one natively-English track — there is no sub/dub
       // choice to make (owner: "don't show sub button at all for South
       // Park"). Dub-only payload: the server sheet renders a single DUB
@@ -117,7 +133,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       dubThrough: { s1: total, s2: total },
       dubMissing: [] as number[],
       backupDub: [],
-      seasons,
       episodes: episodes.map((e) => ({ number: e.number, title: e.title, aired: e.aired, addedAt: e.addedAt })),
       newlyAdded: 0,
       freshnessPending: false,

@@ -82,6 +82,7 @@ model Episode {
   filler    Boolean  @default(false)
   recap     Boolean  @default(false)
   addedAt   DateTime @default(now())
+  slug      String?  // WCO page slug (source "wco" only) — lets the stream resolver reach episodes that arrived via the freshness scrape and aren't in the baked manifest
   qualities String?  // JSON array of REAL heights the Zoko encode carries, e.g. "[360,720]" — measured by the quality fleet bots (old shows are 360p even when players claim 1080p)
 
   anime Anime @relation(fields: [animeId], references: [malId], onDelete: Cascade)

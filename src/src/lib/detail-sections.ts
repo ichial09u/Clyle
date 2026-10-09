@@ -173,5 +173,8 @@ export async function serveSections(
     mergeLive(raw.otherSeasons, true),
     mergeLive(raw.similar, false),
   ]);
-  return { otherSeasons: otherSeasons.slice(0, 12), similar: similar.slice(0, 12) };
+  // 30 for Other Seasons: South Park is spread out per season (Task 27) and
+  // every sibling entry is baked — a 12-cap would hide most of them. Shows
+  // with AniList-derived sections never have more than ~12 seasons anyway.
+  return { otherSeasons: otherSeasons.slice(0, 30), similar: similar.slice(0, 12) };
 }

@@ -117,6 +117,14 @@ export default function EpisodesView({
   const episodesData = loadedFor === anime.malId ? data : null;
 
   const numbers = useMemo(() => {
+    // per-season WCO entries (South Park) ship the EXACT numbers to render —
+    // their source can have gaps (S28 starts at 2) that a contiguous
+    // 1..total range would render as dead tiles
+    const exact = episodesData?.numbers;
+    if (exact?.length) {
+      const filteredExact = filter ? exact.filter((n) => String(n).includes(filter)) : exact;
+      return desc ? [...filteredExact].reverse() : filteredExact;
+    }
     const seasons = episodesData?.seasons;
     const range = seasons && seasonIdx != null ? seasons[seasonIdx] : null;
     const from = range ? range.from : 1;
