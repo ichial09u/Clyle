@@ -19,6 +19,26 @@ export interface WcoEpisode {
 
 export const WCO_SP_TOTAL = 338;
 
+/**
+ * Slugs WCO can no longer serve (verified 2026-10-09 with the bot fleet):
+ *   - south-park-season-23-episode-10-christmas-snow — page PULLED (404);
+ *     WCO's own S23 listing is down to 9 episodes
+ *   - south-park-season-24-episode-3-post-covid + south-park-post-covid —
+ *     the two Post COVID specials: pages alive, embed alive, but their
+ *     files' CDN node is unassigned (getvid answers "https://.wcostream.com
+ *     /getvid?evid=...", the 302 chain loops on the empty host, apex/www/uNN
+ *     candidates all dead-end) — nothing plays
+ * The manifest keeps the rows (flat-number integrity + the freshness scrape
+ * must keep seeing them as KNOWN slugs so it never re-imports dead tiles),
+ * but wcoEpisodeForEntry() refuses them and the seed script skips them, so
+ * the grid renders only playable episodes (S23 = 9, S24 = 2).
+ */
+export const WCO_SP_DEAD_SLUGS: ReadonlySet<string> = new Set([
+  "south-park-season-23-episode-10-christmas-snow",
+  "south-park-season-24-episode-3-post-covid",
+  "south-park-post-covid",
+]);
+
 /** season -> [first,last] flat number (Movies & Specials live after S29). */
 export const WCO_SP_SEASON_RANGES: Array<{ season: number; from: number; to: number }> = [
   { season: 1, from: 1, to: 13 },

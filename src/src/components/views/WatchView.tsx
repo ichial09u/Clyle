@@ -1580,6 +1580,9 @@ export default function WatchView({
             <video
               ref={videoRef}
               playsInline
+              // WCO direct MP4s (South Park) 404 when the request carries a
+              // foreign Referer — strip it so the dub player actually loads
+              {...({ referrerPolicy: "no-referrer" } as Record<string, string>)}
               // AirPlay on iOS Safari (Chromecast is Chrome/Android-only)
               {...({ "x-webkit-airplay": "allow" } as Record<string, string>)}
               poster={artUrl(anime.banner ?? anime.image)}

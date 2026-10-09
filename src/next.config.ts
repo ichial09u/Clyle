@@ -2,6 +2,21 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // WCO (South Park's source) hotlink-filters its video CDN by Referer:
+  // any request carrying a foreign origin (e.g. ours) gets 404 while the
+  // same URL with no referer streams fine (verified 2026-10-09). The
+  // browser's default strict-origin-when-cross-origin policy leaks our
+  // origin on <video> requests, which left the dub player empty. Sending
+  // no referer at all fixes every browser; the <video> element also carries
+  // referrerPolicy="no-referrer" as belt-and-braces.
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+      },
+    ];
+  },
   typescript: {
     ignoreBuildErrors: true,
   },

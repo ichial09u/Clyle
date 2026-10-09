@@ -103,8 +103,16 @@ for (let s = 29; s >= 0; s--) {
   await db.anime.upsert({ where: { malId }, create: { malId, ...data }, update: data });
 
   await db.episode.deleteMany({ where: { animeId: malId, lang: "sub" } });
+  // dead-source slugs (see WCO_SP_DEAD_SLUGS in wco-sp-episodes.ts) — pages
+  // pulled / files dead on WCO's side; never materialize them as tiles
+  const DEAD_SLUGS = new Set([
+    "south-park-season-23-episode-10-christmas-snow",
+    "south-park-season-24-episode-3-post-covid",
+    "south-park-post-covid",
+  ]);
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
+    if (DEAD_SLUGS.has(it.slug)) continue;
     const number = isMovies ? i + 1 : it.episode; // keep REAL per-season numbers (S28 starts at 2 — WCO has no S28E1)
     await db.episode.create({
       data: { animeId: malId, number, title: it.title, slug: it.slug, lang: "sub" },

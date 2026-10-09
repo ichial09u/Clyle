@@ -28,7 +28,7 @@
 
 import { execFile } from "node:child_process";
 import { db } from "@/lib/db";
-import { WCO_SP_EPISODES, WCO_SP_SEASON_RANGES, WCO_SP_TOTAL, type WcoEpisode } from "@/lib/wco-sp-episodes";
+import { WCO_SP_EPISODES, WCO_SP_SEASON_RANGES, WCO_SP_TOTAL, WCO_SP_DEAD_SLUGS, type WcoEpisode } from "@/lib/wco-sp-episodes";
 
 const SITE = "https://www.wcostream.tv";
 const EMBED_BASE = "https://embed.wcostream.com";
@@ -64,6 +64,14 @@ export function wcoEpisodeByNumber(ep: number): WcoEpisode | null {
  * so stale deep links / session stacks keep playing.
  */
 export function wcoEpisodeForEntry(malId: number, ep: number): WcoEpisode | null {
+  const hit = wcoEpisodeForEntryRaw(malId, ep);
+  // dead-source guard: the page/file is gone on WCO's side (see the set's
+  // docs) — refuse the slug so playback fails honestly instead of handing
+  // the player a URL that serves nothing
+  return hit && !WCO_SP_DEAD_SLUGS.has(hit.slug) ? hit : null;
+}
+
+function wcoEpisodeForEntryRaw(malId: number, ep: number): WcoEpisode | null {
   if (malId === 999999) return wcoEpisodeByNumber(ep);
   const season = malId - 999900;
   if (season >= 1 && season <= 29) {
@@ -176,7 +184,14 @@ async function getvidFinal(server: string | undefined, enc: string | undefined):
     /* already a plain URL */
   }
   url = url.replace(/\\\//g, "/");
-  return /^https?:\/\//.test(url) ? url : null;
+  if (!/^https?:\/\//.test(url)) return null;
+  // WCO quirk (Post COVID specials): a file whose CDN node is unassigned
+  // comes back as "https://.wcostream.com/getvid?evid=..." — an EMPTY host
+  // label. Nothing can ever fetch that (and every fallback host dead-ends);
+  // treat it as unresolvable so the episode 404s instead of the player
+  // silently showing nothing.
+  if (/^https?:\/\/\./.test(url)) return null;
+  return url;
 }
 
 /**

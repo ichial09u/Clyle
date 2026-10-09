@@ -157,6 +157,20 @@ async function expectJson(name, path, init, validate, timeout) {
     {},
     (r, b) => r.ok && b?.total === 5 && Array.isArray(b?.numbers) && b.numbers.join(",") === "2,3,4,5",
   );
+  // Task 28: the fleet proved S23E10 pulled from WCO + both Post COVID
+  // specials' files dead at the CDN — the grid must not render dead tiles
+  await expectJson(
+    "GET /api/anime/999923/episodes (S23: E10 Christmas Snow pulled from source)",
+    "/api/anime/999923/episodes",
+    {},
+    (r, b) => r.ok && b?.total === 9 && Array.isArray(b?.numbers) && b.numbers.join(",") === "1,2,3,4,5,6,7,8,9",
+  );
+  await expectJson(
+    "GET /api/anime/999924/episodes (S24: both Post COVID specials dead at source)",
+    "/api/anime/999924/episodes",
+    {},
+    (r, b) => r.ok && b?.total === 2 && Array.isArray(b?.numbers) && b.numbers.join(",") === "1,2",
+  );
   await expectJson(
     "GET /api/anime/999900/episodes (Movies & Specials entry, 3 items)",
     "/api/anime/999900/episodes",
@@ -165,13 +179,46 @@ async function expectJson(name, path, init, validate, timeout) {
   );
   {
     const t0 = Date.now();
+    let spSrc = "";
     const sp = await expectJson(
       "GET /api/stream South Park S1E1 (WCO direct MP4)",
       "/api/stream?malId=999901&ep=1&lang=sub&server=zoko",
       {},
-      (r, b) => r.ok && b?.provider === "wco" && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct === true,
+      (r, b) => {
+        const ok = r.ok && b?.provider === "wco" && typeof b?.src === "string" && b.src.startsWith("https://") && b?.direct === true;
+        spSrc = typeof b?.src === "string" ? b.src : "";
+        return ok;
+      },
     );
     record("South Park stream resolve latency sane", sp ? Date.now() - t0 < 30_000 : false, sp ? `${Date.now() - t0}ms` : "no stream");
+    // Task 28: WCO hotlink-filters foreign Referers (our origin -> 404 HTML,
+    // which emptied the dub player). The fixed player sends none — the direct
+    // MP4 must serve video bytes with NO Referer, exactly what
+    // <video referrerPolicy="no-referrer"> + Referrer-Policy produce.
+    if (spSrc) {
+      try {
+        const ctrl = new AbortController();
+        const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
+        const res = await fetch(spSrc, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            Range: "bytes=0-1023",
+          },
+          signal: ctrl.signal,
+        }).finally(() => clearTimeout(t));
+        const buf = await res.arrayBuffer();
+        const ok = (res.status === 200 || res.status === 206) && /video|octet/.test(res.headers.get("content-type") || "") && buf.byteLength > 0;
+        record(
+          "South Park dub MP4 serves video bytes with no Referer (dub-player fix)",
+          ok,
+          ok ? `${res.status} ${(res.headers.get("content-type") || "").slice(0, 24)} ${buf.byteLength}B` : `status ${res.status} ct=${res.headers.get("content-type")} bytes=${buf.byteLength}`,
+        );
+      } catch (err) {
+        record("South Park dub MP4 serves video bytes with no Referer (dub-player fix)", false, String(err).slice(0, 160));
+      }
+    } else {
+      record("South Park dub MP4 serves video bytes with no Referer (dub-player fix)", false, "no stream src to probe");
+    }
   }
   await expectJson(
     "GET /api/anime/2304 (SD Gundam intact — protected-source guard)",
