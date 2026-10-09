@@ -1,0 +1,936 @@
+     1→"use client";
+     2→
+     3→import { saveProgressDetailed, recordWatchSeconds, readAppSettings } from "@/lib/client-store";
+     4→
+     5→/**
+     6→ * Chromecast sender via Google's Cast Application Framework (CAF).
+     7→ *
+     8→ * We cast the SAME proxied HLS playlist our in-app player uses
+     9→ * (/api/stream/proxy rewrites Zoko's CDN URLs and serves them with
+    10→ * `Access-Control-Allow-Origin: *`), so the Default Media Receiver can play
+    11→ * it without any custom receiver app. The playlist's child URIs are
+    12→ * origin-relative, which the receiver resolves against the manifest URL —
+    13→ * the whole session stays inside our origin.
+    14→ *
+    15→ * The SDK only exists in Chrome/Chromium; everywhere else we simply hide the
+    16→ * Cast button.
+    17→ */
+    18→
+    19→
+    20→const CAST_SDK_SRC = "https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1";
+    21→
+    22→export type CastState = "unavailable" | "idle" | "connecting" | "casting";
+    23→
+    24→interface CastRefs {
+    25→  session: any | null;
+    26→  media: any | null;
+    27→}
+    28→
+    29→const refs: CastRefs = { session: null, media: null };
+    30→
+    31→let sdkLoading = false;
+    32→let sdkReady = false;
+    33→let currentState: CastState = "unavailable";
+    34→const listeners = new Set<(s: CastState) => void>();
+    35→
+    36→/* ---- failure forensics ------------------------------------------------
+    37→ * CAF's requestSession() rejection is often an EMPTY object (no code, no
+    38→ * message) — the real reason rides on the CastContext events instead
+    39→ * (SESSION_START_FAILED / CAST_STATE_CHANGED carry e.errorCode). We keep
+    40→ * both the last event errorCode and a short trail so a failed cast can be
+    41→ * diagnosed from the toast alone, without a debugger.
+    42→ * -------------------------------------------------------------------- */
+    43→let lastEventError = "";
+    44→const castTrail: string[] = [];
+    45→function noteTrail(s: string, code?: unknown) {
+    46→  const c = typeof code === "string" && code ? code : "";
+    47→  if (c) lastEventError = c;
+    48→  castTrail.push(c ? `${s}(${c})` : s);
+    49→  if (castTrail.length > 12) castTrail.shift();
+    50→}
+    51→
+    52→/* DEV-only hook point (set by the NODE_ENV-guarded block at the bottom of
+    53→ * this file): lets the cast remote UI be exercised — and screenshotted —
+    54→ * without real cast hardware. Always null in production builds. */
+    55→let demoHook: {
+    56→  position(): number | null;
+    57→  duration(): number | null;
+    58→  isPlaying(): boolean;
+    59→  toggle(): boolean;
+    60→  seek(s: number): boolean;
+    61→  loadNext(): boolean;
+    62→} | null = null;
+    63→
+    64→/* ---- cast progress ownership --------------------------------------------
+    65→ * While casting, the TV is the playback surface — the phone's <video> is a
+    66→ * paused bystander. WatchView used to own progress saving, but its heartbeat
+    67→ * died the moment the user navigated away from the watch page (very common:
+    68→ * cast, then browse), and the pagehide/unmount flush read the STALE local
+    69→ * position and REGRESSED the saved TV progress. Now cast.ts owns it: every
+    70→ * load carries a progress descriptor and a module-level tracker keeps
+    71→ * writing Continue Watching for as long as the session lives — page
+    72→ * navigation inside the SPA can't touch it.
+    73→ * ----------------------------------------------------------------------- */
+    74→export interface CastProgressDescriptor {
+    75→  malId: number;
+    76→  episode: number;
+    77→  lang: "sub" | "dub";
+    78→  server: string;
+    79→  title?: string;
+    80→  image?: string | null;
+    81→  total?: number;
+    82→  /** The exact title string we load with — used to verify the receiver is
+    83→   * still playing OUR episode before adopting progress tracking on a
+    84→   * resumed session (the TV might be on something else). */
+    85→  castTitle?: string;
+    86→}
+    87→
+    88→let progressDesc: CastProgressDescriptor | null = null;
+    89→let progressTimer: number | null = null;
+    90→let trackerLastPos: number | null = null;
+    91→let trackerActiveAt = 0;
+    92→// resumed-session sync watchdog: when a live session has no receiver status
+    93→// for 12s straight, say so once instead of leaving silent dead controls
+    94→let noStatusSince: number | null = null;
+    95→let syncToastShown = false;
+    96→// fires once per loaded media — bumped on every castLoad/castLoadNext so a
+    97→// finished episode can't auto-advance twice
+    98→let autoNextEpoch = 0;
+    99→let autoNextFiredEpoch = -1;
+   100→let autoNextHandler: (() => void) | null = null;
+   101→
+   102→/** Register the "roll into the next episode" hook (WatchView navigates; the
+   103→ * stream effect then side-loads the next episode into the live session). */
+   104→export function castSetAutoNextHandler(fn: (() => void) | null): void {
+   105→  autoNextHandler = fn;
+   106→}
+   107→
+   108→function stopProgressTracker() {
+   109→  if (progressTimer != null) {
+   110→    window.clearInterval(progressTimer);
+   111→    progressTimer = null;
+   112→  }
+   113→}
+   114→
+   115→/**
+   116→ * (Re)acquire the receiver's media client from a live session. THE fix for
+   117→ * the "remote controls dead while the TV plays" report: a page reload (or
+   118→ * PWA re-open) RESUMES the live cast session, but the media client was only
+   119→ * ever acquired inside the load paths — on a resumed session refs.media
+   120→ * stayed null, so position/duration never reached the remote and every
+   121→ * control (pause, ±10s, scrub) was a silent no-op while the TV played on.
+   122→ */
+   123→function wireMediaErrorListener(client: any) {
+   124→  client?.addUpdateListener?.(() => {
+   125→    const st = statusOf(client);
+   126→    if (st?.playerState === "IDLE" && st?.idleReason === "ERROR") {
+   127→      noteTrail("receiver-media-error");
+   128→      notifyMediaError("The TV couldn't play this stream — try another server or quality");
+   129→    }
+   130→  });
+   131→}
+   132→
+   133→function attachRemoteMedia(session: any): boolean {
+   134→  try {
+   135→    const client = session?.getMediaSession?.();
+   136→    if (!client) return false;
+   137→    const isNew = refs.media !== client;
+   138→    refs.media = client;
+   139→    if (isNew) wireMediaErrorListener(client);
+   140→    return true;
+   141→  } catch {
+   142→    return false;
+   143→  }
+   144→}
+   145→
+   146→/**
+   147→ * Self-heal the remote from OUTSIDE a load: healthy sessions are untouched;
+   148→ * a casting session whose media client is missing/stale gets re-acquired
+   149→ * from CastContext. Called from the UI poll (fast) and the tracker (10s).
+   150→ */
+   151→export function castReattach(): boolean {
+   152→  if (currentState !== "casting") return false;
+   153→  if (refs.media && statusOf(refs.media)) return true; // healthy — nothing to do
+   154→  try {
+   155→    const live = cfw()?.CastContext.getInstance?.()?.getCurrentSession?.();
+   156→    if (live) refs.session = live;
+   157→    return attachRemoteMedia(refs.session);
+   158→  } catch {
+   159→    return false;
+   160→  }
+   161→}
+   162→
+   163→/**
+   164→ * Continue-Watching adoption for RESUMED sessions: the TV is already playing
+   165→ * (loaded by the previous page life) and this fresh page has no descriptor.
+   166→ * Once the receiver reports a real status — and its title matches OUR open
+   167→ * episode — adopt the caller's descriptor so TV progress keeps saving.
+   168→ */
+   169→export function castEnsureTracking(desc: CastProgressDescriptor): void {
+   170→  if (currentState !== "casting" || progressDesc || !desc) return;
+   171→  try {
+   172→    const st = statusOf(refs.media);
+   173→    if (!st) return; // no confirmed receiver state — never guess
+   174→    const receiverTitle = st?.media?.metadata?.title;
+   175→    if (desc.castTitle && receiverTitle && receiverTitle !== desc.castTitle) return;
+   176→    progressDesc = desc;
+   177→    startProgressTracker();
+   178→  } catch {
+   179→    /* ignore */
+   180→  }
+   181→}
+   182→
+   183→function startProgressTracker() {
+   184→  if (typeof window === "undefined" || demoHook) return;
+   185→  if (progressTimer != null) return; // already watching this session
+   186→  trackerLastPos = castPosition();
+   187→  trackerActiveAt = Date.now();
+   188→  progressTimer = window.setInterval(() => {
+   189→    if (currentState !== "casting") return;
+   190→    // ---- self-heal + sync watchdog (covers RESUMED sessions) ----
+   191→    // a page reload rejoins the live session with a null/stale media client;
+   192→    // re-acquire it, and if the receiver never reports a status, say so once
+   193→    if (!refs.media || !statusOf(refs.media)) {
+   194→      try {
+   195→        const live = cfw()?.CastContext.getInstance?.()?.getCurrentSession?.();
+   196→        if (live) {
+   197→          refs.session = live;
+   198→          attachRemoteMedia(live);
+   199→        }
+   200→      } catch {
+   201→        /* ignore */
+   202→      }
+   203→      if (noStatusSince == null) noStatusSince = Date.now();
+   204→      else if (!syncToastShown && Date.now() - noStatusSince > 12_000) {
+   205→        syncToastShown = true;
+   206→        noteTrail("no-status");
+   207→        notifyMediaError("Can't sync with the TV's playback — Stop casting, then cast this episode again");
+   208→      }
+   209→    } else {
+   210→      noStatusSince = null;
+   211→      syncToastShown = false;
+   212→    }
+   213→    if (!progressDesc) return; // resumed session not yet adopted — controls only
+   214→    const pos = castPosition();
+   215→    const now = Date.now();
+   216→    if (pos == null || pos === trackerLastPos) {
+   217→      // paused, buffering or unreachable — wall time between these ticks
+   218→      // must not accrue as watch time
+   219→      trackerLastPos = pos;
+   220→      trackerActiveAt = now;
+   221→    } else {
+   222→      const delta = Math.min(120, (now - trackerActiveAt) / 1000);
+   223→      trackerLastPos = pos;
+   224→      trackerActiveAt = now;
+   225→      if (delta >= 1) {
+   226→        recordWatchSeconds({ malId: progressDesc.malId, title: progressDesc.title ?? "", image: progressDesc.image ?? null, delta });
+   227→      }
+   228→      saveProgressDetailed({
+   229→        malId: progressDesc.malId,
+   230→        episode: progressDesc.episode,
+   231→        lang: progressDesc.lang,
+   232→        server: progressDesc.server,
+   233→        position: pos,
+   234→        duration: castDuration() || 0,
+   235→        title: progressDesc.title,
+   236→        image: progressDesc.image,
+   237→        total: progressDesc.total,
+   238→      });
+   239→    }
+   240→    // ---- auto next episode (mirrors the in-player ended handler) ----
+   241→    if (progressDesc && autoNextHandler) {
+   242→      const dur = castDuration() ?? 0;
+   243→      const st = statusOf(refs.media);
+   244→      const finished = st?.playerState === "IDLE" && st?.idleReason === "FINISHED";
+   245→      const atEnd = dur > 0 && pos != null && pos >= dur - 2;
+   246→      if ((finished || atEnd) && autoNextFiredEpoch !== autoNextEpoch) {
+   247→        if (readAppSettings().autoNext) {
+   248→          autoNextFiredEpoch = autoNextEpoch;
+   249→          try {
+   250→            autoNextHandler();
+   251→          } catch {
+   252→            /* navigation is best-effort */
+   253→          }
+   254→        }
+   255→      }
+   256→    }
+   257→  }, 10_000);
+   258→}
+   259→
+   260→/* receiver-side playback failure (HLS the TV couldn't load etc.) */
+   261→const mediaErrorListeners = new Set<(msg: string) => void>();
+   262→export function onCastMediaError(fn: (msg: string) => void): () => void {
+   263→  mediaErrorListeners.add(fn);
+   264→  return () => mediaErrorListeners.delete(fn);
+   265→}
+   266→function notifyMediaError(msg: string) {
+   267→  mediaErrorListeners.forEach((fn) => {
+   268→    try {
+   269→      fn(msg);
+   270→    } catch {
+   271→      /* ignore */
+   272→    }
+   273→  });
+   274→}
+   275→
+   276→/* ---- stuck-load watchdog ------------------------------------------------
+   277→ * loadMedia() resolving only means the receiver ACCEPTED the request. If
+   278→ * the media URL can't actually be fetched by the TV (CDN blocks the
+   279→ * proxy's datacenter IP, dead gateway), the receiver sits on its loading
+   280→ * screen forever while the remote shows dead 0:00/0:00 controls — exactly
+   281→ * the owner's cast report (2026-10-09). Watch the status briefly after
+   282→ * each load: no duration and no position progress within 12s = the stream
+   283→ * never loaded — say so with an actionable message instead of leaving
+   284→ * silent dead controls. Disarms itself the moment the media is real.
+   285→ * ----------------------------------------------------------------------- */
+   286→let stuckWatchdog: number | null = null;
+   287→function disarmStuckWatchdog() {
+   288→  if (stuckWatchdog != null) {
+   289→    window.clearInterval(stuckWatchdog);
+   290→    stuckWatchdog = null;
+   291→  }
+   292→}
+   293→function armStuckLoadWatchdog() {
+   294→  if (typeof window === "undefined" || demoHook) return;
+   295→  disarmStuckWatchdog();
+   296→  const startedAt = Date.now();
+   297→  stuckWatchdog = window.setInterval(() => {
+   298→    if (currentState !== "casting") {
+   299→      disarmStuckWatchdog();
+   300→      return;
+   301→    }
+   302→    const dur = castDuration();
+   303→    const pos = castPosition();
+   304→    if ((dur != null && dur > 0) || (pos != null && pos > 0)) {
+   305→      disarmStuckWatchdog(); // media is real and moving — normal remote operation
+   306→      return;
+   307→    }
+   308→    if (Date.now() - startedAt > 12_000) {
+   309→      disarmStuckWatchdog();
+   310→      noteTrail("stuck-loading");
+   311→      notifyMediaError("The TV can't load this stream — try Server 2, or stop casting and cast again");
+   312→    }
+   313→  }, 1_000);
+   314→}
+   315→
+   316→/**
+   317→ * Squeeze every byte of meaning out of a cast failure. CAF rejections come
+   318→ * in many shapes: undefined, empty object, {errorCode}, {code, description},
+   319→ * DOMException, Error... Serialize whichever fields actually exist.
+   320→ */
+   321→function describeError(err: unknown): string {
+   322→  if (err == null) return "";
+   323→  if (typeof err === "string") return err.trim();
+   324→  const e = err as Record<string, unknown>;
+   325→  const parts: string[] = [];
+   326→  for (const key of ["message", "description", "errorCode", "code", "detail", "reason", "name"]) {
+   327→    const v = e[key];
+   328→    if (typeof v === "string" && v.trim()) parts.push(`${key}:${v.trim().replace(/_/g, " ")}`);
+   329→    else if (typeof v === "number") parts.push(`${key}:${v}`);
+   330→  }
+   331→  // last resort: every own property, JSON-shaped (truncated)
+   332→  if (parts.length === 0) {
+   333→    try {
+   334→      const keys = Object.getOwnPropertyNames(e);
+   335→      const snap = JSON.stringify(e, keys as never);
+   336→      if (snap && snap !== "{}" && snap !== '""') parts.push(snap.slice(0, 140));
+   337→      else if (keys.length > 0) parts.push(keys.join(","));
+   338→    } catch {
+   339→      /* ignore */
+   340→    }
+   341→  }
+   342→  return parts.join(" · ").slice(0, 180);
+   343→}
+   344→
+   345→function setState(s: CastState) {
+   346→  if (currentState === s) return;
+   347→  currentState = s;
+   348→  listeners.forEach((fn) => {
+   349→    try {
+   350→      fn(s);
+   351→    } catch {
+   352→      /* ignore listener errors */
+   353→    }
+   354→  });
+   355→}
+   356→
+   357→export function getCastState(): CastState {
+   358→  return currentState;
+   359→}
+   360→
+   361→export function onCastStateChange(fn: (s: CastState) => void): () => void {
+   362→  listeners.add(fn);
+   363→  return () => listeners.delete(fn);
+   364→}
+   365→
+   366→function cfw(): any {
+   367→  return (window as any).cast?.framework;
+   368→}
+   369→
+   370→/**
+   371→ * Inject the CAF sender SDK once and configure the cast context with the
+   372→ * Default Media Receiver. Safe to call from every player mount.
+   373→ */
+   374→export function ensureCastSdk(): void {
+   375→  if (typeof window === "undefined" || sdkReady || sdkLoading) return;
+   376→
+   377→  // SDK already there (another component loaded it)
+   378→  if (cfw() && (window as any).chrome?.cast?.media) {
+   379→    configureContext();
+   380→    return;
+   381→  }
+   382→
+   383→  sdkLoading = true;
+   384→  const done = (ok: boolean) => {
+   385→    sdkLoading = false;
+   386→    if (!ok) {
+   387→      setState("unavailable");
+   388→      return;
+   389→    }
+   390→    configureContext();
+   391→  };
+   392→
+   393→  (window as any).__onGCastApiAvailable = (available: boolean) => done(available !== false);
+   394→
+   395→  const existing = document.querySelector<HTMLScriptElement>(`script[src="${CAST_SDK_SRC}"]`);
+   396→  if (existing) return; // callback above will fire
+   397→  const script = document.createElement("script");
+   398→  script.src = CAST_SDK_SRC;
+   399→  script.async = true;
+   400→  script.onerror = () => done(false);
+   401→  document.head.appendChild(script);
+   402→
+   403→  // belt & braces: some builds never call __onGCastApiAvailable
+   404→  window.setTimeout(() => {
+   405→    if (!sdkReady && cfw() && (window as any).chrome?.cast?.media) configureContext();
+   406→  }, 6000);
+   407→}
+   408→
+   409→function configureContext() {
+   410→  try {
+   411→    const framework = cfw();
+   412→    if (!framework || !(window as any).chrome?.cast?.media) {
+   413→      setState("unavailable");
+   414→      return;
+   415→    }
+   416→    const context = framework.CastContext.getInstance();
+   417→    context.setOptions({
+   418→      receiverApplicationId: (window as any).chrome.cast.media.DEFAULT_MEDIA_RECEIVER_APP_ID,
+   419→      autoJoinPolicy: (window as any).chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED,
+   420→    });
+   421→    context.addEventListener(
+   422→      framework.CastContextEventType.SESSION_STATE_CHANGED,
+   423→      (e: any) => {
+   424→        const s = e?.sessionState;
+   425→        const S = framework.SessionState ?? {};
+   426→        if (s === S.SESSION_STARTED || s === S.SESSION_RESUMED) {
+   427→          noteTrail("session-started");
+   428→          refs.session = e.session ?? context.getCurrentSession();
+   429→          // RESUMED (page reload / PWA re-open while the TV plays): adopt the
+   430→          // receiver's CURRENT media client right here — waiting for a load
+   431→          // left the remote dead at 0:00/0:00 with no-op controls
+   432→          attachRemoteMedia(refs.session);
+   433→          startProgressTracker();
+   434→          setState("casting");
+   435→        } else if (s === S.SESSION_START_FAILED) {
+   436→          // THIS is where the real reason hides when requestSession rejects empty
+   437→          noteTrail("session-failed", e?.errorCode);
+   438→          refs.session = null;
+   439→          refs.media = null;
+   440→          setState("idle");
+   441→        } else if (s === S.SESSION_ENDED || s === S.SESSION_END_FAILED) {
+   442→          noteTrail("session-ended", s === S.SESSION_END_FAILED ? e?.errorCode : undefined);
+   443→          refs.session = null;
+   444→          refs.media = null;
+   445→          progressDesc = null;
+   446→          captionsTrackId = null;
+   447→          captionsActive = false;
+   448→          noStatusSince = null;
+   449→          syncToastShown = false;
+   450→          stopProgressTracker();
+   451→          setState("idle");
+   452→        }
+   453→      },
+   454→    );
+   455→    context.addEventListener(framework.CastContextEventType.CAST_STATE_CHANGED, (e: any) => {
+   456→      noteTrail(`cast:${e?.castState ?? "?"}`, e?.errorCode);
+   457→    });
+   458→    // a previous page load may still hold a live session
+   459→    if (context.getCurrentSession()) {
+   460→      refs.session = context.getCurrentSession();
+   461→      setState("casting");
+   462→    } else {
+   463→      setState("idle");
+   464→    }
+   465→    sdkReady = true;
+   466→  } catch {
+   467→    setState("unavailable");
+   468→  }
+   469→}
+   470→
+   471→export interface CastMediaRequest {
+   472→  /** Absolute HTTPS URL of the master m3u8 (our proxy). */
+   473→  src: string;
+   474→  title: string;
+   475→  /** Deprecated text (metadata subtitle line), not a caption track. */
+   476→  subtitle?: string;
+   477→  /** Side-loaded caption track the receiver fetches directly (absolute URL). */
+   478→  captions?: { url: string; label?: string };
+   479→  /** Captions active the moment the TV starts playing (default true). */
+   480→  captionsOn?: boolean;
+   481→  imageUrl?: string | null;
+   482→  /** Resume point, seconds. */
+   483→  startTime?: number;
+   484→  /** Continue-Watching ownership: who/where this TV playback is. */
+   485→  progress?: CastProgressDescriptor;
+   486→}
+   487→
+   488→/* ---- captions state (toggleable from the phone while the TV plays) ------ */
+   489→let captionsTrackId: number | null = null;
+   490→let captionsActive = false;
+   491→
+   492→/** Does the current cast session carry a side-loaded caption track? */
+   493→export function castCaptionsAvailable(): boolean {
+   494→  return captionsTrackId != null;
+   495→}
+   496→
+   497→/** Are captions currently active on the TV? */
+   498→export function castCaptionsActive(): boolean {
+   499→  return captionsActive;
+   500→}
+   501→
+   502→/**
+   503→ * Turn the TV's caption track on/off mid-session (EditTracksInfo replaces
+   504→ * the active-track set). Returns false when there is no live media or no
+   505→ * caption track was side-loaded for this episode.
+   506→ */
+   507→export async function castSetCaptions(on: boolean): Promise<boolean> {
+   508→  if (demoHook) return captionsTrackId != null;
+   509→  try {
+   510→    const chromeCast = (window as any).chrome?.cast;
+   511→    const media = refs.media;
+   512→    if (!chromeCast || !media || captionsTrackId == null) return false;
+   513→    const req = new chromeCast.media.EditTracksInfoRequest(on ? [captionsTrackId] : []);
+   514→    await media.editTracksInfo?.(req);
+   515→    captionsActive = on;
+   516→    return true;
+   517→  } catch {
+   518→    return false;
+   519→  }
+   520→}
+   521→
+   522→/** The DMR resolves track contentIds against nothing useful — a RELATIVE
+   523→ * caption URL (our proxy-wrapped provider VTTs) silently never fetches and
+   524→ * the TV just plays with no subtitles. Absolutize every caption URL here,
+   525→ * the single choke point for both load paths. */
+   526→function absoluteUrl(u: string): string {
+   527→  try {
+   528→    return new URL(u, window.location.origin).toString();
+   529→  } catch {
+   530→    return u;
+   531→  }
+   532→}
+   533→
+   534→/** Legible default for the big screen: white with a black outline. */
+   535→function tvTrackStyle(chromeCast: any): any | undefined {
+   536→  try {
+   537→    return new chromeCast.media.TextTrackStyle({
+   538→      foregroundColor: "#FFFFFF",
+   539→      backgroundColor: "#00000000",
+   540→      edgeColor: "#000000FF",
+   541→      edgeType: "OUTLINE",
+   542→      fontFamily: "Sans-Serif",
+   543→      fontScale: 1.0,
+   544→    });
+   545→  } catch {
+   546→    return undefined;
+   547→  }
+   548→}
+   549→
+   550→/** Side-load a WebVTT caption track onto the Default Media Receiver. */
+   551→function attachCaptions(chromeCast: any, mediaInfo: any, request: any, captions?: { url: string; label?: string }, on = true) {
+   552→  captionsTrackId = null;
+   553→  captionsActive = false;
+   554→  if (!captions?.url || !chromeCast.media.Track) return;
+   555→  try {
+   556→    const track = new chromeCast.media.Track(0, chromeCast.media.TrackType.TEXT);
+   557→    track.subtype = chromeCast.media.TextTrackType?.SUBTITLES ?? "SUBTITLES";
+   558→    track.name = captions.label || "English";
+   559→    track.language = "en";
+   560→    track.contentId = absoluteUrl(captions.url);
+   561→    track.contentType = "text/vtt";
+   562→    mediaInfo.tracks = [track];
+   563→    mediaInfo.textTrackStyle = tvTrackStyle(chromeCast);
+   564→    request.activeTrackIds = on ? [0] : [];
+   565→    captionsTrackId = 0;
+   566→    captionsActive = on;
+   567→  } catch {
+   568→    /* captions are best-effort — video still casts without them */
+   569→  }
+   570→}
+   571→
+   572→const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+   573→
+   574→/**
+   575→ * Request a (possibly resumed) session. Rejects on user cancel; returns null
+   576→ * when the retry after a transient failure also failed.
+   577→ */
+   578→async function requestSession(context: any): Promise<any | null> {
+   579→  try {
+   580→    const session = await context.requestSession(); // rejects on cancel/failure
+   581→    return session ?? context.getCurrentSession();
+   582→  } catch (err) {
+   583→    const text = describeError(err).toLowerCase();
+   584→    // user closed the chooser — do not retry, just report
+   585→    if (text.includes("cancel")) throw err;
+   586→    // first connect attempts fail transiently on flaky mesh/2.4GHz links;
+   587→    // one quiet retry catches a good chunk of those
+   588→    noteTrail("retry");
+   589→    await sleep(1200);
+   590→    try {
+   591→      const session = await context.requestSession();
+   592→      return session ?? context.getCurrentSession();
+   593→    } catch {
+   594→      return null;
+   595→    }
+   596→  }
+   597→}
+   598→
+   599→/**
+   600→ * The session wrapper the SDK handed us earlier can go STALE while the
+   601→ * module-level ref survives (phone locked, app backgrounded, Wi-Fi blip —
+   602→ * the receiver drops the socket, CAF tears the session down internally).
+   603→ * Calling loadMedia() on the stale wrapper then explodes deep inside the SDK
+   604→ * with e.g. "Cannot read properties of undefined (reading
+   605→ * 'addUpdateListener')". Re-hydrate from CastContext before every reuse:
+   606→ * it returns null/undefined once the session is really gone.
+   607→ */
+   608→function refreshLiveSession(context: any): boolean {
+   609→  if (!refs.session) return false;
+   610→  try {
+   611→    const live = context.getCurrentSession?.();
+   612→    if (live) {
+   613→      refs.session = live;
+   614→      return true;
+   615→    }
+   616→  } catch {
+   617→    /* fall through — treat as dead */
+   618→  }
+   619→  refs.session = null;
+   620→  refs.media = null;
+   621→  setState("idle");
+   622→  return false;
+   623→}
+   624→
+   625→/**
+   626→ * CAF's CastSession.loadMedia() resolves VOID — the controllable object is
+   627→ * the RemoteMediaClient handed out by session.getMediaSession(). Treating
+   628→ * the resolution itself as the media object is what produced the owner's
+   629→ * "Cannot read properties of undefined (reading 'addUpdateListener')"
+   630→ * cast failure (the media HAD loaded on the TV; the sender then crashed on
+   631→ * undefined). Legacy v2 callers get the Media object back, so accept both
+   632→ * shapes: prefer the session's client, fall back to whatever loadMedia
+   633→ * returned.
+   634→ */
+   635→function resolveClient(session: any, loaded: any): any {
+   636→  try {
+   637→    const viaSession = session?.getMediaSession?.();
+   638→    if (viaSession) return viaSession;
+   639→  } catch {
+   640→    /* fall through to the loaded shape */
+   641→  }
+   642→  return loaded ?? null;
+   643→}
+   644→
+   645→/** MediaStatus accessor for both API shapes (RemoteMediaClient.getMediaStatus()
+   646→ * vs the v2 Media object's .status property). */
+   647→function statusOf(media: any): any {
+   648→  if (!media) return null;
+   649→  try {
+   650→    const st = media.getMediaStatus?.();
+   651→    if (st) return st;
+   652→  } catch {
+   653→    /* fall through */
+   654→  }
+   655→  return media.status ?? null;
+   656→}
+   657→
+   658→/** Ask the user to pick a device, then load the episode. Returns success. */
+   659→export async function castLoad(req: CastMediaRequest): Promise<{ ok: boolean; error?: string }> {
+   660→  try {
+   661→    const framework = cfw();
+   662→    const chromeCast = (window as any).chrome?.cast;
+   663→    if (!framework || !chromeCast) return { ok: false, error: "Cast is not available in this browser" };
+   664→
+   665→    setState("connecting");
+   666→    const context = framework.CastContext.getInstance();
+   667→
+   668→    if (refs.session) refreshLiveSession(context);
+   669→    if (!refs.session) {
+   670→      refs.session = await requestSession(context);
+   671→    }
+   672→    if (!refs.session) throw new Error("No Chromecast selected");
+   673→
+   674→    progressDesc = req.progress ?? null;
+   675→    autoNextEpoch++;
+   676→    const loaded = await loadMediaWithRecovery(context, chromeCast, req);
+   677→    if (!attachRemoteMedia(refs.session)) {
+   678→      // loadMedia resolving only proves the REQUEST was accepted (CAF resolves
+   679→      // VOID) — the controllable client rides on the session
+   680→      refs.media = resolveClient(refs.session, loaded);
+   681→      wireMediaErrorListener(refs.media);
+   682→    }
+   683→    armStuckLoadWatchdog();
+   684→    startProgressTracker();
+   685→    setState("casting");
+   686→    return { ok: true };
+   687→  } catch (err: unknown) {
+   688→    // CAF errors arrive in mixed shapes (often EMPTY) — describeError pulls
+   689→    // whatever exists, and lastEventError holds the reason the context events
+   690→    // saw (the promise rejection alone is frequently {} on session failures).
+   691→    const detail = [describeError(err), lastEventError ? `event:${lastEventError}` : ""]
+   692→      .filter(Boolean)
+   693→      .join(" · ");
+   694→    const flat = detail.toLowerCase();
+   695→    console.warn("[cast] session/media failure:", err, "| eventError:", lastEventError, "| trail:", castTrail.join(" > "));
+   696→    let msg: string;
+   697→    if (flat.includes("cancel")) msg = "Cast cancelled";
+   698→    else if (flat.includes("no device") || flat.includes("not found") || flat.includes("no compatible")) {
+   699→      msg = "No cast device found — make sure your TV/Chromecast is on the same Wi-Fi, then try again";
+   700→    } else if (flat.includes("session error") || flat.includes("timeout") || flat.includes("unreachable")) {
+   701→      msg = `Couldn't reach the TV (${detail}) — your phone finds the TV but can't open a connection. Router AP/client isolation or a guest network usually causes this`;
+   702→    } else if (flat.includes("load") || flat.includes("media") || flat.includes("invalid")) {
+   703→      msg = "The TV couldn't load this stream — try another server for this episode";
+   704→    } else {
+   705→      // unknown failure — show everything we captured so it can be reported
+   706→      msg = `Cast failed (${detail || "no details"}) — tell me this text to fix it`;
+   707→    }
+   708→    if (!refs.session) setState("idle");
+   709→    return { ok: false, error: msg };
+   710→  }
+   711→}
+   712→
+   713→/**
+   714→ * loadMedia with one stale-session recovery: the SDK throws opaque TypeErrors
+   715→ * (addUpdateListener of undefined) when the cached CastSession wrapper outlived
+   716→ * its underlying connection. Discard the dead wrapper, re-ask for a session,
+   717→ * retry once — the user just sees the cast succeed.
+   718→ */
+   719→async function loadMediaWithRecovery(context: any, chromeCast: any, req: CastMediaRequest): Promise<any> {
+   720→  const build = () => buildLoadRequest(chromeCast, req);
+   721→  try {
+   722→    return await refs.session.loadMedia(build());
+   723→  } catch (err) {
+   724→    // no live session underneath — drop it and retry once with a fresh one
+   725→    noteTrail("stale-session");
+   726→    refs.session = null;
+   727→    refs.media = null;
+   728→    setState("idle");
+   729→    const fresh = await requestSession(context);
+   730→    if (!fresh) throw err;
+   731→    refs.session = fresh;
+   732→    return await refs.session.loadMedia(build());
+   733→  }
+   734→}
+   735→
+   736→function buildLoadRequest(chromeCast: any, req: CastMediaRequest): any {
+   737→  // the Default Media Receiver sniffs better with the honest type: our SP
+   738→  // sources are progressive MP4s, everything else is an HLS master
+   739→  const type = /\.m3u8($|\?)/i.test(req.src) ? "application/x-mpegurl" : "video/mp4";
+   740→  const mediaInfo = new chromeCast.media.MediaInfo(req.src, type);
+   741→  const metadata = new chromeCast.media.GenericMediaMetadata();
+   742→  metadata.title = req.title;
+   743→  if (req.subtitle) metadata.subtitle = req.subtitle;
+   744→  if (req.imageUrl) metadata.images = [new chromeCast.Image(req.imageUrl)];
+   745→  mediaInfo.metadata = metadata;
+   746→  mediaInfo.streamType = chromeCast.media.StreamType.BUFFERED;
+   747→  const request = new chromeCast.media.LoadRequest(mediaInfo);
+   748→  request.autoplay = true;
+   749→  request.currentTime = Math.max(0, req.startTime ?? 0);
+   750→  attachCaptions(chromeCast, mediaInfo, request, req.captions, req.captionsOn ?? true);
+   751→  return request;
+   752→}
+   753→
+   754→/** Load another episode into the live cast session (no re-prompt). */
+   755→export async function castLoadNext(req: CastMediaRequest): Promise<boolean> {
+   756→  if (demoHook) return demoHook.loadNext();
+   757→  try {
+   758→    const framework = cfw();
+   759→    const chromeCast = (window as any).chrome?.cast;
+   760→    if (!framework || !chromeCast) return false;
+   761→    const context = framework.CastContext.getInstance();
+   762→    // a session that died since the last episode (phone slept, Wi-Fi blip)
+   763→    // must not explode inside loadMedia — verify it is still alive first
+   764→    if (!refreshLiveSession(context) || !refs.session) return false;
+   765→    progressDesc = req.progress ?? progressDesc; // keep the old descriptor when none is given
+   766→    autoNextEpoch++;
+   767→    // loadMedia resolves VOID in CAF — prefer the session's client
+   768→    const loadedNext = await refs.session.loadMedia(buildLoadRequest(chromeCast, req));
+   769→    if (!attachRemoteMedia(refs.session)) {
+   770→      refs.media = resolveClient(refs.session, loadedNext);
+   771→      wireMediaErrorListener(refs.media);
+   772→    }
+   773→    armStuckLoadWatchdog();
+   774→    startProgressTracker();
+   775→    return true;
+   776→  } catch {
+   777→    // the session died mid-series — drop it so the next Cast tap re-prompts
+   778→    refs.session = null;
+   779→    refs.media = null;
+   780→    setState("idle");
+   781→    return false;
+   782→  }
+   783→}
+   784→
+   785→/** Stop casting and give playback back to the device. */
+   786→export function castStop(): void {
+   787→  disarmStuckWatchdog();
+   788→  // final Continue-Watching write at the exact second the TV was at — the
+   789→  // tracker dies with the session, this flush must not be skipped
+   790→  if (progressDesc && !demoHook) {
+   791→    const pos = castPosition();
+   792→    if (pos != null) {
+   793→      saveProgressDetailed({
+   794→        malId: progressDesc.malId,
+   795→        episode: progressDesc.episode,
+   796→        lang: progressDesc.lang,
+   797→        server: progressDesc.server,
+   798→        position: pos,
+   799→        duration: castDuration() || 0,
+   800→        title: progressDesc.title,
+   801→        image: progressDesc.image,
+   802→        total: progressDesc.total,
+   803→      });
+   804→    }
+   805→  }
+   806→  progressDesc = null;
+   807→  captionsTrackId = null;
+   808→  captionsActive = false;
+   809→  noStatusSince = null;
+   810→  syncToastShown = false;
+   811→  stopProgressTracker();
+   812→  try {
+   813→    refs.media = null;
+   814→    refs.session?.endCurrentSession?.(true);
+   815→    cfw()?.CastContext.getInstance().endCurrentSession(true);
+   816→  } catch {
+   817→    /* ignore */
+   818→  }
+   819→  refs.session = null;
+   820→  setState("idle");
+   821→}
+   822→
+   823→/** Best-effort current position inside the cast session (seconds). */
+   824→export function castPosition(): number | null {
+   825→  if (demoHook) return demoHook.position();
+   826→  try {
+   827→    const t = refs.media?.getEstimatedTime?.();
+   828→    if (typeof t === "number" && Number.isFinite(t)) return t;
+   829→    // v2 Media shape: .currentTime property
+   830→    const legacy = refs.media?.currentTime;
+   831→    return typeof legacy === "number" && Number.isFinite(legacy) ? legacy : null;
+   832→  } catch {
+   833→    return null;
+   834→  }
+   835→}
+   836→
+   837→export function castDuration(): number | null {
+   838→  if (demoHook) return demoHook.duration();
+   839→  try {
+   840→    // RemoteMediaClient: status.media.duration · legacy v2 Media: .duration
+   841→    const d = statusOf(refs.media)?.media?.duration ?? refs.media?.duration;
+   842→    return typeof d === "number" && Number.isFinite(d) ? d : null;
+   843→  } catch {
+   844→    return null;
+   845→  }
+   846→}
+   847→
+   848→/* ---- cast remote (phone controls the TV while casting) ---------------- */
+   849→
+   850→/** True while the receiver reports active playback (BUFFERING counts — it's en route to PLAYING). */
+   851→export function castIsPlaying(): boolean {
+   852→  if (demoHook) return demoHook.isPlaying();
+   853→  try {
+   854→    const st = statusOf(refs.media)?.playerState;
+   855→    return st === "PLAYING" || st === "BUFFERING";
+   856→  } catch {
+   857→    return false;
+   858→  }
+   859→}
+   860→
+   861→/** Play/pause the TV; returns false when there is no live media to control. */
+   862→export async function castTogglePlay(): Promise<boolean> {
+   863→  if (demoHook) return demoHook.toggle();
+   864→  try {
+   865→    const chromeCast = (window as any).chrome?.cast;
+   866→    const media = refs.media;
+   867→    if (!chromeCast || !media) return false;
+   868→    if (castIsPlaying()) await media.pause?.(new chromeCast.media.PauseRequest());
+   869→    else await media.play?.(new chromeCast.media.PlayRequest());
+   870→    return true;
+   871→  } catch {
+   872→    return false;
+   873→  }
+   874→}
+   875→
+   876→/** Jump the TV to an absolute second (remote progress bar + ±10s buttons). */
+   877→export async function castSeek(sec: number): Promise<boolean> {
+   878→  if (demoHook) return demoHook.seek(sec);
+   879→  try {
+   880→    const chromeCast = (window as any).chrome?.cast;
+   881→    const media = refs.media;
+   882→    if (!chromeCast || !media) return false;
+   883→    const req = new chromeCast.media.SeekRequest();
+   884→    req.currentTime = Math.max(0, sec);
+   885→    await media.seek?.(req);
+   886→    return true;
+   887→  } catch {
+   888→    return false;
+   889→  }
+   890→}
+   891→
+   892→/* DEV-ONLY cast demo — strip-mined from production builds by the NODE_ENV
+   893→ * check. `window.__castDemo.start()` fakes a live session (ticking position,
+   894→ * toggle/seek/loadNext) so the remote UI can be verified without a TV. */
+   895→if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+   896→  let demo = false;
+   897→  let playing = true;
+   898→  let base = Date.now();
+   899→  let offset = 95; // fake position when the demo starts
+   900→  const pos = () => (playing ? offset + (Date.now() - base) / 1000 : offset);
+   901→  const api = {
+   902→    start() {
+   903→      demo = true;
+   904→      playing = true;
+   905→      base = Date.now();
+   906→      refs.session = { demo: true };
+   907→      setState("casting");
+   908→    },
+   909→    stop() {
+   910→      demo = false;
+   911→      refs.session = null;
+   912→      setState("idle");
+   913→    },
+   914→  };
+   915→  (window as any).__castDemo = api;
+   916→  demoHook = {
+   917→    position: () => (demo ? pos() : null),
+   918→    duration: () => (demo ? 1425 : null),
+   919→    isPlaying: () => demo && playing,
+   920→    toggle() {
+   921→      if (!demo) return false;
+   922→      if (playing) offset = pos();
+   923→      playing = !playing;
+   924→      base = Date.now();
+   925→      return true;
+   926→    },
+   927→    seek(s: number) {
+   928→      if (!demo) return false;
+   929→      offset = Math.max(0, s);
+   930→      base = Date.now();
+   931→      return true;
+   932→    },
+   933→    loadNext: () => demo,
+   934→  };
+   935→}
+   936→

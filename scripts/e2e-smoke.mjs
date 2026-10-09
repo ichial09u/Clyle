@@ -636,6 +636,7 @@ async function expectJson(name, path, init, validate, timeout) {
       const markers = [
         ["cast caption toggle (EditTracksInfoRequest)", "EditTracksInfoRequest"],
         ["cast caption track style (textTrackStyle)", "textTrackStyle"],
+        ["cast caption URL field (trackContentId — the v2 Track field the receiver actually reads)", "trackContentId"],
         ["cast settings panel", "Cast settings"],
         ["cast captions row hint", "No captions for this episode"],
         ["cast auto-next row", "Auto next episode"],

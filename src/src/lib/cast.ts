@@ -211,6 +211,17 @@ function startProgressTracker() {
       syncToastShown = false;
     }
     if (!progressDesc) return; // resumed session not yet adopted — controls only
+    // The TV moved on to something else (resumed-session adoption can land
+    // before the receiver's metadata arrives) — the moment the receiver's
+    // title exists and is NOT our episode, stop writing our row.
+    if (progressDesc.castTitle) {
+      const receiverTitle = statusOf(refs.media)?.media?.metadata?.title;
+      if (receiverTitle && receiverTitle !== progressDesc.castTitle) {
+        progressDesc = null;
+        stopProgressTracker();
+        return;
+      }
+    }
     const pos = castPosition();
     const now = Date.now();
     if (pos == null || pos === trackerLastPos) {
@@ -511,7 +522,7 @@ export async function castSetCaptions(on: boolean): Promise<boolean> {
     const media = refs.media;
     if (!chromeCast || !media || captionsTrackId == null) return false;
     const req = new chromeCast.media.EditTracksInfoRequest(on ? [captionsTrackId] : []);
-    await media.editTracksInfo?.(req);
+    await mediaCommand(media, "editTracksInfo", req);
     captionsActive = on;
     return true;
   } catch {
@@ -557,8 +568,15 @@ function attachCaptions(chromeCast: any, mediaInfo: any, request: any, captions?
     track.subtype = chromeCast.media.TextTrackType?.SUBTITLES ?? "SUBTITLES";
     track.name = captions.label || "English";
     track.language = "en";
-    track.contentId = absoluteUrl(captions.url);
-    track.contentType = "text/vtt";
+    // The receiver reads the URL from trackContentId / trackContentType —
+    // chrome.cast.media.Track has NEVER had contentId/contentType fields, so
+    // the track shipped with trackContentId null and the TV had nothing to
+    // fetch: captions never rendered even though the absoluteUrl was right.
+    track.trackContentId = absoluteUrl(captions.url);
+    track.trackContentType = "text/vtt";
+    // legacy alias — harmless extra JSON fields, helps older receiver builds
+    track.contentId = track.trackContentId;
+    track.contentType = track.trackContentType;
     mediaInfo.tracks = [track];
     mediaInfo.textTrackStyle = tvTrackStyle(chromeCast);
     request.activeTrackIds = on ? [0] : [];
@@ -642,8 +660,22 @@ function resolveClient(session: any, loaded: any): any {
   return loaded ?? null;
 }
 
-/** MediaStatus accessor for both API shapes (RemoteMediaClient.getMediaStatus()
- * vs the v2 Media object's .status property). */
+/**
+ * MediaStatus accessor for BOTH API shapes the sender SDK ships:
+ * - Desktop/CAF RemoteMediaClient: getMediaStatus() -> MediaStatus
+ * - ANDROID (the owner's phone!): cast_sender.js ships the legacy v2 layer
+ *   there, and CastSession.getMediaSession() returns a chrome.cast.media.Media
+ *   object that IS the live status — playerState / currentTime / idleReason /
+ *   media (MediaInfo w/ duration) are FLAT properties kept fresh by
+ *   MEDIA_STATUS pushes. There is no .status wrapper and no getMediaStatus().
+ *
+ * Reading `.status` on the v2 object returned undefined, so statusOf() was
+ * null on every Android device and silently killed everything status-derived:
+ * pause tapped while playing sent PLAY (castIsPlaying() always false),
+ * duration stayed 0:00 (progress bar unscrubbable, auto-next blind), the cast
+ * auto-skip intro branch never fired (it gates on playing), and a bogus
+ * "Can't sync with the TV" toast appeared 12s into every session.
+ */
 function statusOf(media: any): any {
   if (!media) return null;
   try {
@@ -652,7 +684,47 @@ function statusOf(media: any): any {
   } catch {
     /* fall through */
   }
-  return media.status ?? null;
+  return media ?? null;
+}
+
+/**
+ * Fire one media command through BOTH call shapes the SDK ships: the v2
+ * Media methods are callback-style and return void; the CAF RemoteMediaClient
+ * methods are promise-style and ignore extra args. Whichever answers wins;
+ * a silent (ACK-less) build resolves after a short grace so optimistic UI +
+ * the poll keep things honest.
+ */
+function mediaCommand(media: any, method: string, req: any, graceMs = 4000): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const ok = () => {
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    };
+    const bad = (e: unknown) => {
+      if (!settled) {
+        settled = true;
+        reject(e instanceof Error ? e : new Error(String(e ?? "command failed")));
+      }
+    };
+    const grace = window.setTimeout(ok, graceMs);
+    const done = () => window.clearTimeout(grace);
+    try {
+      const fn = media?.[method];
+      if (typeof fn !== "function") {
+        done();
+        bad(new Error(`${method} unavailable`));
+        return;
+      }
+      const r = fn.call(media, req, ok, bad);
+      if (r && typeof r.then === "function") r.then(() => { done(); ok(); }, (e: unknown) => { done(); bad(e); });
+    } catch (e) {
+      done();
+      bad(e);
+    }
+  });
 }
 
 /** Ask the user to pick a device, then load the episode. Returns success. */
@@ -837,9 +909,19 @@ export function castPosition(): number | null {
 export function castDuration(): number | null {
   if (demoHook) return demoHook.duration();
   try {
-    // RemoteMediaClient: status.media.duration · legacy v2 Media: .duration
-    const d = statusOf(refs.media)?.media?.duration ?? refs.media?.duration;
-    return typeof d === "number" && Number.isFinite(d) ? d : null;
+    // v2 Media: .media is the MediaInfo (duration lives there) ·
+    // RemoteMediaClient: status.media.duration or getStreamDuration()
+    const st = statusOf(refs.media);
+    const candidates = [
+      st?.media?.duration,
+      st?.duration,
+      refs.media?.duration,
+      typeof refs.media?.getStreamDuration === "function" ? refs.media.getStreamDuration() : undefined,
+    ];
+    for (const d of candidates) {
+      if (typeof d === "number" && Number.isFinite(d) && d > 0) return d;
+    }
+    return null;
   } catch {
     return null;
   }
@@ -865,8 +947,11 @@ export async function castTogglePlay(): Promise<boolean> {
     const chromeCast = (window as any).chrome?.cast;
     const media = refs.media;
     if (!chromeCast || !media) return false;
-    if (castIsPlaying()) await media.pause?.(new chromeCast.media.PauseRequest());
-    else await media.play?.(new chromeCast.media.PlayRequest());
+    // castIsPlaying() reads the LIVE receiver state (v2 Media on Android,
+    // MediaStatus via getMediaStatus() elsewhere) — pause when it says
+    // playing, play when it says paused/idle
+    if (castIsPlaying()) await mediaCommand(media, "pause", new chromeCast.media.PauseRequest());
+    else await mediaCommand(media, "play", new chromeCast.media.PlayRequest());
     return true;
   } catch {
     return false;
@@ -882,7 +967,7 @@ export async function castSeek(sec: number): Promise<boolean> {
     if (!chromeCast || !media) return false;
     const req = new chromeCast.media.SeekRequest();
     req.currentTime = Math.max(0, sec);
-    await media.seek?.(req);
+    await mediaCommand(media, "seek", req);
     return true;
   } catch {
     return false;
