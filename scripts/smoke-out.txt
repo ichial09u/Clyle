@@ -1,0 +1,82 @@
+
+Smoke-testing https://temporary-spry-granite-1f0h7ae.vercel.app
+
+PASS  home page renders
+PASS  GET /signin (200) — status 200
+PASS  signin mentions Google
+PASS  GET /api/auth/me (configured:true, user shape) — {"configured":true,"user":null}
+PASS  GET /api/auth/google (302 -> Google chooser) — status 302 loc=https://accounts.google.com/o/oauth2/v2/auth?client_id=331994887359-9mgkjotggf3j
+PASS  GET /api/auth/signout rejected (POST-only) — status 405
+PASS  POST /api/crunchyroll/sync (removed -> 404) — status 404
+PASS  GET /api/home
+PASS  GET /api/latest
+PASS  GET /api/genres
+PASS  GET /api/genres (South Park tile pinned)
+PASS  GET /api/genre/South Park (30 season entries, chronological)
+PASS  GET /api/anime/999901 (Season 1 entry, instant details + baked siblings)
+PASS  GET /api/anime/999901/episodes (13 eps, flat grid, dub-only payload)
+PASS  GET /api/anime/999928/episodes (S28 exact numbers — source has no E1)
+PASS  GET /api/stream South Park S1E1 via Server 2 (LookMovie2-first)
+PASS  GET /api/anime/999923/episodes (S23: E10 Christmas Snow restored via LM2 fallback)
+PASS  GET /api/anime/999924/episodes (S24: both Post COVID specials dead at source)
+PASS  GET /api/anime/999900/episodes (Movies & Specials entry, 3 items)
+PASS  GET /api/stream South Park S1E1 (proxied WCO MP4 + vendored CC + intro skip)
+PASS  South Park stream resolve latency sane — 229ms
+PASS  South Park S1E1 payload carries real quality ladder (qualitySrcs) — [1080,720,360]
+PASS  South Park S1E1 carries vendored English CC (same-origin VTT) — [{"lang":"en","label":"English","src":"/api/captions/sp/999901/1.vtt"}]
+PASS  GET /api/captions/sp/999901/1.vtt (real WebVTT, 50+ cues) — 626 cues
+PASS  South Park S1E1 payload carries intro skip times (SkipDB tier) — {"intro":{"start":0,"end":35},"source":"scout","outro":{"start":1438,"end":1465.9}}
+PASS  GET /api/captions (S13E1 CC-sync verdict measured)
+PASS  South Park proxied MP4 relays Range (206 + Content-Range) — the seek fix — 206 video/mp4 1024B cr=bytes 0-1023/449659772
+PASS  GET /api/anime/2304 (SD Gundam intact — protected-source guard)
+PASS  GET /api/search?q=one piece (franchise surfaces flagship)
+PASS  GET /api/search?q=pokemon (accent-folded franchise)
+PASS  GET /api/anime/21
+PASS  One Piece posters are Elbaph arc art — {"anime":{"malId":21,"title":"ONE PIECE","titleEnglish":"ONE PIECE","image":"/art/op-elbaph-poster.jpg","banner":"/art/o
+PASS  Details sections baked (Other Seasons + You May Also Like, pending:false)
+PASS  Detail sections carry relation + name (live merge intact) — {"malId":466,"name":"One Piece: Defeat the Pirate Ganzack!","relation":"Side story","image":"https://s4.anilist.co/file/
+PASS  GET /api/anime/21/episodes
+PASS  per-episode dub boundary (One Piece dubbed through N<total) — dubThrough={"s1":1155,"s2":1155} total=1180
+      One Piece: real dub through ep 1155/1180 — DUB buttons hidden past it
+PASS  GET /api/stream (skip intro: Zoko-native)
+PASS  GET /api/stream (skip intro: AniSkip dataset)
+PASS  GET /api/stream (Ranma 2024 S1 DUB via FlixCloud)
+PASS  GET /api/stream/proxy (FlixCloud stored master serves plaintext) — master is plaintext #EXTM3U with proxied children
+PASS  GET /api/anime/21/episodes (backupDub key present)
+PASS  GET /api/stream (backup dub resolves; honest provider) — provider=zoko +referer
+PASS  GET /api/skip-audit (skip data pipeline healthy)
+      skip-intro coverage: 94% of 5721 sampled episodes across 2283 anime (scout 4090 · exact 347 · consensus 202 · skipdb 8 · live 0 · crowd 0 · na 753 · uncovered 321)
+PASS  POST /api/comments (probe)
+PASS  POST /api/comments/like (on)
+PASS  POST /api/comments/like (toggle off)
+PASS  POST /api/comments (reply to probe)
+PASS  GET /api/comments (list w/ userId)
+PASS  DELETE /api/comments (cleanup) — probe + reply removed
+PASS  DELETE guard (403 for non-author) — status 404
+PASS  POST /api/progress (roundtrip)
+PASS  GET /api/continue (bot)
+PASS  POST /api/watchtime (roundtrip)
+PASS  POST /api/watchtime rejects bad day — status 400
+PASS  GET /api/watchtime top (accumulated)
+PASS  GET /api/watchtime rejects bad day — status 400
+PASS  GET /api/watchtime streak meta (scratch day)
+PASS  GET /api/top10-events (bell feed)
+PASS  GET /api/top10 (Anime Trending rank rail, up to 50 deep)
+PASS  GET /api/push/key (VAPID public key)
+PASS  POST /api/push/subscribe (upsert)
+PASS  DELETE /api/push/subscribe (cleanup)
+PASS  GET /api/arriving (Netflix-style coming-soon rail)
+PASS  POST /api/anime-notify (subscribe anime)
+PASS  GET /api/anime-notify (list watches)
+PASS  POST /api/anime-notify (unsubscribe)
+PASS  POST /api/anime-notify rejects bad endpoint — status 400
+PASS  client bundle: cast caption toggle (EditTracksInfoRequest) — EditTracksInfoRequest
+PASS  client bundle: cast caption track style (textTrackStyle) — textTrackStyle
+PASS  client bundle: cast settings panel — Cast settings
+PASS  client bundle: cast captions row hint — No captions for this episode
+PASS  client bundle: cast auto-next row — Auto next episode
+PASS  client bundle: cast auto-skip row — Auto-skip intro
+PASS  GET /api/cron (self-test)
+
+74/74 checks passed · catalog: 1180 eps for One Piece
+[32mAll green.[0m
