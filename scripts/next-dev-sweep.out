@@ -1,0 +1,488 @@
+$ NODE_OPTIONS=--max-old-space-size=768 next dev -p 3000 2>&1 | tee dev.log
+▲ Next.js 16.1.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://21.0.2.17:3000
+
+✓ Starting...
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+✓ Ready in 735ms
+○ Compiling / ...
+ GET / 200 in 5.5s (compile: 5.3s, render: 205ms)
+ GET /api/sync 200 in 835ms (compile: 794ms, render: 41ms)
+ GET / 200 in 68ms (compile: 4ms, render: 63ms)
+ GET /api/top10-events 200 in 622ms (compile: 547ms, render: 76ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 655ms (compile: 514ms, render: 142ms)
+ GET /api/genres 200 in 649ms (compile: 429ms, render: 220ms)
+ GET /api/top10?fresh=1 200 in 627ms (compile: 534ms, render: 93ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 956ms (compile: 593ms, render: 363ms)
+ POST /api/sync?kick=1 200 in 7ms (compile: 2ms, render: 5ms)
+ GET /api/arriving?fresh=1 200 in 238ms (compile: 178ms, render: 60ms)
+ GET /api/auth/me 200 in 193ms (compile: 189ms, render: 4ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 224ms (compile: 1566µs, render: 222ms)
+ GET /api/home 200 in 488ms (compile: 206ms, render: 282ms)
+ GET / 200 in 37ms (compile: 3ms, render: 34ms)
+[anilist] AniList -> 404
+ GET /api/watchtime?all=1&limit=12 200 in 3.0s (compile: 140ms, render: 2.8s)
+ GET /api/ann-news 200 in 3.9s (compile: 347ms, render: 3.6s)
+(node:1535) [DEP0169] DeprecationWarning: `url.parse()` behavior is not standardized and prone to errors that have security implications. Use the WHATWG URL API instead. CVEs are not issued for `url.parse()` vulnerabilities.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+[push] "🏆 The Apothecary Diaries Season 3 entered the Top 10" -> 0 sent, 8 pruned, of 8 broadcast
+ GET / 200 in 34ms (compile: 3ms, render: 32ms)
+ GET / 200 in 35ms (compile: 3ms, render: 33ms)
+ GET / 200 in 67ms (compile: 2ms, render: 65ms)
+[jikan] Jikan /anime/64378/episodes?page=1 -> 0
+[jikan] Jikan /anime/64725/episodes?page=1 -> 0
+[jikan] Jikan /anime/64873/episodes?page=1 -> 0
+ POST /api/sync?force=1 200 in 5.0min (compile: 2ms, render: 5.0min)
+ GET /api/sync 200 in 8ms (compile: 2ms, render: 5ms)
+ GET / 200 in 41ms (compile: 3ms, render: 39ms)
+ GET /api/top10-events 200 in 26ms (compile: 8ms, render: 17ms)
+ GET /api/ann-news 200 in 21ms (compile: 15ms, render: 7ms)
+ GET /api/top10?fresh=1 200 in 43ms (compile: 14ms, render: 29ms)
+ GET /api/genres 200 in 47ms (compile: 4ms, render: 43ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 110ms (compile: 1895µs, render: 108ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 8ms (compile: 1423µs, render: 7ms)
+ GET /api/arriving?fresh=1 200 in 11ms (compile: 1481µs, render: 9ms)
+ POST /api/sync?kick=1 200 in 11ms (compile: 4ms, render: 7ms)
+ GET /api/auth/me 200 in 6ms (compile: 1449µs, render: 5ms)
+ GET /api/home 200 in 216ms (compile: 1318µs, render: 214ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 112ms (compile: 2ms, render: 110ms)
+[anilist] AniList -> 404
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].pushLog.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__6b7385c0._.js:1958:144
+
+  1955     }
+  1956 }
+  1957 try {
+→ 1958     await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].pushLog.create(
+Unique constraint failed on the fields: (`key`)
+ GET /api/watchtime?all=1&limit=12 200 in 2.5s (compile: 2ms, render: 2.5s)
+ GET /api/auth/me 200 in 5ms (compile: 2ms, render: 3ms)
+ GET /api/top10-events 200 in 7ms (compile: 1924µs, render: 5ms)
+ GET /api/ann-news 200 in 6ms (compile: 1722µs, render: 4ms)
+ GET /api/arriving 200 in 14ms (compile: 1870µs, render: 12ms)
+ GET /api/top10 200 in 16ms (compile: 4ms, render: 12ms)
+[jikan] Jikan /anime/64435/episodes?page=1 -> 0
+[anilist] AniList -> 404
+ GET /api/top10-events 200 in 9ms (compile: 2ms, render: 7ms)
+ GET /api/ann-news 200 in 6ms (compile: 1615µs, render: 4ms)
+ GET /api/top10 200 in 12ms (compile: 1586µs, render: 10ms)
+ GET /api/arriving 200 in 10ms (compile: 1364µs, render: 9ms)
+ GET /api/watchtime?all=1&limit=12 200 in 644ms (compile: 1436µs, render: 642ms)
+[jikan] Jikan /anime/999929/episodes?page=1 -> 0
+ GET /api/top10-events 200 in 18ms (compile: 2ms, render: 16ms)
+ GET /api/ann-news 200 in 7ms (compile: 2ms, render: 5ms)
+ GET /api/top10 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /api/arriving 200 in 12ms (compile: 1877µs, render: 10ms)
+ GET /api/watchtime?all=1&limit=12 200 in 658ms (compile: 1710µs, render: 656ms)
+ GET /api/top10-events 200 in 12ms (compile: 4ms, render: 8ms)
+ GET /api/ann-news 200 in 10ms (compile: 5ms, render: 4ms)
+ GET /api/top10 200 in 13ms (compile: 2ms, render: 11ms)
+ GET /api/arriving 200 in 9ms (compile: 1377µs, render: 7ms)
+ GET /api/watchtime?all=1&limit=12 200 in 631ms (compile: 1673µs, render: 629ms)
+[jikan] Jikan /anime/64435/episodes?page=1 -> 0
+ GET /api/sync 200 in 8ms (compile: 3ms, render: 6ms)
+ GET /api/ann-news 200 in 8ms (compile: 3ms, render: 5ms)
+ GET /api/top10-events 200 in 8ms (compile: 4ms, render: 5ms)
+ GET /api/arriving 200 in 12ms (compile: 1971µs, render: 10ms)
+ GET /api/top10 200 in 14ms (compile: 4ms, render: 9ms)
+ GET /api/watchtime?all=1&limit=12 200 in 659ms (compile: 2ms, render: 657ms)
+ GET /api/stream?malId=269&ep=366&lang=dub&server=zoko&fresh=1 200 in 5.2s (compile: 233ms, render: 4.9s)
+ GET /api/stream?malId=269&ep=320&lang=dub&server=zoko&fresh=1 200 in 3.5s (compile: 2ms, render: 3.5s)
+[anikoto] getSources 403
+ GET /api/stream?malId=41467&ep=1&lang=dub&server=zoko&fresh=1 404 in 22.1s (compile: 2ms, render: 22.1s)
+[anikoto] getSources 403
+[jikan] Jikan /anime/63181/episodes?page=1 -> 0
+ GET /api/stream?malId=41467&ep=13&lang=dub&server=zoko&fresh=1 404 in 20.9s (compile: 2ms, render: 20.9s)
+ GET /api/stream?malId=53998&ep=1&lang=dub&server=zoko&fresh=1 200 in 3.9s (compile: 2ms, render: 3.9s)
+ GET /api/stream?malId=53998&ep=13&lang=dub&server=zoko&fresh=1 200 in 2.3s (compile: 2ms, render: 2.3s)
+ GET /api/stream?malId=56784&ep=1&lang=dub&server=zoko&fresh=1 200 in 1994ms (compile: 2ms, render: 1992ms)
+ GET /api/stream?malId=56784&ep=14&lang=dub&server=zoko&fresh=1 200 in 2.3s (compile: 1674µs, render: 2.3s)
+ GET /api/stream?malId=60636&ep=1&lang=dub&server=zoko&fresh=1 200 in 1123ms (compile: 1823µs, render: 1121ms)
+ GET /api/stream?malId=60636&ep=2&lang=dub&server=zoko&fresh=1 200 in 2.1s (compile: 2ms, render: 2.1s)
+ GET /api/stream?malId=60636&ep=3&lang=dub&server=zoko&fresh=1 200 in 2.5s (compile: 2ms, render: 2.5s)
+ GET /api/stream?malId=60636&ep=4&lang=dub&server=zoko&fresh=1 200 in 2.1s (compile: 1992µs, render: 2.1s)
+ GET /api/stream?malId=60636&ep=5&lang=dub&server=zoko&fresh=1 200 in 1941ms (compile: 1684µs, render: 1939ms)
+ GET /api/stream?malId=60636&ep=6&lang=dub&server=zoko&fresh=1 200 in 1873ms (compile: 4ms, render: 1870ms)
+ GET /api/stream?malId=60636&ep=7&lang=dub&server=zoko&fresh=1 200 in 1610ms (compile: 2ms, render: 1608ms)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+ GET /api/stream?malId=60636&ep=8&lang=dub&server=zoko&fresh=1 404 in 21.9s (compile: 2ms, render: 21.9s)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+[jikan] Jikan /anime/64357/episodes?page=1 -> 0
+ GET /api/stream?malId=60636&ep=8&lang=dub&server=zoko&fresh=1 404 in 21.2s (compile: 3ms, render: 21.2s)
+ GET /api/stream?malId=269&ep=366&lang=dub&server=zoko&fresh=1 200 in 775ms (compile: 6ms, render: 770ms)
+ GET /api/stream?malId=60636&ep=1&lang=dub&server=zoko&fresh=1 200 in 197ms (compile: 1622µs, render: 195ms)
+ GET /api/stream?malId=60636&ep=7&lang=dub&server=zoko&fresh=1 200 in 199ms (compile: 4ms, render: 195ms)
+ GET /api/stream?malId=269&ep=366&lang=dub&server=zoko&fresh=1 200 in 618ms (compile: 2ms, render: 616ms)
+ GET /api/stream?malId=269&ep=366&lang=dub&server=zoko&fresh=1 200 in 649ms (compile: 2ms, render: 647ms)
+ GET /api/stream?malId=269&ep=320&lang=dub&server=zoko&fresh=1 200 in 401ms (compile: 4ms, render: 397ms)
+[anikoto] getSources 403
+ GET /api/stream?malId=41467&ep=1&lang=dub&server=zoko&fresh=1 404 in 1903ms (compile: 1682µs, render: 1901ms)
+[anikoto] getSources 403
+ GET /api/stream?malId=41467&ep=13&lang=dub&server=zoko&fresh=1 404 in 1712ms (compile: 1776µs, render: 1711ms)
+ GET /api/stream?malId=53998&ep=1&lang=dub&server=zoko&fresh=1 200 in 246ms (compile: 1744µs, render: 245ms)
+ GET /api/stream?malId=53998&ep=13&lang=dub&server=zoko&fresh=1 200 in 229ms (compile: 1611µs, render: 227ms)
+ GET /api/stream?malId=56784&ep=1&lang=dub&server=zoko&fresh=1 200 in 239ms (compile: 1601µs, render: 237ms)
+ GET /api/stream?malId=56784&ep=14&lang=dub&server=zoko&fresh=1 200 in 233ms (compile: 1647µs, render: 232ms)
+ GET /api/stream?malId=60636&ep=1&lang=dub&server=zoko&fresh=1 200 in 318ms (compile: 2ms, render: 316ms)
+ GET /api/stream?malId=60636&ep=2&lang=dub&server=zoko&fresh=1 200 in 232ms (compile: 4ms, render: 228ms)
+ GET /api/stream?malId=60636&ep=3&lang=dub&server=zoko&fresh=1 200 in 232ms (compile: 1493µs, render: 231ms)
+ GET /api/stream?malId=60636&ep=4&lang=dub&server=zoko&fresh=1 200 in 246ms (compile: 1916µs, render: 244ms)
+ GET /api/stream?malId=60636&ep=5&lang=dub&server=zoko&fresh=1 200 in 234ms (compile: 1649µs, render: 232ms)
+ GET /api/stream?malId=60636&ep=6&lang=dub&server=zoko&fresh=1 200 in 240ms (compile: 2ms, render: 238ms)
+ GET /api/stream?malId=60636&ep=7&lang=dub&server=zoko&fresh=1 200 in 227ms (compile: 1430µs, render: 225ms)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+ GET /api/stream?malId=60636&ep=8&lang=dub&server=zoko&fresh=1 404 in 243ms (compile: 1486µs, render: 241ms)
+ GET /api/sync 200 in 8ms (compile: 2ms, render: 6ms)
+[jikan] Jikan /anime/63042/episodes?page=1 -> 0
+ GET /api/stream?malId=41467&ep=1&lang=dub&server=zoko&fresh=1 200 in 3.2s (compile: 2ms, render: 3.2s)
+ GET /api/stream?malId=41467&ep=1&lang=dub&server=zoko 200 in 10ms (compile: 2ms, render: 8ms)
+ GET /api/stream?malId=41467&ep=2&lang=dub&server=zoko 200 in 4.9s (compile: 1437µs, render: 4.9s)
+ GET /api/stream?malId=41467&ep=3&lang=dub&server=zoko 200 in 4.3s (compile: 1955µs, render: 4.3s)
+ GET /api/stream?malId=41467&ep=4&lang=dub&server=zoko 200 in 2.2s (compile: 2ms, render: 2.2s)
+ GET /api/stream?malId=41467&ep=5&lang=dub&server=zoko 200 in 1873ms (compile: 2ms, render: 1870ms)
+ GET /api/stream?malId=41467&ep=6&lang=dub&server=zoko 200 in 2.2s (compile: 1692µs, render: 2.2s)
+ GET /api/stream?malId=41467&ep=7&lang=dub&server=zoko 200 in 1829ms (compile: 1946µs, render: 1828ms)
+ GET /api/stream?malId=41467&ep=8&lang=dub&server=zoko 200 in 1892ms (compile: 1621µs, render: 1891ms)
+ GET /api/stream?malId=41467&ep=9&lang=dub&server=zoko 200 in 2.1s (compile: 1894µs, render: 2.1s)
+ GET /api/stream?malId=41467&ep=10&lang=dub&server=zoko 200 in 2.0s (compile: 27ms, render: 2.0s)
+ GET /api/stream?malId=41467&ep=11&lang=dub&server=zoko 200 in 1843ms (compile: 1894µs, render: 1841ms)
+ GET /api/stream?malId=41467&ep=12&lang=dub&server=zoko 200 in 1792ms (compile: 1635µs, render: 1791ms)
+ GET /api/stream?malId=41467&ep=13&lang=dub&server=zoko 200 in 1816ms (compile: 1632µs, render: 1815ms)
+ GET /api/stream?malId=53998&ep=1&lang=dub&server=zoko 200 in 11ms (compile: 1922µs, render: 9ms)
+ GET /api/stream?malId=53998&ep=2&lang=dub&server=zoko 200 in 2.0s (compile: 1280µs, render: 2.0s)
+ GET /api/stream?malId=53998&ep=3&lang=dub&server=zoko 200 in 2.2s (compile: 1976µs, render: 2.2s)
+ GET /api/stream?malId=53998&ep=4&lang=dub&server=zoko 200 in 2.2s (compile: 1936µs, render: 2.2s)
+ GET /api/stream?malId=53998&ep=5&lang=dub&server=zoko 200 in 1895ms (compile: 1705µs, render: 1893ms)
+ GET /api/stream?malId=53998&ep=6&lang=dub&server=zoko 200 in 4.6s (compile: 1888µs, render: 4.6s)
+ GET /api/stream?malId=53998&ep=7&lang=dub&server=zoko 200 in 1964ms (compile: 1900µs, render: 1962ms)
+ GET /api/stream?malId=53998&ep=8&lang=dub&server=zoko 200 in 2.4s (compile: 1532µs, render: 2.4s)
+ GET /api/stream?malId=53998&ep=9&lang=dub&server=zoko 200 in 2.2s (compile: 1576µs, render: 2.1s)
+ GET /api/stream?malId=53998&ep=10&lang=dub&server=zoko 200 in 3.8s (compile: 1707µs, render: 3.8s)
+ GET /api/stream?malId=53998&ep=11&lang=dub&server=zoko 200 in 1798ms (compile: 1800µs, render: 1796ms)
+ GET /api/stream?malId=53998&ep=12&lang=dub&server=zoko 200 in 1605ms (compile: 2ms, render: 1603ms)
+ GET /api/stream?malId=53998&ep=13&lang=dub&server=zoko 200 in 9ms (compile: 1876µs, render: 7ms)
+ GET /api/stream?malId=56784&ep=1&lang=dub&server=zoko 200 in 9ms (compile: 1700µs, render: 7ms)
+ GET /api/stream?malId=56784&ep=2&lang=dub&server=zoko 200 in 2.2s (compile: 1263µs, render: 2.2s)
+ GET /api/stream?malId=56784&ep=3&lang=dub&server=zoko 200 in 2.5s (compile: 1707µs, render: 2.5s)
+ GET /api/stream?malId=56784&ep=4&lang=dub&server=zoko 200 in 2.1s (compile: 1920µs, render: 2.1s)
+ GET /api/stream?malId=56784&ep=5&lang=dub&server=zoko 200 in 1989ms (compile: 1943µs, render: 1987ms)
+ GET /api/stream?malId=56784&ep=6&lang=dub&server=zoko 200 in 1990ms (compile: 1932µs, render: 1988ms)
+ GET /api/stream?malId=56784&ep=7&lang=dub&server=zoko 200 in 1693ms (compile: 2ms, render: 1691ms)
+ GET /api/stream?malId=56784&ep=8&lang=dub&server=zoko 200 in 2.1s (compile: 1687µs, render: 2.1s)
+ GET /api/stream?malId=56784&ep=9&lang=dub&server=zoko 200 in 1692ms (compile: 1716µs, render: 1691ms)
+ GET /api/stream?malId=56784&ep=10&lang=dub&server=zoko 200 in 2.0s (compile: 1595µs, render: 2.0s)
+ GET /api/stream?malId=56784&ep=11&lang=dub&server=zoko 200 in 2.1s (compile: 2ms, render: 2.1s)
+ GET /api/stream?malId=56784&ep=12&lang=dub&server=zoko 200 in 1905ms (compile: 2ms, render: 1903ms)
+ GET /api/stream?malId=56784&ep=13&lang=dub&server=zoko 200 in 1635ms (compile: 2ms, render: 1632ms)
+ GET /api/stream?malId=56784&ep=14&lang=dub&server=zoko 200 in 10ms (compile: 1946µs, render: 8ms)
+ GET /api/stream?malId=60636&ep=1&lang=dub&server=zoko 200 in 11ms (compile: 1729µs, render: 10ms)
+ GET /api/stream?malId=60636&ep=2&lang=dub&server=zoko 200 in 10ms (compile: 1544µs, render: 9ms)
+ GET /api/stream?malId=60636&ep=3&lang=dub&server=zoko 200 in 10ms (compile: 1502µs, render: 9ms)
+ GET /api/stream?malId=60636&ep=4&lang=dub&server=zoko 200 in 11ms (compile: 1503µs, render: 9ms)
+ GET /api/stream?malId=60636&ep=5&lang=dub&server=zoko 200 in 10ms (compile: 1636µs, render: 8ms)
+ GET /api/stream?malId=60636&ep=6&lang=dub&server=zoko 200 in 9ms (compile: 1405µs, render: 7ms)
+ GET /api/stream?malId=60636&ep=7&lang=dub&server=zoko 200 in 10ms (compile: 1523µs, render: 9ms)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+[zoko-stream] zoko stream missing: no __P payload (dub)
+ GET /api/stream?malId=60636&ep=8&lang=dub&server=zoko 404 in 20.2s (compile: 1446µs, render: 20.2s)
+ GET /api/stream?malId=269&ep=327&lang=dub&server=zoko 200 in 4.1s (compile: 3ms, render: 4.1s)
+ GET /api/stream?malId=269&ep=328&lang=dub&server=zoko 200 in 2.2s (compile: 2ms, render: 2.2s)
+ GET /api/stream?malId=269&ep=329&lang=dub&server=zoko 200 in 3.4s (compile: 2ms, render: 3.4s)
+ GET /api/stream?malId=269&ep=330&lang=dub&server=zoko 200 in 1864ms (compile: 2ms, render: 1861ms)
+ GET /api/stream?malId=269&ep=331&lang=dub&server=zoko 200 in 3.3s (compile: 1682µs, render: 3.3s)
+ GET /api/stream?malId=269&ep=332&lang=dub&server=zoko 200 in 2.3s (compile: 2ms, render: 2.3s)
+ GET /api/stream?malId=269&ep=333&lang=dub&server=zoko 200 in 2.5s (compile: 1864µs, render: 2.5s)
+ GET /api/stream?malId=269&ep=334&lang=dub&server=zoko 200 in 2.6s (compile: 1987µs, render: 2.6s)
+ GET /api/stream?malId=269&ep=335&lang=dub&server=zoko 200 in 2.7s (compile: 1622µs, render: 2.7s)
+ GET /api/stream?malId=269&ep=336&lang=dub&server=zoko 200 in 2.1s (compile: 1690µs, render: 2.1s)
+ GET /api/stream?malId=269&ep=337&lang=dub&server=zoko 200 in 3.4s (compile: 1773µs, render: 3.4s)
+ GET /api/stream?malId=269&ep=338&lang=dub&server=zoko 200 in 1919ms (compile: 2ms, render: 1916ms)
+ GET /api/stream?malId=269&ep=339&lang=dub&server=zoko 200 in 2.7s (compile: 1888µs, render: 2.7s)
+ GET /api/stream?malId=269&ep=340&lang=dub&server=zoko 200 in 2.3s (compile: 1656µs, render: 2.2s)
+ GET /api/stream?malId=269&ep=341&lang=dub&server=zoko 200 in 2.3s (compile: 1977µs, render: 2.3s)
+ GET /api/stream?malId=269&ep=342&lang=dub&server=zoko 200 in 2.1s (compile: 1773µs, render: 2.1s)
+ GET /api/stream?malId=269&ep=343&lang=dub&server=zoko 200 in 1900ms (compile: 3ms, render: 1897ms)
+ GET /api/stream?malId=269&ep=344&lang=dub&server=zoko 200 in 2.0s (compile: 1621µs, render: 2.0s)
+ GET /api/stream?malId=269&ep=345&lang=dub&server=zoko 200 in 2.2s (compile: 1946µs, render: 2.2s)
+ GET /api/stream?malId=269&ep=346&lang=dub&server=zoko 200 in 2.4s (compile: 1642µs, render: 2.4s)
+ GET /api/stream?malId=269&ep=347&lang=dub&server=zoko 200 in 2.1s (compile: 1869µs, render: 2.1s)
+ GET /api/stream?malId=269&ep=348&lang=dub&server=zoko 200 in 1878ms (compile: 1719µs, render: 1876ms)
+ GET /api/stream?malId=269&ep=349&lang=dub&server=zoko 200 in 2.1s (compile: 1694µs, render: 2.1s)
+ GET /api/stream?malId=269&ep=350&lang=dub&server=zoko 200 in 2.4s (compile: 1925µs, render: 2.4s)
+ GET /api/stream?malId=269&ep=351&lang=dub&server=zoko 200 in 1849ms (compile: 1534µs, render: 1847ms)
+ GET /api/stream?malId=269&ep=352&lang=dub&server=zoko 200 in 2.0s (compile: 1766µs, render: 2.0s)
+ GET /api/stream?malId=269&ep=353&lang=dub&server=zoko 200 in 2.1s (compile: 1558µs, render: 2.1s)
+ GET /api/stream?malId=269&ep=354&lang=dub&server=zoko 200 in 2.1s (compile: 1668µs, render: 2.1s)
+ GET /api/stream?malId=269&ep=355&lang=dub&server=zoko 200 in 2.3s (compile: 1926µs, render: 2.3s)
+ GET /api/stream?malId=269&ep=356&lang=dub&server=zoko 200 in 2.3s (compile: 1884µs, render: 2.3s)
+ GET /api/stream?malId=269&ep=357&lang=dub&server=zoko 200 in 2.9s (compile: 1541µs, render: 2.9s)
+ GET /api/stream?malId=269&ep=358&lang=dub&server=zoko 200 in 2.7s (compile: 1691µs, render: 2.7s)
+ GET /api/stream?malId=269&ep=359&lang=dub&server=zoko 200 in 2.5s (compile: 1551µs, render: 2.5s)
+[zoko-stream] fetch failed
+[zoko-stream] fetch failed
+ GET /api/stream?malId=269&ep=360&lang=dub&server=zoko 404 in 21.4s (compile: 1510µs, render: 21.4s)
+ GET /api/stream?malId=269&ep=361&lang=dub&server=zoko 200 in 3.6s (compile: 1811µs, render: 3.6s)
+ GET /api/stream?malId=269&ep=362&lang=dub&server=zoko 200 in 2.3s (compile: 1683µs, render: 2.3s)
+ GET /api/stream?malId=269&ep=363&lang=dub&server=zoko 200 in 2.3s (compile: 1556µs, render: 2.3s)
+ GET /api/stream?malId=269&ep=364&lang=dub&server=zoko 200 in 2.4s (compile: 2ms, render: 2.4s)
+ GET /api/stream?malId=269&ep=365&lang=dub&server=zoko 200 in 2.3s (compile: 1711µs, render: 2.3s)
+ GET /api/stream?malId=269&ep=366&lang=dub&server=zoko 200 in 11ms (compile: 2ms, render: 9ms)
+ GET /api/stream?malId=269&ep=360&lang=dub&server=zoko 200 in 3.7s (compile: 1915µs, render: 3.7s)
+ GET /api/stream?malId=269&ep=360&lang=dub&server=zoko 200 in 11ms (compile: 2ms, render: 9ms)
+ GET /api/sync 200 in 8ms (compile: 2ms, render: 6ms)
+ POST /api/sync?kick=1 200 in 8ms (compile: 2ms, render: 6ms)
+ GET /api/auth/me 200 in 5ms (compile: 1634µs, render: 3ms)
+ GET /api/top10-events 200 in 7ms (compile: 1465µs, render: 5ms)
+ GET /api/ann-news 200 in 6ms (compile: 1478µs, render: 4ms)
+ GET /api/top10?fresh=1 200 in 16ms (compile: 1823µs, render: 14ms)
+ GET /api/arriving?fresh=1 200 in 18ms (compile: 1504µs, render: 16ms)
+ GET /api/ann-news 200 in 5ms (compile: 1442µs, render: 4ms)
+ GET /api/top10 200 in 11ms (compile: 1396µs, render: 10ms)
+ GET /api/arriving 200 in 13ms (compile: 1394µs, render: 12ms)
+ GET /api/top10-events 200 in 6ms (compile: 1368µs, render: 4ms)
+ GET /api/watchtime?all=1&limit=12 200 in 677ms (compile: 1743µs, render: 675ms)
+ GET /api/watchtime?all=1&limit=12 200 in 488ms (compile: 1463µs, render: 487ms)
+ POST /api/import 200 in 481ms (compile: 142ms, render: 339ms)
+ POST /api/import 200 in 1258ms (compile: 5ms, render: 1253ms)
+ POST /api/import 200 in 902ms (compile: 3ms, render: 899ms)
+ POST /api/import 200 in 1098ms (compile: 2ms, render: 1096ms)
+ POST /api/import 429 in 4ms (compile: 1567µs, render: 3ms)
+[jikan] Jikan /anime/64378/episodes?page=1 -> 0
+[jikan] Jikan /anime/64725/episodes?page=1 -> 0
+[jikan] Jikan /anime/64435/episodes?page=1 -> 0
+ POST /api/import 200 in 84s (compile: 66ms, render: 84s)
+ POST /api/import 200 in 582ms (compile: 2ms, render: 579ms)
+[jikan] Jikan /anime/64873/episodes?page=1 -> 0
+[jikan] Jikan /anime/64435/episodes?page=1 -> 0
+[anilist] AniList -> 404
+[jikan] Jikan /anime/999929/episodes?page=1 -> 0
+ GET / 200 in 59ms (compile: 3ms, render: 56ms)
+ GET /api/ann-news 200 in 8ms (compile: 2ms, render: 5ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 118ms (compile: 2ms, render: 115ms)
+ GET /api/top10-events 200 in 122ms (compile: 108ms, render: 14ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 133ms (compile: 105ms, render: 28ms)
+ GET /api/top10?fresh=1 200 in 17ms (compile: 1307µs, render: 15ms)
+ GET /api/genres 200 in 33ms (compile: 6ms, render: 28ms)
+ GET /api/arriving?fresh=1 200 in 11ms (compile: 1424µs, render: 9ms)
+ POST /api/sync?kick=1 200 in 9ms (compile: 4ms, render: 5ms)
+ GET /api/auth/me 200 in 9ms (compile: 6ms, render: 3ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 223ms (compile: 2ms, render: 220ms)
+ GET /api/home 200 in 379ms (compile: 4ms, render: 375ms)
+ GET /api/watchtime?all=1&limit=12 200 in 412ms (compile: 2ms, render: 410ms)
+[anilist] AniList -> 404
+ POST /api/import 200 in 907ms (compile: 88ms, render: 819ms)
+ POST /api/import 200 in 317ms (compile: 3ms, render: 314ms)
+ POST /api/import 200 in 520ms (compile: 2ms, render: 518ms)
+ POST /api/import 200 in 585ms (compile: 2ms, render: 583ms)
+ POST /api/import 200 in 565ms (compile: 1983µs, render: 563ms)
+ POST /api/import 200 in 568ms (compile: 1787µs, render: 567ms)
+ POST /api/import 200 in 659ms (compile: 3ms, render: 656ms)
+ POST /api/import 200 in 523ms (compile: 2ms, render: 521ms)
+ POST /api/import 200 in 320ms (compile: 1821µs, render: 318ms)
+ POST /api/import 200 in 569ms (compile: 1843µs, render: 567ms)
+ POST /api/import 200 in 326ms (compile: 1850µs, render: 325ms)
+ POST /api/import 200 in 703ms (compile: 1900µs, render: 701ms)
+ POST /api/import 200 in 517ms (compile: 1899µs, render: 515ms)
+ POST /api/import 200 in 329ms (compile: 1803µs, render: 327ms)
+ POST /api/import 200 in 526ms (compile: 2ms, render: 524ms)
+[jikan] Jikan /anime/64378/episodes?page=1 -> 0
+ POST /api/import 200 in 325ms (compile: 4ms, render: 320ms)
+ POST /api/import 200 in 323ms (compile: 1857µs, render: 321ms)
+ POST /api/import 200 in 582ms (compile: 2ms, render: 579ms)
+ POST /api/import 200 in 321ms (compile: 3ms, render: 319ms)
+ POST /api/import 200 in 324ms (compile: 2ms, render: 322ms)
+ POST /api/import 200 in 603ms (compile: 1788µs, render: 601ms)
+ POST /api/import 200 in 759ms (compile: 1990µs, render: 757ms)
+ POST /api/import 200 in 559ms (compile: 1968µs, render: 557ms)
+ POST /api/import 200 in 530ms (compile: 1966µs, render: 528ms)
+ POST /api/import 200 in 560ms (compile: 1796µs, render: 558ms)
+ POST /api/import 200 in 507ms (compile: 1836µs, render: 505ms)
+ POST /api/import 200 in 568ms (compile: 1802µs, render: 566ms)
+ POST /api/import 200 in 555ms (compile: 1958µs, render: 553ms)
+ POST /api/import 200 in 662ms (compile: 3ms, render: 659ms)
+[anilist] AniList -> 429
+[jikan] Jikan /anime/64725/episodes?page=1 -> 0
+[jikan] Jikan /anime/61153/full -> 0
+ POST /api/import 404 in 94s (compile: 2ms, render: 94s)
+ POST /api/import 200 in 549ms (compile: 3ms, render: 546ms)
+ POST /api/import 200 in 560ms (compile: 1807µs, render: 559ms)
+ POST /api/import 200 in 552ms (compile: 1915µs, render: 550ms)
+ POST /api/import 200 in 1051ms (compile: 3ms, render: 1048ms)
+ POST /api/import 200 in 568ms (compile: 1927µs, render: 566ms)
+ POST /api/import 200 in 559ms (compile: 2ms, render: 557ms)
+ POST /api/import 200 in 557ms (compile: 2ms, render: 555ms)
+[jikan] Jikan /anime/64873/episodes?page=1 -> 0
+[anilist] AniList -> 404
+[jikan] Jikan /anime/999929/episodes?page=1 -> 0
+[jikan] Jikan /anime/64378/episodes?page=1 -> 0
+[jikan] Jikan /anime/64725/episodes?page=1 -> 0
+[jikan] Jikan /anime/61469/episodes?page=1 -> 0
+ GET / 200 in 58ms (compile: 3ms, render: 55ms)
+ GET /api/ann-news 200 in 31ms (compile: 9ms, render: 22ms)
+ GET /api/top10-events 200 in 15ms (compile: 4ms, render: 11ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 394ms (compile: 5ms, render: 389ms)
+ GET /api/top10?fresh=1 200 in 398ms (compile: 2ms, render: 396ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 416ms (compile: 3ms, render: 413ms)
+ GET /api/genres 200 in 416ms (compile: 7ms, render: 409ms)
+ GET /api/arriving?fresh=1 200 in 17ms (compile: 2ms, render: 14ms)
+ POST /api/sync?kick=1 200 in 11ms (compile: 2ms, render: 9ms)
+ GET /api/auth/me 200 in 7ms (compile: 4ms, render: 3ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 162ms (compile: 4ms, render: 159ms)
+ GET /api/home 200 in 234ms (compile: 44ms, render: 190ms)
+[anilist] AniList -> 404
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+prisma:error 
+Invalid `__TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create()` invocation in
+/home/z/my-project/src/.next/dev/server/chunks/[root-of-the-server]__b2381eb0._.js:1700:151
+
+  1697 if (!events.length) return;
+  1698 for (const e of events){
+  1699     try {
+→ 1700         await __TURBOPACK__imported__module__$5b$project$5d2f$src$2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["db"].top10Event.create(
+Unique constraint failed on the fields: (`type`,`malId`,`day`)
+ GET /api/watchtime?all=1&limit=12 200 in 2.4s (compile: 6ms, render: 2.4s)
+ GET /api/auth/me 200 in 5ms (compile: 2ms, render: 3ms)
+ GET /api/ann-news 200 in 6ms (compile: 1799µs, render: 5ms)
+ GET /api/top10 200 in 17ms (compile: 2ms, render: 14ms)
+ GET /api/arriving 200 in 15ms (compile: 4ms, render: 11ms)
+ GET /api/top10-events 200 in 10ms (compile: 1601µs, render: 8ms)
+[jikan] Jikan /anime/64873/episodes?page=1 -> 0
+[anilist] AniList -> 404
+[jikan] Jikan /anime/64325/episodes?page=1 -> 0
+ POST /api/sync?force=1 200 in 4.7min (compile: 75ms, render: 4.7min)
+[jikan] Jikan /anime/999929/episodes?page=1 -> 0
+ GET /api/sync 200 in 11ms (compile: 3ms, render: 8ms)
+[jikan] Jikan /anime/64578/episodes?page=1 -> 0
+ GET / 200 in 37ms (compile: 3ms, render: 34ms)
+ GET /api/ann-news 200 in 9ms (compile: 2ms, render: 7ms)
+ GET /api/top10-events 200 in 15ms (compile: 5ms, render: 10ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 117ms (compile: 7ms, render: 109ms)
+ GET /api/top10?fresh=1 200 in 130ms (compile: 10ms, render: 120ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 21ms (compile: 6ms, render: 15ms)
+ GET /api/genres 200 in 29ms (compile: 3ms, render: 26ms)
+ GET /api/arriving?fresh=1 200 in 11ms (compile: 1672µs, render: 9ms)
+ POST /api/sync?kick=1 200 in 15ms (compile: 2ms, render: 12ms)
+ GET /api/auth/me 200 in 11ms (compile: 4ms, render: 7ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 170ms (compile: 3ms, render: 167ms)
+ GET /api/home 200 in 341ms (compile: 8ms, render: 333ms)
+[anilist] AniList -> 404
+ GET /api/watchtime?all=1&limit=12 200 in 2.5s (compile: 1494µs, render: 2.5s)
+ GET /api/auth/me 200 in 6ms (compile: 2ms, render: 4ms)
+ GET /api/top10-events 200 in 11ms (compile: 2ms, render: 8ms)
+ GET /api/ann-news 200 in 7ms (compile: 3ms, render: 4ms)
+ GET /api/top10 200 in 14ms (compile: 3ms, render: 11ms)
+ GET /api/arriving 200 in 12ms (compile: 2ms, render: 10ms)
+[jikan] Jikan /anime/64325/episodes?page=1 -> 0
+[jikan] Jikan /anime/62102/episodes?page=1 -> 0
+[jikan] Jikan /anime/64578/episodes?page=1 -> 0
+ GET /api/sync 200 in 10ms (compile: 3ms, render: 6ms)
+[jikan] Jikan /anime/62102/episodes?page=1 -> 0
+ GET /api/stream?malId=42310&ep=1&lang=dub&server=zoko 200 in 3.3s (compile: 2ms, render: 3.3s)
+[jikan] Jikan /anime/61280/episodes?page=1 -> 0

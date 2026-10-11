@@ -1,0 +1,390 @@
+{
+ "generatedAt": "2026-10-11T14:45:54Z",
+ "catalogShowsCensus": 2260,
+ "totalEpisodes": 36243,
+ "opCovered": 27442,
+ "opCoveragePct": 75.72,
+ "opTiers": {
+  "exact": 14589,
+  "consensus": 11588,
+  "scout": 924,
+  "skipdb": 341
+ },
+ "edCovered": 26114,
+ "edCoveragePct": 72.05,
+ "edTiers": {
+  "exact": 15056,
+  "consensus": 11058
+ },
+ "showsMissingAllOp": 605,
+ "topGapShows": [
+  {
+   "malId": 527,
+   "title": "Pok\u00e9mon",
+   "gapEps": 276,
+   "totalEps": 276
+  },
+  {
+   "malId": 1564,
+   "title": "Pok\u00e9mon the Series: Ruby and Sapphire",
+   "gapEps": 192,
+   "totalEps": 192
+  },
+  {
+   "malId": 1565,
+   "title": "Pok\u00e9mon the Series: Diamond and Pearl",
+   "gapEps": 191,
+   "totalEps": 191
+  },
+  {
+   "malId": 51836,
+   "title": "Soul Land 2: The Peerless Tang Clan",
+   "gapEps": 180,
+   "totalEps": 182
+  },
+  {
+   "malId": 53876,
+   "title": "Pok\u00e9mon Horizons: The Series",
+   "gapEps": 151,
+   "totalEps": 151
+  },
+  {
+   "malId": 250,
+   "title": "Zatch Bell!",
+   "gapEps": 148,
+   "totalEps": 150
+  },
+  {
+   "malId": 34034,
+   "title": "Pok\u00e9mon the Series: Sun & Moon",
+   "gapEps": 146,
+   "totalEps": 146
+  },
+  {
+   "malId": 40351,
+   "title": "Pok\u00e9mon Journeys: The Series",
+   "gapEps": 136,
+   "totalEps": 136
+  },
+  {
+   "malId": 1491,
+   "title": "Galaxy Express 999",
+   "gapEps": 111,
+   "totalEps": 113
+  },
+  {
+   "malId": 1453,
+   "title": "Maison Ikkoku",
+   "gapEps": 94,
+   "totalEps": 96
+  },
+  {
+   "malId": 2253,
+   "title": "Mazinger Z",
+   "gapEps": 92,
+   "totalEps": 92
+  },
+  {
+   "malId": 9107,
+   "title": "Pok\u00e9mon: Black & White",
+   "gapEps": 84,
+   "totalEps": 84
+  },
+  {
+   "malId": 1985,
+   "title": "UFO Robo Grendizer",
+   "gapEps": 72,
+   "totalEps": 74
+  },
+  {
+   "malId": 15489,
+   "title": "Yu-Gi-Oh! ZEXAL II",
+   "gapEps": 71,
+   "totalEps": 73
+  },
+  {
+   "malId": 232,
+   "title": "Cardcaptor Sakura",
+   "gapEps": 70,
+   "totalEps": 70
+  },
+  {
+   "malId": 4651,
+   "title": "Crayon Kingdom of Dreams",
+   "gapEps": 68,
+   "totalEps": 70
+  },
+  {
+   "malId": 2907,
+   "title": "Cyborg Kuro-chan",
+   "gapEps": 64,
+   "totalEps": 66
+  },
+  {
+   "malId": 2037,
+   "title": "Hime-chan no Ribbon",
+   "gapEps": 59,
+   "totalEps": 61
+  },
+  {
+   "malId": 15611,
+   "title": "Cardfight!! Vanguard Link Joker",
+   "gapEps": 57,
+   "totalEps": 59
+  },
+  {
+   "malId": 5658,
+   "title": "Great Mazinger",
+   "gapEps": 56,
+   "totalEps": 56
+  },
+  {
+   "malId": 727,
+   "title": "Kingyo Chuuihou!",
+   "gapEps": 52,
+   "totalEps": 54
+  },
+  {
+   "malId": 1261,
+   "title": "Samurai Pizza Cats",
+   "gapEps": 52,
+   "totalEps": 54
+  },
+  {
+   "malId": 2598,
+   "title": "Heavy Metal L-Gaim",
+   "gapEps": 52,
+   "totalEps": 54
+  },
+  {
+   "malId": 4114,
+   "title": "Onegai My Melody: Kuru Kuru Shuffle!",
+   "gapEps": 52,
+   "totalEps": 52
+  },
+  {
+   "malId": 64578,
+   "title": "Chikyuu Daisuki! Kikkun",
+   "gapEps": 52,
+   "totalEps": 52
+  },
+  {
+   "malId": 2108,
+   "title": "MegaMan: NT Warrior AXESS",
+   "gapEps": 51,
+   "totalEps": 51
+  },
+  {
+   "malId": 3907,
+   "title": "Galaxy Warring State Chronicle Rai",
+   "gapEps": 51,
+   "totalEps": 52
+  },
+  {
+   "malId": 8217,
+   "title": "Jewelpet Twinkle\u2606",
+   "gapEps": 50,
+   "totalEps": 52
+  },
+  {
+   "malId": 22693,
+   "title": "Lady Jewelpet",
+   "gapEps": 50,
+   "totalEps": 52
+  },
+  {
+   "malId": 33314,
+   "title": "Digimon Universe App Monsters",
+   "gapEps": 50,
+   "totalEps": 52
+  },
+  {
+   "malId": 37822,
+   "title": "Douluo Dalu: Jingying Sai",
+   "gapEps": 50,
+   "totalEps": 52
+  },
+  {
+   "malId": 288,
+   "title": "Beyblade",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 353,
+   "title": "Ojamajo Doremi Dokkaan!",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 1669,
+   "title": "Beyblade V-Force",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 2109,
+   "title": "Rockman.EXE Stream",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 2577,
+   "title": "The Adventures of Tom Sawyer",
+   "gapEps": 49,
+   "totalEps": 49
+  },
+  {
+   "malId": 2923,
+   "title": "Shugo Chara!",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 4038,
+   "title": "Psychic Squad",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 8215,
+   "title": "Story from Genji Agedama",
+   "gapEps": 49,
+   "totalEps": 51
+  },
+  {
+   "malId": 17249,
+   "title": "Pretty Rhythm: Rainbow Live",
+   "gapEps": 49,
+   "totalEps": 51
+  }
+ ],
+ "sampleNoOpEpisodes": [
+  [
+   "32",
+   "Neon Genesis Evangelion: The End of Evangelion",
+   1
+  ],
+  [
+   "44",
+   "Rurouni Kenshin OVA: Trust & Betrayal (Tsuioku-hen)",
+   1
+  ],
+  [
+   "44",
+   "Rurouni Kenshin OVA: Trust & Betrayal (Tsuioku-hen)",
+   2
+  ],
+  [
+   "44",
+   "Rurouni Kenshin OVA: Trust & Betrayal (Tsuioku-hen)",
+   3
+  ],
+  [
+   "44",
+   "Rurouni Kenshin OVA: Trust & Betrayal (Tsuioku-hen)",
+   4
+  ],
+  [
+   "47",
+   "Akira",
+   1
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   3
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   4
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   5
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   6
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   7
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   8
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   9
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   10
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   11
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   12
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   13
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   14
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   15
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   16
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   17
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   18
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   19
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   20
+  ],
+  [
+   "50",
+   "Oh! My Goddess (TV)",
+   21
+  ]
+ ],
+ "elapsedSec": 0.1
+}

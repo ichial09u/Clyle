@@ -1,0 +1,199 @@
+{
+ "suspects": 71,
+ "fixed": 32,
+ "zokoStillNoDub": 39,
+ "probeErrors": 0,
+ "fixedList": [
+  51009,
+  61316,
+  37450,
+  14719,
+  52299,
+  57334,
+  37991,
+  57181,
+  323,
+  57524,
+  53613,
+  42192,
+  52969,
+  49979,
+  48896,
+  56062,
+  8407,
+  58855,
+  33003,
+  23317,
+  2026,
+  59265,
+  18617,
+  42745,
+  9790,
+  49363,
+  39681,
+  40841,
+  51306,
+  14653,
+  1953,
+  58964
+ ],
+ "stillMissingList": [
+  {
+   "malId": 37105,
+   "title": "Grand Blue Dreaming"
+  },
+  {
+   "malId": 51805,
+   "title": "Legend of the Galactic Heroes: Die Neue These - Intrigue"
+  },
+  {
+   "malId": 34561,
+   "title": "Re:CREATORS"
+  },
+  {
+   "malId": 2476,
+   "title": "School Days (TV)"
+  },
+  {
+   "malId": 37517,
+   "title": "Happy Sugar Life"
+  },
+  {
+   "malId": 30749,
+   "title": "Undefeated Bahamut Chronicle"
+  },
+  {
+   "malId": 12549,
+   "title": "So, I Can't Play H!"
+  },
+  {
+   "malId": 5042,
+   "title": "Kiss x Sis"
+  },
+  {
+   "malId": 54837,
+   "title": "Villainess Level 99: I May Be the Hidden Boss but I'm Not the Demon Lord"
+  },
+  {
+   "malId": 59135,
+   "title": "I'm Getting Married to a Girl I Hate in My Class"
+  },
+  {
+   "malId": 28617,
+   "title": "PUNCH LINE"
+  },
+  {
+   "malId": 40483,
+   "title": "Seton Academy: Join the Pack!"
+  },
+  {
+   "malId": 25729,
+   "title": "Tamayura: Sotsugyou Shashin Part 1 - Kizashi"
+  },
+  {
+   "malId": 47158,
+   "title": "My Friend's Little Sister Has It In for Me!"
+  },
+  {
+   "malId": 37597,
+   "title": "DAKAICHI -I'm being harassed by the sexiest man of the year-"
+  },
+  {
+   "malId": 3958,
+   "title": "Kannagi: Crazy Shrine Maidens"
+  },
+  {
+   "malId": 10079,
+   "title": "A Bridge to the Starry Skies"
+  },
+  {
+   "malId": 53671,
+   "title": "Love Live! Nijigasaki High School Idol Club: NEXT SKY"
+  },
+  {
+   "malId": 12231,
+   "title": "Dragon Ball: Episode of Bardock"
+  },
+  {
+   "malId": 36688,
+   "title": "The Testament of Sister New Devil DEPARTURES"
+  },
+  {
+   "malId": 30806,
+   "title": "Schwarzes Marken"
+  },
+  {
+   "malId": 15793,
+   "title": "Symphogear G"
+  },
+  {
+   "malId": 33080,
+   "title": "Brotherhood Final Fantasy XV"
+  },
+  {
+   "malId": 30740,
+   "title": "Young Black Jack"
+  },
+  {
+   "malId": 32094,
+   "title": "Reikenzan: Hoshikuzu-tachi no Utage"
+  },
+  {
+   "malId": 58511,
+   "title": "The Seven Deadly Sins: Four Knights of the Apocalypse Season 2"
+  },
+  {
+   "malId": 33771,
+   "title": "Cheating Craft"
+  },
+  {
+   "malId": 37504,
+   "title": "Mob Psycho mini"
+  },
+  {
+   "malId": 9888,
+   "title": "Squid Girl Specials"
+  },
+  {
+   "malId": 38390,
+   "title": "Outburst Dreamer Boys (TV)"
+  },
+  {
+   "malId": 655,
+   "title": "Galaxy Angel X"
+  },
+  {
+   "malId": 33164,
+   "title": "Myriad Colors Phantom World: Limitless Phantom World"
+  },
+  {
+   "malId": 3079,
+   "title": "Blue Comet SPT Layzner"
+  },
+  {
+   "malId": 5755,
+   "title": "Blue Comet SPT Layzner"
+  },
+  {
+   "malId": 40327,
+   "title": "Mewkledreamy"
+  },
+  {
+   "malId": 408,
+   "title": "Final Fantasy VII: Last Order"
+  },
+  {
+   "malId": 33606,
+   "title": "ONE PIECE FILM: GOLD - episode 0 711ver."
+  },
+  {
+   "malId": 107,
+   "title": "Jing: King of Bandits"
+  },
+  {
+   "malId": 1261,
+   "title": "Samurai Pizza Cats"
+  }
+ ],
+ "errorList": []
+}

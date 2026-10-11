@@ -506,6 +506,15 @@ async function runSync(_force = false): Promise<SyncResult> {
       });
       if (aired > a.totalEpisodes) {
         await db.anime.update({ where: { malId: a.malId }, data: { totalEpisodes: aired } });
+      }
+      // Drive the import off the REAL row count, not totalEpisodes: seasonal
+      // rows carry AniList's planned episode count in totalEpisodes (written
+      // by upserts before the season even starts), so `aired > totalEpisodes`
+      // stayed false forever once the plan matched the aired count and the
+      // newest episodes never imported (Apothecary S3 ep2: total=2, rows=1,
+      // aired=2 — a permanent dead zone under the old gate).
+      const haveRows = await db.episode.count({ where: { animeId: a.malId, lang: "sub" } });
+      if (aired > haveRows) {
         const added = await importEpisodes(a.malId, aired);
         episodesAdded += added.length;
         newEpisodes.push(...added.map((ep) => ({ malId: a.malId, ep, lenMin: a.durationMin })));

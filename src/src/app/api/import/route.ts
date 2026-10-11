@@ -47,7 +47,14 @@ export async function POST(req: Request) {
 
   if (conv) {
     await upsertAnime(conv, { inCatalog: true, source: "manual" });
-    const added = await importEpisodes(malId, airedEpisodeCount(media) ?? 0);
+    // AniList sometimes carries no schedule/count at all (Yamishibai 17:
+    // RELEASING, nextAiringEpisode null, episodes null) — fall back to MAL's
+    // paginated episode list exactly like the catalog sync does, instead of
+    // importing nothing forever.
+    const aired = airedEpisodeCount(media);
+    const added = aired && aired > 0
+      ? await importEpisodes(malId, aired)
+      : await importEpisodesFromList(malId);
     episodesAdded = added.length;
     const meta = await db.anime.findUnique({ where: { malId }, select: { durationMin: true } });
     newEpisodes.push(...added.map((ep) => ({ malId, ep, lenMin: meta?.durationMin })));
