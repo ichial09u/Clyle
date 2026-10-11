@@ -29,7 +29,7 @@
  */
 import { execFile as _execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, appendFileSync, readFileSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -50,8 +50,6 @@ const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
 const H = { "User-Agent": UA, Origin: ORIGIN, Referer: `${ORIGIN}/` };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPORT_JSONL = join(__dirname, "cc-sync-report.jsonl");
-const PROGRESS_JSON = join(__dirname, "cc-sync-progress.json");
 
 /* ---------------- args ---------------- */
 const args = process.argv.slice(2);
@@ -68,6 +66,10 @@ const LANG = flag("lang") === "sub" ? "sub" : "dub";
 const WINDOWS_WANT = Math.max(1, parseInt(flag("windows"), 10) || 4);
 const FORCE = flag("force") === true;
 const QUIET = flag("quiet") === true;
+// per-wave tag keeps concurrent fleet runs from clobbering each other's files
+const TAG = flag("tag") ? String(flag("tag")).replace(/[^a-z0-9-]/gi, "") : "";
+const REPORT_JSONL = join(__dirname, `cc-sync-report${TAG ? "-" + TAG : ""}.jsonl`);
+const PROGRESS_JSON = join(__dirname, `cc-sync-progress${TAG ? "-" + TAG : ""}.json`);
 const DL_CONC = 4; // parallel segment downloads per bot
 
 const log = (...m) => { if (!QUIET) console.log(...m); };
@@ -206,33 +208,39 @@ async function loudnessEnvelope(segs, w0, W, tag) {
   if (!covering.length) throw new Error('no segments for window');
   const ts = join(WORK, `${tag}.ts`);
   writeFileSync(ts, await downloadSegments(covering));
-  // binary PCM out -> execFile must NOT utf8-decode stdout
-  const { stdout } = await execFile("ffmpeg", [
-    "-hide_banner", "-nostats",
-    "-i", ts, "-ss", Math.max(0, w0 - covering[0].start).toFixed(2), "-t", W.toFixed(2),
-    "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "8000",
-    "-af", "highpass=f=250,lowpass=f=3400", "-f", "s16le", "pipe:1",
-  ], { timeout: 150_000, maxBuffer: 32 * 1024 * 1024, encoding: "buffer" });
-  const pcm = stdout;
-  const n = Math.ceil(W / BIN);
-  const env = new Float32Array(n);
-  const per = 8000 * BIN; // samples per bin
-  for (let k = 0; k < n; k++) {
-    let sum = 0, cnt = 0;
-    const s0 = k * per, s1 = Math.min(pcm.length / 2, (k + 1) * per);
-    for (let i = s0; i < s1; i++) {
-      const v = pcm.readInt16LE(i * 2) / 32768;
-      sum += v * v; cnt++;
+  // 10-70MB per window file — across a fleet run that is gigabytes and the
+  // sandbox disk hit ENOSPC mid-wave before. Delete the moment ffmpeg is done.
+  try {
+    // binary PCM out -> execFile must NOT utf8-decode stdout
+    const { stdout } = await execFile("ffmpeg", [
+      "-hide_banner", "-nostats",
+      "-i", ts, "-ss", Math.max(0, w0 - covering[0].start).toFixed(2), "-t", W.toFixed(2),
+      "-map", "0:a:0", "-vn", "-ac", "1", "-ar", "8000",
+      "-af", "highpass=f=250,lowpass=f=3400", "-f", "s16le", "pipe:1",
+    ], { timeout: 150_000, maxBuffer: 32 * 1024 * 1024, encoding: "buffer" });
+    const pcm = stdout;
+    const n = Math.ceil(W / BIN);
+    const env = new Float32Array(n);
+    const per = 8000 * BIN; // samples per bin
+    for (let k = 0; k < n; k++) {
+      let sum = 0, cnt = 0;
+      const s0 = k * per, s1 = Math.min(pcm.length / 2, (k + 1) * per);
+      for (let i = s0; i < s1; i++) {
+        const v = pcm.readInt16LE(i * 2) / 32768;
+        sum += v * v; cnt++;
+      }
+      env[k] = cnt ? Math.sqrt(sum / cnt) : 0;
     }
-    env[k] = cnt ? Math.sqrt(sum / cnt) : 0;
+    // 2-bin moving average — dialogue swells span ~1s, smoothing drops bin noise
+    const sm = new Float32Array(n);
+    for (let k = 0; k < n; k++) {
+      const a = env[Math.max(0, k - 1)], b = env[k], c = env[Math.min(n - 1, k + 1)];
+      sm[k] = (a + b + c) / 3;
+    }
+    return sm;
+  } finally {
+    try { unlinkSync(ts); } catch { /* best effort */ }
   }
-  // 2-bin moving average — dialogue swells span ~1s, smoothing drops bin noise
-  const sm = new Float32Array(n);
-  for (let k = 0; k < n; k++) {
-    const a = env[Math.max(0, k - 1)], b = env[k], c = env[Math.min(n - 1, k + 1)];
-    sm[k] = (a + b + c) / 3;
-  }
-  return sm;
 }
 
 /* ---------------- correlation ---------------- */
@@ -325,7 +333,7 @@ async function measureEpisode(malId, ep, title) {
   const tag = `m${malId}e${ep}`;
   const resolved = await resolveDub(malId, ep, LANG);
   if (!resolved) return { ep, status: "no-dub-stream" };
-  const track = (() => {
+  let track = (() => {
     const subs = resolved.subtitles;
     if (!subs?.length) return null;
     const norm = (s) => (s ?? "").trim().toLowerCase();
@@ -334,6 +342,25 @@ async function measureEpisode(malId, ep, title) {
       ?? subs.find((t) => t.default === true)
       ?? subs[0];
   })();
+  // CAPTION INHERITANCE (mirror of the app route): when the DUB payload ships
+  // no caption tracks, the player now serves the SUB page's tracks on the dub
+  // stream — so the fleet must measure THOSE, or the sync verdict never covers
+  // exactly what viewers see. Only for dub waves (a sub wave measuring a dub
+  // payload's track against sub audio makes no sense). The sub-timed track
+  // riding dub audio is precisely the skew the DSP offset corrects, and the
+  // ccIsSubTiming annotation below flags it in the row's detail.
+  if (!track && LANG === "dub") {
+    try {
+      const sub = await resolveDub(malId, ep, "sub");
+      const subs = sub?.subtitles ?? [];
+      const norm = (s) => (s ?? "").trim().toLowerCase();
+      track = subs.find((t) => norm(t.label) === "english")
+        ?? subs.find((t) => /\benglish\b/.test(norm(t.label)))
+        ?? subs.find((t) => t.default === true)
+        ?? subs[0]
+        ?? null;
+    } catch { /* fall through as no-cc */ }
+  }
   if (!track?.src) return { ep, status: "no-cc", server: resolved.server };
   const vtt = await fetchText(track.src);
   const cues = parseVtt(vtt);
@@ -475,8 +502,14 @@ async function buildWork() {
     return [{ malId: MAL_ID, title: anime.title, eps }];
   }
   if (TOP_N) {
+    // dub sync only exists for hasDub shows; SUB plays for EVERY show, so a
+    // sub wave must not gate on hasDub (that used to hide 1,090 shows).
+    // malId < 999900 keeps the South Park seasons (WCO source, no zoko dub
+    // payload) out of the queue — they burned fleet slots as no-dub-stream.
     const animes = await db.anime.findMany({
-      where: { hasDub: true, inCatalog: true },
+      where: LANG === "sub"
+        ? { inCatalog: true, malId: { lt: 999900 } }
+        : { hasDub: true, inCatalog: true, malId: { lt: 999900 } },
       orderBy: { popularity: "desc" },
       take: TOP_N,
       select: { malId: true, title: true, totalEpisodes: true },

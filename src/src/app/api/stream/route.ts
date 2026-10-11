@@ -128,7 +128,7 @@ export async function GET(req: Request) {
     // Zoko rotates CDN domains (aniwatchtv.uk -> 1embed.buzz -> next), and the
     // proxy's static allowlist can never keep up. With rf= present the proxy
     // accepts the master playlist, and every child inherits the same rf.
-    return respond(malId, ep, lang, stream, backupWanted ? "zoko" : server, backupWanted ? "zoko" : server, ZOKO_REFERER);
+    return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, stream), backupWanted ? "zoko" : server, backupWanted ? "zoko" : server, ZOKO_REFERER);
   }
 
   // ---- explicit BACKUP DUB server request ("DUB AniNeko" button) --------
@@ -163,7 +163,7 @@ export async function GET(req: Request) {
       // flix.src is already a proxy URL serving the stored synthesized master
       // (the raw JWT master is IP-bound, so it never reaches the player raw);
       // pk rides along for the child playlists the proxy fetches later
-      return respond(malId, ep, lang, { src: flix.src, subtitles: flix.subtitles, skip: flix.skip }, server, "flix", FLIX_REFERER, flix.pk);
+      return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, { src: flix.src, subtitles: flix.subtitles, skip: flix.skip }), server, "flix", FLIX_REFERER, flix.pk);
     }
     return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
   }
@@ -188,9 +188,9 @@ export async function GET(req: Request) {
   const pOther = resolveStream(malId, ep, "dub", other, { fresh }).catch(() => null);
 
   const requested = await pRequested;
-  if (requested) return respond(malId, ep, lang, requested, mainServer, mainServer, ZOKO_REFERER);
+  if (requested) return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, requested), mainServer, mainServer, ZOKO_REFERER);
   const alt = await pOther;
-  if (alt) return respond(malId, ep, lang, alt, other, other, ZOKO_REFERER);
+  if (alt) return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, alt), other, other, ZOKO_REFERER);
 
   // Phase B — the DUB backfill sources, all at once. SupaPlay only belongs
   // to Server #1 requests (its DUB source); megaplay/yenime is Server #2's,
@@ -210,11 +210,11 @@ export async function GET(req: Request) {
   })().catch(() => null);
 
   const supa = await pSupa;
-  if (supa) return respond(malId, ep, lang, supa, mainServer, "supaplay");
+  if (supa) return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, supa), mainServer, "supaplay");
   const mega = await pMega;
-  if (mega) return respond(malId, ep, lang, mega, mainServer, "yenime");
+  if (mega) return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, mega), mainServer, "yenime");
   const koto = await pKoto;
-  if (koto) return respond(malId, ep, lang, koto, mainServer, "megaplay-embed");
+  if (koto) return respond(malId, ep, lang, await withInheritedCaptions(malId, ep, lang, koto), mainServer, "megaplay-embed");
 
   // Phase C — the Anivexa backup network, the final net. One provider
   // attempt here keeps the worst-case dub latency bounded; a provider that
@@ -228,6 +228,31 @@ export async function GET(req: Request) {
   }
 
   return NextResponse.json({ error: "stream unavailable" }, { status: 404 });
+}
+
+/**
+ * CAPTION INHERITANCE — a stream that ships no caption tracks used to blank
+ * the CC panel even though the OTHER language's page carries the full
+ * multi-language track set (the census proved this is widespread: zoko lists
+ * 0 subtitles on 39 dub pages whose sub pages carry 5-12 languages, and 12
+ * sub pages whose ONLY tracks live on the dub page). Subtitles are text
+ * tracks timed to the episode content, not the audio language, so the other
+ * page's tracks ride along — and the CC-sync fleet's per-episode offsets
+ * (CaptionSync) apply to them exactly as before. Never blocks playback: any
+ * failure returns the stream untouched.
+ */
+async function withInheritedCaptions<
+  T extends { subtitles: Array<{ lang: string; label: string; src: string }> },
+>(malId: number, ep: number, lang: Lang, stream: T): Promise<T> {
+  if (stream.subtitles?.length) return stream;
+  const donor: Lang = lang === "dub" ? "sub" : "dub";
+  try {
+    const other = await resolveStream(malId, ep, donor, "zoko");
+    if (other?.subtitles?.length) return { ...stream, subtitles: other.subtitles };
+  } catch {
+    /* captions are a bonus — never block playback on them */
+  }
+  return stream;
 }
 
 /**

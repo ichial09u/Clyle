@@ -1,0 +1,535 @@
+cc-sync fleet: 262 episodes, 6 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+[bot1] South Park: Movies & Specials ep1: no-dub-stream
+[bot1] South Park: Movies & Specials ep2: no-dub-stream
+[bot1] South Park Season 1 ep3: no-dub-stream
+[bot1] South Park Season 1 ep10: no-dub-stream
+[bot1] South Park Season 2 ep5: no-dub-stream
+[bot1] South Park Season 2 ep14: no-dub-stream
+[bot1] South Park Season 3 ep4: no-dub-stream
+[bot1] South Park Season 3 ep13: no-dub-stream
+[bot1] South Park Season 4 ep4: no-dub-stream
+[bot1] South Park Season 4 ep13: no-dub-stream
+[bot1] South Park Season 5 ep4: no-dub-stream
+[bot1] South Park Season 6 ep4: no-dub-stream
+[bot2] South Park Season 5 ep11: no-dub-stream
+[bot1] South Park Season 6 ep13: no-dub-stream
+[bot2] South Park Season 7 ep4: no-dub-stream
+[bot2] South Park Season 8 ep4: cached conf=0.99 offset=-1001ms — skip
+[bot2] South Park Season 8 ep11: cached conf=0.89 offset=-617ms — skip
+[bot2] South Park Season 9 ep4: cached conf=0.91 offset=-1222ms — skip
+[bot2] South Park Season 9 ep11: cached conf=0.99 offset=-670ms — skip
+[bot2] South Park Season 10 ep4: cached conf=0.87 offset=-1269ms — skip
+[bot2] South Park Season 10 ep11: cached conf=0.88 offset=-1429ms — skip
+[bot2] South Park Season 11 ep4: cached conf=0.92 offset=-2517ms — skip
+[bot2] South Park Season 11 ep11: cached conf=0.9 offset=461ms — skip
+[bot2] South Park Season 12 ep4: cached conf=0.87 offset=-1529ms — skip
+[bot2] South Park Season 12 ep11: cached conf=0.84 offset=-1195ms — skip
+[bot2] South Park Season 13 ep4: cached conf=0.84 offset=355ms — skip
+[bot1] South Park Season 7 ep11: no-dub-stream
+[bot2] South Park Season 13 ep11: no-dub-stream
+[bot2] South Park Season 14 ep11: cached conf=0.78 offset=-29ms — skip
+[bot2] South Park Season 15 ep4: cached conf=0.86 offset=221ms — skip
+[bot2] South Park Season 15 ep11: cached conf=0.86 offset=153ms — skip
+[bot1] South Park Season 14 ep4: no-dub-stream
+[bot1] South Park Season 16 ep11: cached conf=0.9 offset=92ms — skip
+[bot1] South Park Season 17 ep3: cached conf=0.83 offset=5517ms — skip
+[bot1] South Park Season 17 ep8: cached conf=0.86 offset=5519ms — skip
+[bot1] South Park Season 18 ep3: cached conf=0.78 offset=5279ms — skip
+[bot2] South Park Season 16 ep4: no-dub-stream
+[bot2] South Park Season 19 ep3: cached conf=0.85 offset=116ms — skip
+[bot2] South Park Season 19 ep8: cached conf=0.89 offset=132ms — skip
+[bot1] South Park Season 18 ep8: no-dub-stream
+[bot1] South Park Season 20 ep8: cached conf=0.85 offset=5350ms — skip
+[bot1] South Park Season 21 ep3: cached conf=0.86 offset=5696ms — skip
+[bot1] South Park Season 21 ep8: cached conf=0.84 offset=5733ms — skip
+[bot1] South Park Season 22 ep3: cached conf=0.88 offset=4835ms — skip
+[bot1] South Park Season 22 ep8: cached conf=0.9 offset=903ms — skip
+[bot1] South Park Season 23 ep3: cached conf=0.83 offset=2266ms — skip
+[bot1] South Park Season 23 ep8: cached conf=0.92 offset=331ms — skip
+[bot1] South Park Season 24 ep1: cached conf=0.84 offset=450ms — skip
+[bot2] South Park Season 20 ep3: no-dub-stream
+[bot2] South Park Season 25 ep2: cached conf=0.95 offset=-208ms — skip
+[bot2] South Park Season 25 ep5: cached conf=0.91 offset=-7ms — skip
+[bot2] South Park Season 26 ep2: cached conf=0.87 offset=-3549ms — skip
+[bot2] South Park Season 26 ep5: cached conf=0.89 offset=-375ms — skip
+[bot2] South Park Season 27 ep2: cached conf=0.86 offset=-51ms — skip
+[bot2] South Park Season 27 ep5: cached conf=0.94 offset=-11ms — skip
+[bot1] South Park Season 24 ep3: no-dub-stream
+[bot1] South Park Season 28 ep4: cached conf=0.92 offset=-27ms — skip
+[bot1] South Park Season 29 ep1: cached conf=0.9 offset=3191ms — skip
+[bot1] South Park Season 29 ep2: cached conf=0.9 offset=442ms — skip
+[bot2] South Park Season 28 ep1: no-dub-stream
+[bot3] Detective Conan: Black Iron Submarine ep1: cached conf=0.95 offset=-400ms — skip
+[bot3] Black Magic M-66 ep1: cached conf=0.6 offset=-100ms — skip
+[bot6] Mega Man X - The Day of Sigma ep1: no-cc
+[bot2] Deltora Quest ep49: offset=-8.00s drift=0.00s/min conf=0.54 (3/3 windows, spread=2.50s)
+[bot3] Lupin the 3rd: Alcatraz Connection ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.50s)
+[bot3] Towanoquon: The Roaring Anxiety ep1: cached conf=0.6 offset=1100ms — skip
+[bot3] Full Metal Panic! The Second Raid: Zenyasai - Scene 00 ep1: cached conf=0.95 offset=-400ms — skip
+[bot3] New Cutey Honey ep2: no-cc
+[bot3] New Cutey Honey ep6: no-cc
+[bot1] Deltora Quest ep16: offset=3.40s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.75s)
+[bot4] Sorcerous Stabber Orphen: Battle of Kimluck ep3: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=1.25s)
+[bot5] Sorcerous Stabber Orphen: Battle of Kimluck ep8: offset=1.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot5] Grow Up Show ep3: no-dialogue-windows
+[bot6] A Little Snow Fairy Sugar ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot3] Towanoquon: The Complicity of Dreams ep1: offset=10.60s drift=-0.64s/min conf=0.27 (3/3 windows, spread=8.50s)
+[bot2] A Little Snow Fairy Sugar ep18: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot1] Milky☆Subway: The Galactic Limited Express ep3: offset=-0.20s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.00s)
+[bot4] Milky☆Subway: The Galactic Limited Express ep9: offset=0.00s drift=0.00s/min conf=0 (0/4 windows, spread=0.00s)
+[bot4] Sailor Moon SuperS the Movie: Black Dream Hole ep1: no-cc
+[bot5] Grow Up Show ep10: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.00s)
+[bot6] Guyver: The Bioboosted Armor ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Guyver: The Bioboosted Armor ep20: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.25s)
+[bot1] Rio: Rainbow Gate! ep10: offset=5.90s drift=-0.71s/min conf=0.3 (4/4 windows, spread=7.50s)
+[bot2] Rio: Rainbow Gate! ep3: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.75s)
+[bot4] Mobile Suit Gundam Wing: Endless Waltz ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.75s)
+[bot5] Mobile Suit Gundam Wing: Endless Waltz ep2: offset=6.60s drift=-0.70s/min conf=0.3 (4/4 windows, spread=8.50s)
+[bot6] Urusei Yatsura Movie 1: Only You ep1: offset=-6.50s drift=0.00s/min conf=0.6 (4/4 windows, spread=8.25s)
+[bot3] Requiem from the Darkness ep3: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] Requiem from the Darkness ep10: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] BASTARD!! -Heavy Metal, Dark Fantasy- Hell’s Requiem Arc ep4: offset=-0.60s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot5] Arjuna ep3: offset=8.00s drift=0.00s/min conf=0.54 (3/3 windows, spread=16.00s)
+[bot4] BASTARD!! -Heavy Metal, Dark Fantasy- Hell’s Requiem Arc ep11: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] Arjuna ep10: offset=0.60s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Towanoquon: Dancing Orchid in Chaos ep1: offset=0.90s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot1] Hina Logic - from Luck & Logic ep3: offset=-1.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.00s)
+[bot2] Hina Logic - from Luck & Logic ep9: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] Godzilla: The Planet Eater ep1: offset=-2.70s drift=0.00s/min conf=0.3 (4/4 windows, spread=15.00s)
+[bot4] Dragon Quest: Your Story ep1: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=14.25s)
+[bot6] Ikki Tousen: Xtreme Xecutor ep3: offset=-13.70s drift=1.39s/min conf=0.9 (3/4 windows, spread=8.75s)
+[bot1] Tales of Vesperia: The First Strike ep1: offset=0.80s drift=0.00s/min conf=0.54 (3/3 windows, spread=4.75s)
+[bot3] Ikki Tousen: Xtreme Xecutor ep9: offset=-9.90s drift=0.97s/min conf=0.6 (4/4 windows, spread=11.00s)
+[bot2] CARDFIGHT!! VANGUARD Divinez ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] CARDFIGHT!! VANGUARD Divinez ep10: offset=-6.90s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.50s)
+[bot4] CARDFIGHT!! VANGUARD Divinez Season 2 ep3: offset=-0.70s drift=0.00s/min conf=0.3 (4/4 windows, spread=11.50s)
+[bot4] DNA² ep3: no-cc
+[bot4] DNA² ep9: no-cc
+[bot5] Kakuriyo -Bed & Breakfast for Spirits- 2 ep9: no-dialogue-windows
+[bot6] CARDFIGHT!! VANGUARD Divinez Season 2 ep10: offset=3.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=6.25s)
+[bot1] Draw This, Then Die! ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Draw This, Then Die! ep9: offset=-5.20s drift=0.65s/min conf=0.3 (4/4 windows, spread=7.00s)
+[bot2] Kakuriyo -Bed & Breakfast for Spirits- 2 ep3: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot4] Detective Conan: The Darkest Nightmare ep1: offset=-2.70s drift=0.00s/min conf=0.54 (3/4 windows, spread=10.50s)
+[bot5] Towanoquon: Eternal Quon ep1: offset=5.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=7.25s)
+[bot6] Batman Ninja vs. Yakuza League ep1: offset=4.30s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot1] Lupin the IIIrd: Jigen's Gravestone ep1: offset=-1.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot3] Tenchi Muyo! Ryo-Ohki Season 3 ep2: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot2] Tenchi Muyo! Ryo-Ohki Season 3 ep5: offset=-8.00s drift=0.00s/min conf=0.54 (3/4 windows, spread=2.50s)
+[bot4] Saber Marionette J Again ep2: offset=0.10s drift=0.00s/min conf=0.6 (4/4 windows, spread=5.25s)
+[bot5] Saber Marionette J Again ep5: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot6] TERMINATOR ZERO ep2: offset=-5.40s drift=0.56s/min conf=0.6 (4/4 windows, spread=7.00s)
+[bot3] Mobile Suit Gundam Wing: Endless Waltz ep1: offset=0.50s drift=0.00s/min conf=0.54 (3/3 windows, spread=8.75s)
+[bot1] TERMINATOR ZERO ep6: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] This Ugly Yet Beautiful World ep3: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+  ep7 window0: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e7-w0.ts -ss 8.98 
+  ep20 window0: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e20-w0.ts -ss 3.48
+  ep7 window1: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e7-w1.ts -ss 3.69 
+[bot4] This Ugly Yet Beautiful World ep9: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] Samurai X Special ep1: offset=0.50s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+  ep20 window1: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e20-w1.ts -ss 0.87
+  ep7 window2: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e7-w2.ts -ss 0.03 
+[bot6] Kuroko’s Basketball 2: Would You Mind Doing That Once More ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot3] SHIBOYUGI: Playing Death Games to Put Food on the Table 44: CLOUDY BEACH ep1: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+  ep20 window2: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e20-w2.ts -ss 7.81
+  ep7 window3: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e7-w3.ts -ss 6.38 
+[bot1] Tenchi Muyo! GXP ep7: offset=0.00s drift=0.00s/min conf=0 (0/0 windows, spread=0.00s)
+  ep20 window3: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-B0ip2j/m1133e20-w3.ts -ss 2.83
+[bot2] Tenchi Muyo! GXP ep20: offset=0.00s drift=0.00s/min conf=0 (0/0 windows, spread=0.00s)
+[bot5] Code Geass: Hangyaku no Lelouch Picture Drama ep7: offset=3.80s drift=0.00s/min conf=0.45 (1/4 windows, spread=0.00s)
+[bot4] Code Geass: Hangyaku no Lelouch Picture Drama ep2: offset=0.00s drift=0.00s/min conf=0 (0/4 windows, spread=0.00s)
+[bot6] Ghost in the Shell: The New Movie ep1: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.25s)
+[bot3] The Rose of Versailles ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot3] Fate/kaleid liner Prisma☆Illya 2wei Herz! Short Anime ep1: no-cc
+[bot3] Fate/kaleid liner Prisma☆Illya 2wei Herz! Short Anime ep4: no-cc
+[bot1] Cyber City Oedo 808 ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot1] Dekin no Mogura: The Earthbound Mole ep9: no-dialogue-windows
+[bot2] Cyber City Oedo 808 ep2: offset=8.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=15.50s)
+[bot3] Dekin no Mogura: The Earthbound Mole ep3: offset=0.50s drift=0.00s/min conf=0.38 (1/1 windows, spread=0.00s)
+[bot5] RobiHachi ep3: offset=0.90s drift=0.00s/min conf=0.7 (2/4 windows, spread=1.75s)
+[bot4] RobiHachi ep9: offset=-1.20s drift=0.00s/min conf=0.45 (1/4 windows, spread=0.00s)
+[bot6] Hidden Leaf Village Grand Sports Festival ep1: offset=5.30s drift=0.00s/min conf=0.3 (4/4 windows, spread=11.00s)
+[bot1] Yu-Gi-Oh! ZEXAL II ep18: offset=-14.90s drift=1.17s/min conf=0.6 (4/4 windows, spread=11.25s)
+[bot2] Yu-Gi-Oh! ZEXAL II ep55: offset=1.10s drift=0.00s/min conf=0.3 (4/4 windows, spread=14.00s)
+[bot3] El Hazard: The Magnificent World ep2: offset=-0.40s drift=0.00s/min conf=0.6 (4/4 windows, spread=14.25s)
+[bot5] El Hazard: The Magnificent World ep5: offset=-1.40s drift=0.00s/min conf=0.6 (4/4 windows, spread=6.75s)
+[bot4] Hayate the Combat Butler: Can't Take My Eyes Off You ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] Hayate the Combat Butler: Can't Take My Eyes Off You ep9: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Saber Marionette J to X ep7: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot2] Saber Marionette J to X ep20: offset=-4.70s drift=0.51s/min conf=0.3 (4/4 windows, spread=7.00s)
+[bot2] Hakuoki ~Demon of the Fleeting Blossom~ Record of the Jade Blood ep3: no-dialogue-windows
+[bot3] AMAIM Warrior at the Borderline ep3: offset=0.00s drift=0.00s/min conf=0.54 (3/4 windows, spread=2.75s)
+[bot2] Hakuoki ~Demon of the Fleeting Blossom~ Record of the Jade Blood ep8: no-dialogue-windows
+[bot5] AMAIM Warrior at the Borderline ep10: offset=15.20s drift=-1.38s/min conf=0.6 (4/4 windows, spread=15.00s)
+[bot4] Big Windup!: The Basics of Basics ep1: offset=0.50s drift=0.00s/min conf=0.45 (1/4 windows, spread=0.00s)
+[bot6] xxxHOLiC - A Midsummer Night's Dream ep1: offset=0.30s drift=0.00s/min conf=0.6 (4/4 windows, spread=11.25s)
+[bot3] Genocyber ep1: offset=-2.00s drift=0.00s/min conf=0.27 (3/3 windows, spread=10.25s)
+[bot1] Mobile Suit Gundam F91 ep1: offset=7.50s drift=0.00s/min conf=0.54 (3/4 windows, spread=14.00s)
+[bot2] Genocyber ep4: offset=-9.40s drift=0.98s/min conf=0.6 (4/4 windows, spread=9.50s)
+[bot5] Housing Complex C ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=1.25s)
+[bot4] Housing Complex C ep3: offset=1.60s drift=-0.57s/min conf=0.9 (3/4 windows, spread=3.75s)
+[bot6] Jyu-Oh-Sei: Planet of the Beast King ep3: offset=-4.80s drift=0.65s/min conf=0.3 (4/4 windows, spread=6.50s)
+[bot3] Jyu-Oh-Sei: Planet of the Beast King ep8: offset=0.50s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] Yu-Gi-Oh! VRAINS ep30: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] Yu-Gi-Oh! VRAINS ep90: offset=4.80s drift=-0.55s/min conf=0.54 (3/4 windows, spread=4.50s)
+[bot5] Tenchi Muyo! Ryo-Ohki ep2: offset=0.60s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.00s)
+[bot4] Tenchi Muyo! Ryo-Ohki ep5: offset=-12.60s drift=0.69s/min conf=0.6 (4/4 windows, spread=7.50s)
+[bot6] Lord of Vermilion: The Crimson King ep3: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Typhoon Noruda ep1: offset=0.30s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.50s)
+[bot3] Lord of Vermilion: The Crimson King ep9: offset=-5.90s drift=0.77s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot2] Galaxy Angel Z ep2: offset=13.90s drift=-1.20s/min conf=0.3 (4/4 windows, spread=11.75s)
+[bot5] Galaxy Angel Z ep7: offset=0.30s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.25s)
+[bot4] My-Otome Zwei ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=2.75s)
+[bot1] Majestic Prince ep6: offset=0.30s drift=0.00s/min conf=0.54 (3/3 windows, spread=5.75s)
+[bot6] My-Otome Zwei ep3: offset=-15.50s drift=1.04s/min conf=0.3 (4/4 windows, spread=10.50s)
+[bot3] Majestic Prince ep18: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] BEYBLADE X ep34: offset=2.30s drift=0.00s/min conf=0.6 (4/4 windows, spread=15.50s)
+[bot5] BEYBLADE X ep101: offset=1.30s drift=0.00s/min conf=0.6 (4/4 windows, spread=12.25s)
+[bot4] Kämpfer für die Liebe ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=5.50s)
+[bot4] Onmyo Kaiten Re:Birth Verse ep3: no-dialogue-windows
+[bot1] Kämpfer für die Liebe ep2: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.50s)
+[bot6] Infinite Ryvius ep7: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.25s)
+[bot3] Infinite Ryvius ep20: offset=0.40s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] MF GHOST Season 3 ep10: no-dialogue-windows
+[bot2] Star Wars: Visions Volume 3 ep2: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot5] Star Wars: Visions Volume 3 ep7: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=12.25s)
+[bot4] Onmyo Kaiten Re:Birth Verse ep9: offset=-0.10s drift=0.00s/min conf=0.6 (4/4 windows, spread=15.00s)
+[bot4] Hakuoki: Demon of the Fleeting Blossom: A Memory of Snow Flowers ep5: no-dialogue-windows
+[bot1] Oblivion Island: Haruka and the Magic Mirror ep1: offset=4.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot6] MF GHOST Season 3 ep3: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.50s)
+[bot3] The Adventures of Tom Sawyer ep12: offset=5.90s drift=0.00s/min conf=0.6 (4/4 windows, spread=3.50s)
+[bot2] The Adventures of Tom Sawyer ep37: offset=-2.20s drift=0.00s/min conf=0.6 (4/4 windows, spread=13.25s)
+[bot5] Hakuoki: Demon of the Fleeting Blossom: A Memory of Snow Flowers ep2: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot2] SNOWBALL EARTH ep3: no-dialogue-windows
+[bot4] BLACK ROCK SHOOTER DAWN FALL ep3: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.25s)
+[bot5] SNOWBALL EARTH ep10: no-dialogue-windows
+[bot1] BLACK ROCK SHOOTER DAWN FALL ep9: offset=-6.20s drift=0.76s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot6] Girls und Panzer OVA Series ep2: offset=-7.20s drift=0.00s/min conf=0.9 (3/4 windows, spread=1.75s)
+[bot3] Girls und Panzer OVA Series ep5: offset=4.10s drift=0.00s/min conf=0.21 (2/4 windows, spread=6.25s)
+[bot2] Beyblade Burst Turbo ep13: offset=-9.40s drift=0.70s/min conf=0.3 (4/4 windows, spread=7.75s)
+[bot3] DIGIMON BEATBREAK ep37: no-dub-stream
+[bot5] The Silver Guardian 2 ep2: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=3.75s)
+[bot4] Beyblade Burst Turbo ep38: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] The Silver Guardian 2 ep5: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=2.25s)
+[bot6] DIGIMON BEATBREAK ep12: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] GINTAMA - Mr. Ginpachi's Zany Class ep3: offset=-4.20s drift=0.00s/min conf=0.3 (4/4 windows, spread=3.25s)
+[bot3] Slayers Excellent ep2: no-cc
+[bot2] Tenchi Muyo! Ryo-Ohki: The Night Before The Carnival! ep1: offset=5.60s drift=0.00s/min conf=0.6 (4/4 windows, spread=7.75s)
+[bot5] GINTAMA - Mr. Ginpachi's Zany Class ep9: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] After-school Hanako-kun Season 2 ep3: offset=4.10s drift=0.00s/min conf=0.7 (2/3 windows, spread=0.75s)
+[bot4] After-school Hanako-kun Season 2 ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.25s)
+[bot6] Slayers Excellent ep1: offset=-9.80s drift=0.63s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot3] Aggretsuko: We Wish You A Metal Christmas ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] Mr. Tonegawa: Middle Management Blues ep6: offset=5.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Forest of Piano Season 2 ep3: offset=-7.90s drift=0.00s/min conf=0.95 (4/4 windows, spread=14.00s)
+[bot5] Mr. Tonegawa: Middle Management Blues ep18: offset=5.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Forest of Piano Season 2 ep9: offset=14.60s drift=-0.87s/min conf=0.3 (4/4 windows, spread=10.25s)
+[bot6] Koro Sensei Quest! ep3: offset=-18.00s drift=3.80s/min conf=0.9 (3/4 windows, spread=10.25s)
+[bot2] Dragon Ball: Sleeping Princess in Devil's Castle ep1: offset=6.30s drift=0.00s/min conf=0.27 (3/3 windows, spread=14.75s)
+[bot3] Koro Sensei Quest! ep9: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=2.25s)
+[bot3] City Hunter: Million Dollar Conspiracy ep1: no-cc
+[bot1] Girls und Panzer das Finale - Part 2 ep1: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=12.75s)
+[bot5] Fancy Lala ep7: offset=-15.00s drift=1.34s/min conf=0.3 (4/4 windows, spread=14.50s)
+[bot4] Fancy Lala ep20: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] Gun x Sword ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot2] Gun x Sword ep20: offset=2.80s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.25s)
+[bot3] My Neighbors the Yamadas ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] Daimidaler: Prince vs. Penguin Empire ep3: offset=-1.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.00s)
+[bot3] The Legend of Heroes: Trails of Cold Steel - Northern War ep9: no-dialogue-windows
+[bot5] Daimidaler: Prince vs. Penguin Empire ep9: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.75s)
+[bot5] Yu-Gi-Oh! ARC-V ep37: no-cc
+[bot4] Magical Girl Lyrical Nanoha A's ep3: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Gravitation TV ep3: no-cc
+[bot4] Gravitation TV ep10: no-cc
+[bot4] Isekai Quartet 3 ep3: no-dialogue-windows
+[bot4] Isekai Quartet 3 ep8: no-dialogue-windows
+[bot6] Magical Girl Lyrical Nanoha A's ep10: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Blue Submarine No. 6 ep1: offset=-0.20s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.25s)
+[bot2] The Legend of Heroes: Trails of Cold Steel - Northern War ep3: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot3] Blue Submarine No. 6 ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot5] Yu-Gi-Oh! ARC-V ep111: offset=-14.90s drift=1.07s/min conf=0.6 (4/4 windows, spread=8.00s)
+[bot4] Free! -Eternal Summer-: Forbidden All-Hard! ep1: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=3.50s)
+[bot6] X (TV) ep6: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] The Sky Crawlers ep1: offset=0.10s drift=0.00s/min conf=0.7 (2/2 windows, spread=0.25s)
+[bot6] Cultural Exchange with a Game Centre Girl ep9: no-dialogue-windows
+[bot1] X (TV) ep18: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=15.00s)
+[bot3] Mahoromatic: Automatic Maiden ep3: offset=-7.70s drift=0.58s/min conf=0.6 (4/4 windows, spread=6.25s)
+[bot3] DARK MOON: THE BLOOD ALTAR ep3: no-dialogue-windows
+[bot3] DARK MOON: THE BLOOD ALTAR ep9: no-dialogue-windows
+[bot5] Mahoromatic: Automatic Maiden ep9: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Cultural Exchange with a Game Centre Girl ep3: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot2] Godzilla: Planet of the Monsters ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] The Seven Heavenly Virtues ep3: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] R.O.D -THE TV- ep7: no-cc
+[bot6] R.O.D -THE TV- ep20: no-cc
+[bot1] The Seven Heavenly Virtues ep8: offset=-5.00s drift=2.88s/min conf=0.95 (4/4 windows, spread=3.25s)
+[bot3] Love Live! Nijigasaki High School Idol Club Season 2 ep3: offset=-1.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot5] Love Live! Nijigasaki High School Idol Club Season 2 ep10: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot4] Stellvia of the Universe ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] Stellvia of the Universe ep20: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] Bungo and Alchemist -Gears of Judgement- ep3: offset=-6.50s drift=0.77s/min conf=0.3 (4/4 windows, spread=8.50s)
+[bot1] Bungo and Alchemist -Gears of Judgement- ep10: offset=-16.20s drift=1.36s/min conf=0.95 (4/4 windows, spread=13.00s)
+
+fleet done in 29.7min — 262/262 episodes, 166 measured
+drift s: min=-18.00 median=0.00 max=15.20
+episodes with captions >=0.5s LATE: 40/166
+cc-sync fleet: 247 episodes, 6 bots, lang=dub, windows=4 (dsp correlation, no ASR)
+[bot1] Deltora Quest ep16: offset=3.40s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.75s)
+[bot1] Detective Conan: Black Iron Submarine ep1: cached conf=0.95 offset=-400ms — skip
+[bot1] Black Magic M-66 ep1: cached conf=0.6 offset=-100ms — skip
+[bot3] Sorcerous Stabber Orphen: Battle of Kimluck ep3: cached conf=0.95 offset=100ms — skip
+[bot2] Deltora Quest ep49: offset=-8.00s drift=0.00s/min conf=0.54 (3/3 windows, spread=2.50s)
+[bot1] Lupin the 3rd: Alcatraz Connection ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.50s)
+[bot4] A Little Snow Fairy Sugar ep18: cached conf=0.95 offset=-200ms — skip
+[bot4] Towanoquon: The Roaring Anxiety ep1: cached conf=0.6 offset=1100ms — skip
+[bot4] Full Metal Panic! The Second Raid: Zenyasai - Scene 00 ep1: cached conf=0.95 offset=-400ms — skip
+[bot3] Sorcerous Stabber Orphen: Battle of Kimluck ep8: offset=1.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot1] A Little Snow Fairy Sugar ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] Milky☆Subway: The Galactic Limited Express ep3: cached conf=0.9 offset=-200ms — skip
+[bot2] Mega Man X - The Day of Sigma ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=5.00s)
+[bot6] Grow Up Show ep3: no-dialogue-windows
+[bot3] Towanoquon: The Complicity of Dreams ep1: offset=10.60s drift=-0.64s/min conf=0.27 (3/3 windows, spread=8.50s)
+[bot4] New Cutey Honey ep2: offset=-16.20s drift=1.25s/min conf=0.3 (4/4 windows, spread=13.50s)
+[bot4] Rio: Rainbow Gate! ep3: cached conf=0.95 offset=100ms — skip
+[bot1] Milky☆Subway: The Galactic Limited Express ep9: offset=0.00s drift=0.00s/min conf=0 (0/4 windows, spread=0.00s)
+[bot2] Grow Up Show ep10: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.00s)
+[bot2] Mobile Suit Gundam Wing: Endless Waltz ep1: cached conf=0.95 offset=100ms — skip
+[bot1] Sailor Moon SuperS the Movie: Black Dream Hole ep1: no-cc
+[bot1] Urusei Yatsura Movie 1: Only You ep1: cached conf=0.6 offset=-6500ms — skip
+[bot1] Requiem from the Darkness ep3: cached conf=0.95 offset=-200ms — skip
+[bot1] Requiem from the Darkness ep10: cached conf=0.95 offset=300ms — skip
+[bot1] BASTARD!! -Heavy Metal, Dark Fantasy- Hell’s Requiem Arc ep4: cached conf=0.95 offset=-600ms — skip
+[bot1] BASTARD!! -Heavy Metal, Dark Fantasy- Hell’s Requiem Arc ep11: cached conf=0.95 offset=-100ms — skip
+[bot5] New Cutey Honey ep6: offset=-0.40s drift=0.00s/min conf=0.95 (4/4 windows, spread=2.75s)
+[bot5] Arjuna ep10: cached conf=0.95 offset=600ms — skip
+[bot5] Towanoquon: Dancing Orchid in Chaos ep1: cached conf=0.95 offset=900ms — skip
+[bot5] Hina Logic - from Luck & Logic ep3: cached conf=0.95 offset=-1000ms — skip
+[bot6] Guyver: The Bioboosted Armor ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Guyver: The Bioboosted Armor ep20: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.25s)
+[bot1] Arjuna ep3: offset=8.00s drift=0.00s/min conf=0.54 (3/3 windows, spread=16.00s)
+[bot1] Ikki Tousen: Xtreme Xecutor ep3: cached conf=0.9 offset=-13700ms — skip
+[bot1] Ikki Tousen: Xtreme Xecutor ep9: cached conf=0.6 offset=-9900ms — skip
+[bot4] Rio: Rainbow Gate! ep10: offset=5.90s drift=-0.71s/min conf=0.3 (4/4 windows, spread=7.50s)
+[bot2] Mobile Suit Gundam Wing: Endless Waltz ep2: offset=6.60s drift=-0.70s/min conf=0.3 (4/4 windows, spread=8.50s)
+[bot2] CARDFIGHT!! VANGUARD Divinez ep10: cached conf=0.95 offset=-6900ms — skip
+[bot5] Hina Logic - from Luck & Logic ep9: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] Godzilla: The Planet Eater ep1: offset=-2.70s drift=0.00s/min conf=0.3 (4/4 windows, spread=15.00s)
+[bot4] CARDFIGHT!! VANGUARD Divinez ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Tales of Vesperia: The First Strike ep1: offset=0.80s drift=0.00s/min conf=0.54 (3/3 windows, spread=4.75s)
+[bot1] Kakuriyo -Bed & Breakfast for Spirits- 2 ep3: cached conf=0.95 offset=-200ms — skip
+[bot3] Dragon Quest: Your Story ep1: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=14.25s)
+[bot2] CARDFIGHT!! VANGUARD Divinez Season 2 ep3: offset=-0.70s drift=0.00s/min conf=0.3 (4/4 windows, spread=11.50s)
+[bot6] Draw This, Then Die! ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] CARDFIGHT!! VANGUARD Divinez Season 2 ep10: offset=3.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=6.25s)
+[bot5] Towanoquon: Eternal Quon ep1: cached conf=0.6 offset=5000ms — skip
+[bot3] DNA² ep3: no-cc
+[bot3] Lupin the IIIrd: Jigen's Gravestone ep1: cached conf=0.95 offset=-1000ms — skip
+[bot3] Tenchi Muyo! Ryo-Ohki Season 3 ep2: cached conf=0.95 offset=-100ms — skip
+[bot2] DNA² ep9: no-cc
+[bot2] Saber Marionette J Again ep2: cached conf=0.6 offset=100ms — skip
+[bot1] Kakuriyo -Bed & Breakfast for Spirits- 2 ep9: no-dialogue-windows
+[bot1] TERMINATOR ZERO ep2: cached conf=0.6 offset=-5400ms — skip
+[bot1] TERMINATOR ZERO ep6: cached conf=0.95 offset=100ms — skip
+[bot4] Draw This, Then Die! ep9: offset=-5.20s drift=0.65s/min conf=0.3 (4/4 windows, spread=7.00s)
+[bot4] This Ugly Yet Beautiful World ep3: cached conf=0.95 offset=300ms — skip
+[bot4] This Ugly Yet Beautiful World ep9: cached conf=0.95 offset=300ms — skip
+[bot4] Samurai X Special ep1: cached conf=0.95 offset=500ms — skip
+[bot2] Saber Marionette J Again ep5: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot2] SHIBOYUGI: Playing Death Games to Put Food on the Table 44: CLOUDY BEACH ep1: cached conf=0.95 offset=-100ms — skip
+[bot1] Mobile Suit Gundam Wing: Endless Waltz ep1: offset=0.50s drift=0.00s/min conf=0.54 (3/3 windows, spread=8.75s)
+[bot5] Batman Ninja vs. Yakuza League ep1: offset=4.30s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot3] Tenchi Muyo! Ryo-Ohki Season 3 ep5: offset=-8.00s drift=0.00s/min conf=0.54 (3/4 windows, spread=2.50s)
+[bot6] Detective Conan: The Darkest Nightmare ep1: offset=-2.70s drift=0.00s/min conf=0.54 (3/4 windows, spread=10.50s)
+[bot6] Ghost in the Shell: The New Movie ep1: cached conf=0.95 offset=-100ms — skip
+  ep7 window0: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e7-w0.ts -ss 8.98 
+  ep20 window0: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e20-w0.ts -ss 3.48
+  ep7 window1: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e7-w1.ts -ss 3.69 
+  ep20 window1: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e20-w1.ts -ss 0.87
+  ep7 window2: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e7-w2.ts -ss 0.03 
+  ep20 window2: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e20-w2.ts -ss 7.81
+  ep7 window3: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e7-w3.ts -ss 6.38 
+[bot2] Tenchi Muyo! GXP ep7: offset=0.00s drift=0.00s/min conf=0 (0/0 windows, spread=0.00s)
+  ep20 window3: Command failed: ffmpeg -hide_banner -nostats -i /tmp/ccsync-5QjZmo/m1133e20-w3.ts -ss 2.83
+[bot1] Tenchi Muyo! GXP ep20: offset=0.00s drift=0.00s/min conf=0 (0/0 windows, spread=0.00s)
+[bot1] Cyber City Oedo 808 ep2: cached conf=0.95 offset=8000ms — skip
+[bot1] RobiHachi ep3: cached conf=0.7 offset=900ms — skip
+[bot5] Code Geass: Hangyaku no Lelouch Picture Drama ep2: offset=0.00s drift=0.00s/min conf=0 (0/4 windows, spread=0.00s)
+[bot3] Code Geass: Hangyaku no Lelouch Picture Drama ep7: offset=3.80s drift=0.00s/min conf=0.45 (1/4 windows, spread=0.00s)
+[bot4] Kuroko’s Basketball 2: Would You Mind Doing That Once More ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot3] Fate/kaleid liner Prisma☆Illya 2wei Herz! Short Anime ep1: no-cc
+[bot6] The Rose of Versailles ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot4] Fate/kaleid liner Prisma☆Illya 2wei Herz! Short Anime ep4: no-cc
+[bot4] Yu-Gi-Oh! ZEXAL II ep18: cached conf=0.6 offset=-14900ms — skip
+[bot6] Dekin no Mogura: The Earthbound Mole ep9: no-dialogue-windows
+[bot6] El Hazard: The Magnificent World ep2: cached conf=0.6 offset=-400ms — skip
+[bot6] El Hazard: The Magnificent World ep5: cached conf=0.6 offset=-1400ms — skip
+[bot3] Dekin no Mogura: The Earthbound Mole ep3: offset=0.50s drift=0.00s/min conf=0.38 (1/1 windows, spread=0.00s)
+[bot3] Hayate the Combat Butler: Can't Take My Eyes Off You ep9: cached conf=0.95 offset=-200ms — skip
+[bot3] Saber Marionette J to X ep7: cached conf=0.95 offset=300ms — skip
+[bot1] RobiHachi ep9: offset=-1.20s drift=0.00s/min conf=0.45 (1/4 windows, spread=0.00s)
+[bot2] Cyber City Oedo 808 ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot2] AMAIM Warrior at the Borderline ep10: cached conf=0.6 offset=15200ms — skip
+[bot5] Hidden Leaf Village Grand Sports Festival ep1: offset=5.30s drift=0.00s/min conf=0.3 (4/4 windows, spread=11.00s)
+[bot5] xxxHOLiC - A Midsummer Night's Dream ep1: cached conf=0.6 offset=300ms — skip
+[bot4] Yu-Gi-Oh! ZEXAL II ep55: offset=1.10s drift=0.00s/min conf=0.3 (4/4 windows, spread=14.00s)
+[bot6] Hayate the Combat Butler: Can't Take My Eyes Off You ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Hakuoki ~Demon of the Fleeting Blossom~ Record of the Jade Blood ep3: no-dialogue-windows
+[bot3] Saber Marionette J to X ep20: offset=-4.70s drift=0.51s/min conf=0.3 (4/4 windows, spread=7.00s)
+[bot3] Genocyber ep4: cached conf=0.6 offset=-9400ms — skip
+[bot6] Hakuoki ~Demon of the Fleeting Blossom~ Record of the Jade Blood ep8: no-dialogue-windows
+[bot6] Housing Complex C ep3: cached conf=0.9 offset=1600ms — skip
+[bot1] AMAIM Warrior at the Borderline ep3: offset=0.00s drift=0.00s/min conf=0.54 (3/4 windows, spread=2.75s)
+[bot1] Jyu-Oh-Sei: Planet of the Beast King ep8: cached conf=0.95 offset=500ms — skip
+[bot1] Yu-Gi-Oh! VRAINS ep30: cached conf=0.95 offset=-100ms — skip
+[bot2] Big Windup!: The Basics of Basics ep1: offset=0.50s drift=0.00s/min conf=0.45 (1/4 windows, spread=0.00s)
+[bot2] Tenchi Muyo! Ryo-Ohki ep2: cached conf=0.95 offset=600ms — skip
+[bot2] Tenchi Muyo! Ryo-Ohki ep5: cached conf=0.6 offset=-12600ms — skip
+[bot2] Lord of Vermilion: The Crimson King ep3: cached conf=0.95 offset=100ms — skip
+[bot4] Genocyber ep1: offset=-2.00s drift=0.00s/min conf=0.27 (3/3 windows, spread=10.25s)
+[bot4] Typhoon Noruda ep1: cached conf=0.9 offset=300ms — skip
+[bot5] Mobile Suit Gundam F91 ep1: offset=7.50s drift=0.00s/min conf=0.54 (3/4 windows, spread=14.00s)
+[bot5] Galaxy Angel Z ep7: cached conf=0.9 offset=300ms — skip
+[bot3] Housing Complex C ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=1.25s)
+[bot6] Jyu-Oh-Sei: Planet of the Beast King ep3: offset=-4.80s drift=0.65s/min conf=0.3 (4/4 windows, spread=6.50s)
+[bot1] Yu-Gi-Oh! VRAINS ep90: offset=4.80s drift=-0.55s/min conf=0.54 (3/4 windows, spread=4.50s)
+[bot2] Lord of Vermilion: The Crimson King ep9: offset=-5.90s drift=0.77s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot2] BEYBLADE X ep34: cached conf=0.6 offset=2300ms — skip
+[bot2] BEYBLADE X ep101: cached conf=0.6 offset=1300ms — skip
+[bot2] Kämpfer für die Liebe ep1: cached conf=0.95 offset=300ms — skip
+[bot2] Kämpfer für die Liebe ep2: cached conf=0.95 offset=-200ms — skip
+[bot4] Galaxy Angel Z ep2: offset=13.90s drift=-1.20s/min conf=0.3 (4/4 windows, spread=11.75s)
+[bot4] Infinite Ryvius ep20: cached conf=0.95 offset=400ms — skip
+[bot5] My-Otome Zwei ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=2.75s)
+[bot6] Majestic Prince ep6: offset=0.30s drift=0.00s/min conf=0.54 (3/3 windows, spread=5.75s)
+[bot3] My-Otome Zwei ep3: offset=-15.50s drift=1.04s/min conf=0.3 (4/4 windows, spread=10.50s)
+[bot3] Onmyo Kaiten Re:Birth Verse ep9: cached conf=0.6 offset=-100ms — skip
+[bot1] Majestic Prince ep18: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] MF GHOST Season 3 ep3: cached conf=0.95 offset=-100ms — skip
+[bot6] Onmyo Kaiten Re:Birth Verse ep3: no-dialogue-windows
+[bot6] The Adventures of Tom Sawyer ep12: cached conf=0.6 offset=5900ms — skip
+[bot6] The Adventures of Tom Sawyer ep37: cached conf=0.6 offset=-2200ms — skip
+[bot6] Hakuoki: Demon of the Fleeting Blossom: A Memory of Snow Flowers ep2: cached conf=0.95 offset=-100ms — skip
+[bot2] Infinite Ryvius ep7: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.25s)
+[bot4] Star Wars: Visions Volume 3 ep2: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] MF GHOST Season 3 ep10: no-dialogue-windows
+[bot1] Girls und Panzer OVA Series ep2: cached conf=0.9 offset=-7200ms — skip
+[bot6] Hakuoki: Demon of the Fleeting Blossom: A Memory of Snow Flowers ep5: no-dialogue-windows
+[bot5] Star Wars: Visions Volume 3 ep7: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=12.25s)
+[bot6] SNOWBALL EARTH ep3: no-dialogue-windows
+[bot3] Oblivion Island: Haruka and the Magic Mirror ep1: offset=4.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot5] SNOWBALL EARTH ep10: no-dialogue-windows
+[bot5] The Silver Guardian 2 ep2: cached conf=0.95 offset=-100ms — skip
+[bot5] The Silver Guardian 2 ep5: cached conf=0.95 offset=-100ms — skip
+[bot5] DIGIMON BEATBREAK ep12: cached conf=0.95 offset=-100ms — skip
+[bot5] DIGIMON BEATBREAK ep37: no-dub-stream
+[bot5] Tenchi Muyo! Ryo-Ohki: The Night Before The Carnival! ep1: cached conf=0.6 offset=5600ms — skip
+[bot2] BLACK ROCK SHOOTER DAWN FALL ep3: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.25s)
+[bot1] Girls und Panzer OVA Series ep5: offset=4.10s drift=0.00s/min conf=0.21 (2/4 windows, spread=6.25s)
+[bot4] BLACK ROCK SHOOTER DAWN FALL ep9: offset=-6.20s drift=0.76s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot4] After-school Hanako-kun Season 2 ep3: cached conf=0.7 offset=4100ms — skip
+[bot6] Beyblade Burst Turbo ep13: offset=-9.40s drift=0.70s/min conf=0.3 (4/4 windows, spread=7.75s)
+[bot3] Beyblade Burst Turbo ep38: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Aggretsuko: We Wish You A Metal Christmas ep1: cached conf=0.95 offset=300ms — skip
+[bot3] Mr. Tonegawa: Middle Management Blues ep6: cached conf=0.95 offset=5100ms — skip
+[bot3] Mr. Tonegawa: Middle Management Blues ep18: cached conf=0.95 offset=5000ms — skip
+[bot3] Forest of Piano Season 2 ep3: cached conf=0.95 offset=-7900ms — skip
+[bot5] GINTAMA - Mr. Ginpachi's Zany Class ep3: offset=-4.20s drift=0.00s/min conf=0.3 (4/4 windows, spread=3.25s)
+[bot5] Koro Sensei Quest! ep3: cached conf=0.9 offset=-18000ms — skip
+[bot5] Koro Sensei Quest! ep9: cached conf=0.95 offset=100ms — skip
+[bot2] GINTAMA - Mr. Ginpachi's Zany Class ep9: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] After-school Hanako-kun Season 2 ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.25s)
+[bot4] Slayers Excellent ep1: offset=-9.80s drift=0.63s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot3] Forest of Piano Season 2 ep9: offset=14.60s drift=-0.87s/min conf=0.3 (4/4 windows, spread=10.25s)
+[bot6] Slayers Excellent ep2: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.00s)
+[bot5] Dragon Ball: Sleeping Princess in Devil's Castle ep1: offset=6.30s drift=0.00s/min conf=0.27 (3/3 windows, spread=14.75s)
+[bot5] City Hunter: Million Dollar Conspiracy ep1: no-cc
+[bot5] My Neighbors the Yamadas ep1: cached conf=0.95 offset=300ms — skip
+[bot5] Daimidaler: Prince vs. Penguin Empire ep3: cached conf=0.95 offset=-1000ms — skip
+[bot2] Girls und Panzer das Finale - Part 2 ep1: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=12.75s)
+[bot2] Magical Girl Lyrical Nanoha A's ep3: cached conf=0.95 offset=100ms — skip
+[bot2] Magical Girl Lyrical Nanoha A's ep10: cached conf=0.95 offset=100ms — skip
+[bot2] The Legend of Heroes: Trails of Cold Steel - Northern War ep3: cached conf=0.95 offset=-200ms — skip
+[bot1] Fancy Lala ep7: offset=-15.00s drift=1.34s/min conf=0.3 (4/4 windows, spread=14.50s)
+[bot1] Blue Submarine No. 6 ep1: cached conf=0.9 offset=-200ms — skip
+[bot4] Fancy Lala ep20: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] The Legend of Heroes: Trails of Cold Steel - Northern War ep9: no-dialogue-windows
+[bot2] Yu-Gi-Oh! ARC-V ep111: cached conf=0.6 offset=-14900ms — skip
+[bot3] Gun x Sword ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot2] Gravitation TV ep3: no-cc
+[bot3] Gravitation TV ep10: no-cc
+[bot2] Isekai Quartet 3 ep3: no-dialogue-windows
+[bot6] Gun x Sword ep20: offset=2.80s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.25s)
+[bot2] Free! -Eternal Summer-: Forbidden All-Hard! ep1: cached conf=0.95 offset=-100ms — skip
+[bot6] X (TV) ep6: cached conf=0.95 offset=100ms — skip
+[bot6] The Sky Crawlers ep1: cached conf=0.7 offset=100ms — skip
+[bot6] Mahoromatic: Automatic Maiden ep3: cached conf=0.6 offset=-7700ms — skip
+[bot6] Mahoromatic: Automatic Maiden ep9: cached conf=0.95 offset=300ms — skip
+[bot6] Cultural Exchange with a Game Centre Girl ep3: cached conf=0.95 offset=-100ms — skip
+[bot3] Isekai Quartet 3 ep8: no-dialogue-windows
+[bot3] Godzilla: Planet of the Monsters ep1: cached conf=0.95 offset=100ms — skip
+[bot3] The Seven Heavenly Virtues ep3: cached conf=0.95 offset=-200ms — skip
+[bot3] The Seven Heavenly Virtues ep8: cached conf=0.95 offset=-5000ms — skip
+[bot5] Daimidaler: Prince vs. Penguin Empire ep9: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.75s)
+[bot6] Cultural Exchange with a Game Centre Girl ep9: no-dialogue-windows
+[bot6] Love Live! Nijigasaki High School Idol Club Season 2 ep3: cached conf=0.95 offset=-1200ms — skip
+[bot3] DARK MOON: THE BLOOD ALTAR ep3: no-dialogue-windows
+[bot5] DARK MOON: THE BLOOD ALTAR ep9: no-dialogue-windows
+[bot5] Stellvia of the Universe ep20: cached conf=0.95 offset=300ms — skip
+[bot5] R.O.D -THE TV- ep7: no-cc
+[bot5] R.O.D -THE TV- ep20: no-cc
+[bot1] Blue Submarine No. 6 ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] Bungo and Alchemist -Gears of Judgement- ep10: cached conf=0.95 offset=-16200ms — skip
+[bot2] X (TV) ep18: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=15.00s)
+[bot4] Yu-Gi-Oh! ARC-V ep37: offset=-9.40s drift=1.20s/min conf=0.95 (4/4 windows, spread=9.75s)
+[bot6] Love Live! Nijigasaki High School Idol Club Season 2 ep10: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot3] Stellvia of the Universe ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] Bungo and Alchemist -Gears of Judgement- ep3: offset=-6.50s drift=0.77s/min conf=0.3 (4/4 windows, spread=8.50s)
+[bot6] FINAL FANTASY VII: ADVENT CHILDREN COMPLETE ep1: offset=6.50s drift=0.00s/min conf=0.38 (1/1 windows, spread=0.00s)
+[bot1] GHOST CAT ANZU ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] BlazBlue: Alter Memory ep9: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot2] BlazBlue: Alter Memory ep3: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot2] MF GHOST Season 2 ep9: no-dialogue-windows
+[bot3] Digimon Data Squad ep12: offset=-11.00s drift=0.98s/min conf=0.3 (4/4 windows, spread=9.50s)
+[bot5] Digimon Data Squad ep36: offset=-16.40s drift=1.48s/min conf=0.6 (4/4 windows, spread=11.75s)
+[bot6] Galaxy Angel A ep7: offset=5.80s drift=-0.64s/min conf=0.3 (4/4 windows, spread=7.00s)
+[bot1] Galaxy Angel A ep20: offset=0.50s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] MF GHOST Season 2 ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=9.25s)
+[bot2] Ascendance of a Bookworm Side Story ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Gatchaman Crowds insight ep3: offset=2.80s drift=0.00s/min conf=0.3 (4/4 windows, spread=5.75s)
+[bot5] Gatchaman Crowds insight ep9: offset=12.60s drift=-0.66s/min conf=0.27 (3/4 windows, spread=6.75s)
+[bot6] Aquarion EVOL ep7: offset=-1.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.50s)
+[bot1] Aquarion EVOL ep20: offset=1.50s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.25s)
+[bot3] D4DJ First Mix ep10: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.25s)
+[bot3] Mobile Suit Gundam Hathaway ep1: no-dialogue-windows
+[bot4] Inu X Boku Secret Service Special ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot2] D4DJ First Mix ep3: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Adieu Galaxy Express 999 ep1: offset=-0.50s drift=0.00s/min conf=0.45 (1/1 windows, spread=0.00s)
+[bot5] NARUTO Spin-Off: Rock Lee & His Ninja Pals ep13: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=1.25s)
+[bot6] NARUTO Spin-Off: Rock Lee & His Ninja Pals ep38: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Girls und Panzer das Finale - Part 1 ep1: offset=0.60s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot2] Bubblegum Crisis ep2: offset=0.80s drift=0.00s/min conf=0.54 (3/3 windows, spread=5.50s)
+[bot3] Kuroko's Basketball: The Greatest Present ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] Bubblegum Crisis ep6: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot5] GetBackers ep12: offset=6.60s drift=-0.95s/min conf=0.6 (4/4 windows, spread=8.00s)
+[bot6] GetBackers ep37: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] New Gods: Nezha Reborn ep1: offset=1.50s drift=0.00s/min conf=0.3 (4/4 windows, spread=5.00s)
+[bot2] Yu-Gi-Oh! Zexal ep18: offset=-4.20s drift=0.00s/min conf=0.3 (4/4 windows, spread=9.75s)
+[bot2] The Dark History of the Reincarnated Villainess ep3: no-dialogue-windows
+[bot3] Yu-Gi-Oh! Zexal ep55: offset=1.60s drift=0.00s/min conf=0.6 (4/4 windows, spread=9.00s)
+[bot4] Ranma ½: Nihao My Concubine ep1: offset=3.60s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.00s)
+[bot5] Dusk Maiden of Amnesia: "Ghost Girl" ep1: offset=-8.20s drift=0.79s/min conf=0.3 (4/4 windows, spread=11.00s)
+[bot6] selector spread WIXOSS ep3: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot5] Tales of Wedding Rings Season 2 ep10: no-dialogue-windows
+[bot2] The Dark History of the Reincarnated Villainess ep9: offset=-3.00s drift=0.00s/min conf=0.21 (2/2 windows, spread=10.00s)
+[bot2] Fist of the North Star: The Legend of the True Savior: Legend of Kenshiro ep1: no-cc
+[bot1] selector spread WIXOSS ep9: offset=-0.50s drift=0.00s/min conf=0.9 (3/4 windows, spread=2.25s)
+[bot3] Ghost in the Shell: Stand Alone Complex - Solid State Society ep1: offset=6.00s drift=0.00s/min conf=0.27 (3/4 windows, spread=8.00s)
+[bot4] Tales of Wedding Rings Season 2 ep3: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot5] Batman Ninja ep1: offset=-1.70s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.50s)
+[bot6] Towanoquon: The Ephemeral Petala ep1: offset=-4.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot2] Bludgeoning Angel Dokuro-chan 2 ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] Bludgeoning Angel Dokuro-chan 2 ep2: offset=-0.20s drift=0.00s/min conf=0.54 (3/4 windows, spread=3.25s)
+
+fleet done in 10.5min — 247/247 episodes, 124 measured
+drift s: min=-16.40 median=0.00 max=14.60
+episodes with captions >=0.5s LATE: 36/124

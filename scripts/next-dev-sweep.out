@@ -486,3 +486,67 @@ Unique constraint failed on the fields: (`type`,`malId`,`day`)
 [jikan] Jikan /anime/62102/episodes?page=1 -> 0
  GET /api/stream?malId=42310&ep=1&lang=dub&server=zoko 200 in 3.3s (compile: 2ms, render: 3.3s)
 [jikan] Jikan /anime/61280/episodes?page=1 -> 0
+ GET / 200 in 64ms (compile: 3ms, render: 62ms)
+ GET / 200 in 30ms (compile: 1620µs, render: 29ms)
+ GET / 200 in 34ms (compile: 2ms, render: 32ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 117ms (compile: 6ms, render: 111ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 115ms (compile: 100ms, render: 15ms)
+ GET /api/top10-events 200 in 9ms (compile: 4ms, render: 5ms)
+ GET /api/top10?fresh=1 200 in 29ms (compile: 3ms, render: 26ms)
+ GET /api/genres 200 in 30ms (compile: 2ms, render: 28ms)
+ GET /api/arriving?fresh=1 200 in 11ms (compile: 1840µs, render: 9ms)
+ POST /api/sync?kick=1 200 in 9ms (compile: 1388µs, render: 8ms)
+ GET /api/auth/me 200 in 5ms (compile: 3ms, render: 2ms)
+ GET /api/home 200 in 159ms (compile: 1350µs, render: 157ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 148ms (compile: 5ms, render: 142ms)
+[anilist] AniList -> 404
+ GET /api/watchtime?all=1&limit=12 200 in 462ms (compile: 1505µs, render: 461ms)
+ GET /api/ann-news 200 in 985ms (compile: 3ms, render: 981ms)
+ GET /api/auth/me 200 in 5ms (compile: 1777µs, render: 4ms)
+ GET /api/ann-news 200 in 9ms (compile: 2ms, render: 7ms)
+ GET /api/top10-events 200 in 10ms (compile: 5ms, render: 6ms)
+ GET /api/arriving 200 in 12ms (compile: 3ms, render: 9ms)
+ GET /api/top10 200 in 15ms (compile: 1395µs, render: 14ms)
+[jikan] Jikan /anime/64378/episodes?page=1 -> 0
+[jikan] Jikan /anime/64725/episodes?page=1 -> 0
+[jikan] Jikan /anime/64873/episodes?page=1 -> 0
+[anilist] AniList -> 404
+[jikan] Jikan /anime/999929/episodes?page=1 -> 0
+ GET / 200 in 35ms (compile: 3ms, render: 33ms)
+ GET /api/top10-events 200 in 8ms (compile: 1881µs, render: 6ms)
+ GET /api/ann-news 200 in 6ms (compile: 1424µs, render: 4ms)
+ GET /api/top10?fresh=1 200 in 14ms (compile: 1309µs, render: 13ms)
+ GET /api/genres 200 in 32ms (compile: 7ms, render: 25ms)
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 380ms (compile: 1557µs, render: 378ms)
+ GET /api/continue?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 22ms (compile: 3ms, render: 19ms)
+ POST /api/sync?kick=1 200 in 14ms (compile: 7ms, render: 7ms)
+ GET /api/arriving?fresh=1 200 in 33ms (compile: 6ms, render: 27ms)
+ GET / 200 in 30ms (compile: 1711µs, render: 28ms)
+ GET /api/home 200 in 167ms (compile: 5ms, render: 163ms)
+ GET /api/auth/me 200 in 4ms (compile: 1852µs, render: 2ms)
+[anilist] AniList -> 404
+ GET /api/suggestions?userId=f147eabc-0a1d-41f1-bf83-f6f344b59520 200 in 116ms (compile: 1738µs, render: 114ms)
+ GET /api/watchtime?all=1&limit=12 200 in 668ms (compile: 8ms, render: 660ms)
+ GET / 200 in 30ms (compile: 2ms, render: 27ms)
+ GET / 200 in 34ms (compile: 1915µs, render: 33ms)
+ GET /api/auth/me 200 in 6ms (compile: 2ms, render: 3ms)
+⚠ Cross origin request detected from preview-chat-48892823-c8d1-4c5e-9b3c-8424ca0db731.space-z.ai to /_next/* resource. In a future major version of Next.js, you will need to explicitly configure "allowedDevOrigins" in next.config to allow this.
+Read more: https://nextjs.org/docs/app/api-reference/config/next-config-js/allowedDevOrigins
+ GET /api/ann-news 200 in 7ms (compile: 1973µs, render: 5ms)
+ GET /api/top10-events 200 in 6ms (compile: 1460µs, render: 4ms)
+ GET /api/top10 200 in 17ms (compile: 2ms, render: 14ms)
+ GET /api/arriving 200 in 13ms (compile: 1945µs, render: 11ms)
+[jikan] Jikan /anime/64378/episodes?page=1 -> 0
+[jikan] Jikan /anime/64725/episodes?page=1 -> 0
+[jikan] Jikan /anime/64873/episodes?page=1 -> 0
+[anilist] AniList -> 404
+[jikan] Jikan /anime/999929/episodes?page=1 -> 0
+ GET /api/top10 200 in 34ms (compile: 2ms, render: 32ms)
+ GET /api/stream?malId=1453&ep=1&lang=dub 200 in 3.8s (compile: 82ms, render: 3.7s)
+ GET /api/stream?malId=11757&ep=1&lang=sub 200 in 1409ms (compile: 3ms, render: 1406ms)
+ GET /api/stream?malId=35330&ep=1&lang=dub 200 in 4.7s (compile: 4ms, render: 4.7s)
+ GET /api/captions?malId=3588&ep=4&lang=dub 200 in 145ms (compile: 136ms, render: 9ms)
+ GET /api/stream?malId=999901&ep=1&lang=dub 200 in 8.4s (compile: 2ms, render: 8.4s)
+ GET /api/stream?malId=5114&ep=1&lang=sub 200 in 878ms (compile: 32ms, render: 845ms)
+ GET / 200 in 41ms (compile: 3ms, render: 39ms)
+ GET / 200 in 28ms (compile: 2ms, render: 26ms)

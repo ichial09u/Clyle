@@ -1,0 +1,125 @@
+cc-sync fleet: 120 episodes, 6 bots, lang=sub, windows=4 (dsp correlation, no ASR)
+[bot2] Shen Lan Qi Yu Wushuang Zhu 2 ep8: no-cc
+[bot2] Mobile Police Patlabor: WXIII ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.00s)
+[bot2] Detective Conan: Black Iron Submarine ep1: no-cc
+[bot1] Cute High Earth Defense Club LOVE! LOVE! ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] RahXephon: The Motion Picture ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot3] Samurai Pizza Cats ep27: no-cc
+[bot4] Deltora Quest ep33: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] Shadowverse Flame ep25: offset=-0.10s drift=0.00s/min conf=0.6 (4/4 windows, spread=14.50s)
+[bot6] Graveyard Kitaro ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] Phi-Brain ~ Puzzle of God Season 3 ep13: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] Yaojing Zhongzhi Shouce ep7: no-cc
+[bot1] Gold Kingdom and Water Kingdom ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot3] Digimon Xros Wars: The Young Hunters Who Leapt Through Time ep13: offset=14.90s drift=-1.09s/min conf=0.6 (4/4 windows, spread=8.00s)
+[bot4] Digimon Xros Wars: The Evil Death Generals and the Seven Kingdoms ep12: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot5] I My Me! Strawberry Eggs ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] Antique Bakery ep6: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot2] Mezzo ep7: offset=-3.40s drift=0.00s/min conf=0.3 (4/4 windows, spread=7.00s)
+[bot1] Shadowverse ep24: offset=-4.10s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot3] A Wind Named Amnesia ep1: offset=-0.50s drift=0.00s/min conf=0.6 (4/4 windows, spread=11.75s)
+[bot4] I Saved Myself with a Potion!: Life in Another World ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot5] The Master of Diabolism Q ep15: offset=3.90s drift=-2.46s/min conf=0.95 (4/4 windows, spread=2.00s)
+[bot6] Jing: King of Bandits ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] Strawberry Marshmallow Encore ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.00s)
+[bot1] Legend of Mana -The Teardrop Crystal- ep6: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] Cooking with Valkyries ep5: no-dub-stream
+[bot1] One Piece Special: The Detective Memoirs of Chief Straw Hat Luffy ep1: no-cc
+[bot3] Hozuki’s Coolheadedness 2: Part II ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] MD Geist - The Most Dangerous Ever ep1: offset=-0.10s drift=0.00s/min conf=0.7 (2/2 windows, spread=0.25s)
+[bot4] Detective School Q ep23: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] D4DJ All Mix ep6: offset=0.00s drift=0.00s/min conf=0.54 (3/4 windows, spread=8.25s)
+[bot6] Seikon no Qwaser: Jotei no Shouzou ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=1.00s)
+[bot1] Robot Girls Z ep2: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=3.75s)
+[bot3] The Irregular at Magic High School: Get to Know Magic Studies ep4: offset=0.00s drift=0.00s/min conf=0.7 (2/4 windows, spread=0.00s)
+[bot2] Wu Shan Wu Xing: Xi Chuan Huan Zi Lin ep2: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.25s)
+[bot4] Collar×Malice: deep cover ep1: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] Our Home's Fox Deity ep12: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot6] Android Kikaider - The Animation ep7: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=5.00s)
+[bot6] Dokyuu Hentai HxEros OVA ep1: no-cc
+[bot6] Story from Genji Agedama ep26: no-cc
+[bot1] Servamp Movie: Alice in the Garden ep1: offset=0.00s drift=0.00s/min conf=0.6 (4/4 windows, spread=13.25s)
+[bot3] Black Magic M-66 ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot3] New Gods: Yang Jian ep1: no-cc
+[bot3] W'z ep7: no-cc
+[bot2] Battle Girl High School ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot4] Aru Asa Dummy Head Mic ni Natteita Ore-kun no Jinsei ep6: offset=-9.20s drift=8.54s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot5] Dominion Tank Police ep2: offset=0.50s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.75s)
+[bot6] Captivated, By You ep3: offset=0.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot6] The Guyver: Bio-Booster Armor ep3: no-cc
+[bot1] Wu Geng Ji 3 ep21: offset=-11.30s drift=1.39s/min conf=0.95 (4/4 windows, spread=8.75s)
+[bot3] Xie Wang Zhui Qi ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] D4DJ Petit Mix ep13: no-cc
+[bot3] MegaMan: NT Warrior AXESS ep26: no-cc
+[bot5] Lupin the 3rd: Alcatraz Connection ep1: offset=0.00s drift=0.00s/min conf=0.54 (3/3 windows, spread=8.00s)
+[bot4] Tenchi Muyo! Ryo-Ohki: Final Confrontations ep1: offset=-2.40s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.50s)
+[bot2] Technoroid OVERMIND ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot6] Strawberry Marshmallow OVA ep2: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] Aoharu x Machinegun: This is a Battlefield for Beasts! ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.25s)
+[bot3] Appleseed: Ex Machina ep1: offset=0.40s drift=0.00s/min conf=0.6 (4/4 windows, spread=11.00s)
+[bot5] Mi Yu Xingzhe ep6: offset=-0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=2.75s)
+[bot4] With Vengeance, Sincerely, Your Broken Saintess ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] A3! Season Autumn & Winter ep6: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot1] MOBILE SUIT GUNDAM HATHAWAY The Sorcery of Nymph Circe ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.25s)
+[bot6] Sorcerous Stabber Orphen: Battle of Kimluck ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=1.25s)
+[bot4] Kick-Heart ep1: offset=7.80s drift=-2.14s/min conf=0.27 (3/3 windows, spread=7.50s)
+[bot4] I Want You To Show Me Your Panties With a Disgusted Face Returns ep3: no-cc
+[bot3] Mega Man X - The Day of Sigma ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] A Little Snow Fairy Sugar ep12: offset=-0.70s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.25s)
+[bot2] A Day Before Us ZERO ep10: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] Towanoquon: The Return of the Invincible ep1: offset=-1.50s drift=0.00s/min conf=0.3 (4/4 windows, spread=13.00s)
+[bot6] Star Wars: Visions Presents - The Ninth Jedi ep4: offset=-6.70s drift=0.81s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot4] Muv-Luv Alternative Season 2 ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot2] Backflip!! The Movie ep1: offset=0.00s drift=0.00s/min conf=0.9 (3/3 windows, spread=0.00s)
+[bot3] Pumpkin Scissors ep12: offset=-6.00s drift=0.71s/min conf=0.3 (4/4 windows, spread=7.75s)
+[bot5] Towanoquon: The Roaring Anxiety ep1: offset=17.50s drift=-0.75s/min conf=0.3 (4/4 windows, spread=16.00s)
+[bot4] Ladies versus Butlers! Specials ep3: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] Uta no☆Prince-sama♪ Maji LOVE 2000%: Shining Star Xmas ep1: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot2] Full Metal Panic! The Second Raid: Zenyasai - Scene 00 ep1: offset=8.60s drift=-4.86s/min conf=0.95 (4/4 windows, spread=10.50s)
+[bot6] Wu Geng Ji ep15: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=8.00s)
+[bot3] Hidamari Sketch x Honeycomb ep6: offset=-0.20s drift=0.00s/min conf=0.95 (4/4 windows, spread=1.00s)
+[bot5] Merc StoriA: The Apathetic Boy and the Girl in a Bottle ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot1] Towanoquon: The Complicity of Dreams ep1: offset=12.10s drift=-0.72s/min conf=0.27 (3/3 windows, spread=9.25s)
+[bot2] Milky☆Subway: The Galactic Limited Express ep6: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot4] New Cutey Honey ep4: offset=-7.40s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.75s)
+[bot2] Yozakura Quartet: Tsuki ni Naku ep2: no-cc
+[bot6] KING OF PRISM: PRIDE the HERO ep1: offset=-3.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=6.50s)
+[bot3] Wu Geng Ji 2 ep21: offset=-0.50s drift=0.00s/min conf=0.95 (4/4 windows, spread=4.00s)
+[bot3] Rockman.EXE Stream ep26: no-cc
+[bot3] Cyborg Kuro-chan ep33: no-cc
+[bot5] Grow Up Show ep7: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot1] DIABOLIK LOVERS OVA ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] Guyver: The Bioboosted Armor ep13: offset=-0.90s drift=0.00s/min conf=0.95 (4/4 windows, spread=6.00s)
+[bot2] Sailor Moon SuperS the Movie: Black Dream Hole ep1: no-cc
+[bot4] Digimon Universe App Monsters ep26: offset=-5.80s drift=0.67s/min conf=0.3 (4/4 windows, spread=7.50s)
+[bot6] Tohai - Ura Rate Mahjong Tohai Roku ep13: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot3] ONE PIECE FILM: GOLD - episode 0 711ver. ep1: offset=7.50s drift=-2.04s/min conf=0.95 (4/4 windows, spread=9.00s)
+[bot5] Rio: Rainbow Gate! ep7: offset=3.80s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot5] Shamanic Princess ep3: no-cc
+[bot1] Please Excuse My Younger Brothers ep12: offset=0.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.00s)
+[bot2] League of Nations Air Force Aviation Magic Band Luminous Witches ep6: offset=5.50s drift=-0.67s/min conf=0.3 (4/4 windows, spread=7.25s)
+[bot6] Mobile Suit Gundam Wing: Endless Waltz ep2: offset=-4.00s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.25s)
+[bot4] Phi-Brain ~ Puzzle of God: The Orpheus Order ep13: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot3] Magical Girl Lyrical Nanoha EXCEEDS Gun Blaze Vengeance ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.25s)
+[bot5] Urusei Yatsura Movie 1: Only You ep1: offset=-4.10s drift=0.00s/min conf=0.3 (4/4 windows, spread=8.00s)
+[bot1] Great Mazinger ep28: offset=-9.00s drift=0.98s/min conf=0.3 (4/4 windows, spread=12.25s)
+[bot2] Requiem from the Darkness ep7: offset=0.10s drift=0.00s/min conf=0.95 (4/4 windows, spread=3.50s)
+[bot6] Ichijyoma Mankitsu Gurashi! ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.75s)
+[bot4] Lupin the 3rd Vs Detective Conan ep1: offset=3.90s drift=0.00s/min conf=0.3 (4/4 windows, spread=10.50s)
+[bot3] Hidamari Sketch x Hoshimittsu ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.50s)
+[bot3] BASQUASH! ep13: no-cc
+[bot3] Sakon the Ventriloquist ep13: no-cc
+[bot5] Gintama: Jump Festa 2015 Special ep1: offset=-16.40s drift=2.20s/min conf=0.27 (3/4 windows, spread=7.50s)
+[bot5] Doraemon: Nobita at the Birth of Japan ep1: no-cc
+[bot1] BASTARD!! -Heavy Metal, Dark Fantasy- Hell’s Requiem Arc ep8: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+[bot2] Arjuna ep7: offset=-0.90s drift=0.00s/min conf=0.6 (4/4 windows, spread=12.75s)
+[bot6] Ya Boy Kongming! Road to Summer Sonia ep1: offset=-1.00s drift=0.00s/min conf=0.9 (3/4 windows, spread=0.50s)
+[bot4] Towanoquon: Dancing Orchid in Chaos ep1: offset=1.30s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.50s)
+[bot3] Heavy Metal L-Gaim ep27: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=5.00s)
+[bot5] TOKYO MEW MEW NEW Season 2 ep6: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=7.25s)
+[bot1] Final Fantasy VII: Last Order ep1: offset=5.20s drift=-0.73s/min conf=0.3 (4/4 windows, spread=8.25s)
+[bot2] Azumanga Web Daioh ep1: offset=0.00s drift=0.00s/min conf=0.95 (4/4 windows, spread=0.00s)
+
+fleet done in 19.6min — 120/120 episodes, 98 measured
+drift s: min=-16.40 median=0.00 max=17.50
+episodes with captions >=0.5s LATE: 13/98
