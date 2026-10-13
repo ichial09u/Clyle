@@ -1,0 +1,24 @@
+# Render Blueprint — deploy the Clyle backend from this GitHub repo in ~2 minutes.
+#
+# 1. Sign up at https://render.com (free, no card needed)
+# 2. New +  →  Blueprint  →  pick this repo (ichial09u/Clyle)  →  Apply
+# 3. You get a permanent URL like https://clyle-xxxx.onrender.com
+#    — paste that into the Clyle APK's Connect screen (or Safari for iPhone).
+#
+# The image is built and published to GHCR by GitHub Actions
+# (.github/workflows/docker.yml) on every push to main, so Render
+# never needs to build anything itself.
+#
+# Free-tier notes: the service sleeps after ~15 min idle (first request
+# then takes ~1 min to wake). The catalog DB ships inside the image;
+# watch-progress writes live on the instance disk and reset on redeploy.
+
+services:
+  - type: web
+    name: clyle
+    runtime: image
+    plan: free
+    image:
+      url: ghcr.io/ichial09u/clyle:latest
+    healthCheckPath: /
+    autoDeploy: false # image is rebuilt by Actions; redeploy picks up :latest
