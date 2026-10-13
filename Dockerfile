@@ -11,6 +11,12 @@
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
+# better-sqlite3 has no prebuilt binary for this target under npm ci and
+# compiles from source — the slim image ships without python3/make/g++.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends python3 make g++ \
+ && rm -rf /var/lib/apt/lists/*
+
 # Prisma schema must exist before npm ci so the postinstall
 # `prisma generate` can build the client.
 COPY src/package.json src/package-lock.json ./
