@@ -15,7 +15,8 @@
     padding: 24px;
   }
   .card { width: 100%; max-width: 380px; }
-  .logo { font-size: 40px; font-weight: 900; letter-spacing: -1px; margin-bottom: 4px; }
+  .logo { font-size: 40px; font-weight: 900; letter-spacing: -1px; margin-bottom: 18px; text-align: center; }
+  .logo.left { text-align: left; margin-bottom: 4px; }
   .logo span { color: #d32f2f; }
   .sub { color: #9a9a9a; font-size: 14px; margin-bottom: 26px; line-height: 1.45; }
   label { display: block; font-size: 12px; font-weight: 700; letter-spacing: .08em; color: #bdbdbd; margin-bottom: 7px; text-transform: uppercase; }
@@ -42,22 +43,22 @@
 </style>
 </head>
 <body>
-  <!-- boot: trying the saved server -->
+  <!-- launch: auto-connects to the baked-in server, no input ever requested -->
   <div id="boot" class="card boot">
+    <div class="logo">Clyle<span>.</span></div>
     <div class="spin"></div>
-    <div style="font-weight:800;font-size:17px">Connecting to Clyle…</div>
+    <div id="bootMsg" style="font-weight:800;font-size:16px">Opening Clyle…</div>
     <div id="bootUrl" style="color:#7a7a7a;font-size:12px;margin-top:6px;word-break:break-all"></div>
     <p style="margin-top:22px"><a href="#" id="changeLink">Change server</a></p>
   </div>
 
-  <!-- setup: first run / server unreachable -->
+  <!-- fallback: only shown if the baked-in server is unreachable -->
   <div id="setup" class="card hidden">
-    <div class="logo">Clyle<span>.</span></div>
-    <p class="sub">Paste your Clyle server address — the same URL you open in the browser. It stays on this phone.</p>
+    <div class="logo left">Clyle<span>.</span></div>
+    <p class="sub">Couldn't reach the Clyle server. Paste a server address — it stays on this phone.</p>
     <form id="form">
       <label for="url">Server URL</label>
       <input id="url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://your-clyle-server.example" />
-      <div class="hint">Tip: open Clyle in your phone's browser, copy the address from the bar, paste it here.</div>
       <div class="err" id="err"></div>
       <button id="go" type="submit">Connect</button>
     </form>
@@ -65,35 +66,69 @@
 
 <script>
 (function () {
-  var KEY = "clyle.server";
+  // ================= BAKED AT BUILD TIME =================
+  // The APK opens straight into this server. Filled with the Render URL
+  // before building the release APK — never Vercel.
+  var DEFAULT_SERVER = "";
+  // ========================================================
+
+  var KEY = "clyle.server";      // manual override saved on this phone
+  var WINDOW_MS = 40000;         // patience per attempt (Render cold starts ~30-60s)
+  var MAX_ATTEMPTS = 3;          // ~2 min total before asking for a URL
+
   var boot = document.getElementById("boot");
   var setup = document.getElementById("setup");
+  var bootMsg = document.getElementById("bootMsg");
   var bootUrl = document.getElementById("bootUrl");
   var input = document.getElementById("url");
   var err = document.getElementById("err");
   var go = document.getElementById("go");
   var form = document.getElementById("form");
 
-  function showSetup() {
+  function showSetup(msg) {
     boot.classList.add("hidden");
     setup.classList.remove("hidden");
-    input.value = localStorage.getItem(KEY) || "";
+    input.value = localStorage.getItem(KEY) || DEFAULT_SERVER || "";
+    if (msg) err.textContent = msg;
   }
 
   function enter(url) {
-    localStorage.setItem(KEY, url);
-    // replace so back button exits the app instead of bouncing here
-    location.replace(url);
+    location.replace(url); // replace so back button exits the app instead of bouncing here
   }
 
-  function check(url, cb) {
-    fetch(url.replace(/\/+$/, "") + "/api/health", { mode: "no-cors" })
-      .then(function () { cb(true, null); })
-      .catch(function (e) {
-        // opaque no-cors responses reject only on network failure — any
-        // resolve means the host exists; let the app itself 404-gracefully
-        cb(true, null);
+  // Opaque no-cors probe: resolves whenever the host answers at all
+  // (any status), rejects only on network failure. /api/health is ideal
+  // but any path works — a 404 still resolves and lets the app handle it.
+  function probe(url, onDone) {
+    var settled = false;
+    var to = setTimeout(function () {
+      if (!settled) { settled = true; onDone(false); }
+    }, WINDOW_MS);
+    fetch(url.replace(/\/+$/, "") + "/api/health", { mode: "no-cors", cache: "no-store" })
+      .then(function () { if (!settled) { settled = true; clearTimeout(to); onDone(true); } })
+      .catch(function () { if (!settled) { settled = true; clearTimeout(to); onDone(false); } });
+  }
+
+  function launch(url, fallback) {
+    bootUrl.textContent = url;
+    var attempts = 0;
+    var msgs = ["Opening Clyle…", "Waking the server up…", "Still connecting…"];
+    (function attempt() {
+      bootMsg.textContent = msgs[Math.min(attempts, msgs.length - 1)];
+      attempts++;
+      probe(url, function (ok) {
+        if (ok) { localStorage.setItem(KEY, url.replace(/\/+$/, "")); return enter(url); }
+        if (fallback) {
+          var f = fallback; fallback = null;
+          // stale/broken override (e.g. dead old host): forget it, use baked default
+          bootMsg.textContent = "Switching to the Clyle server…";
+          localStorage.removeItem(KEY);
+          return launch(f, null);
+        }
+        if (attempts < MAX_ATTEMPTS) return setTimeout(attempt, 1500);
+        showSetup("Can't reach " + url + " — the server may be waking up. Try again shortly or check the address.");
       });
+    })();
   }
 
   document.getElementById("changeLink").addEventListener("click", function (e) {
@@ -103,25 +138,35 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var url = input.value.trim();
+    var url = input.value.trim().replace(/\/+$/, "");
     if (!/^https?:\/\//i.test(url)) {
       err.textContent = "URL must start with http:// or https://";
       return;
     }
     go.disabled = true;
     err.textContent = "";
-    check(url, function () { enter(url.replace(/\/+$/, "")); });
+    go.textContent = "Checking…";
+    probe(url, function (ok) {
+      go.disabled = false;
+      go.textContent = "Connect";
+      if (!ok) {
+        err.textContent = "No response in 40s — it may still be waking up. Try again, or double-check the address.";
+        return;
+      }
+      localStorage.setItem(KEY, url);
+      setup.classList.add("hidden");
+      boot.classList.remove("hidden");
+      enter(url);
+    });
   });
 
-  // auto-boot with the saved server
+  // ===== boot =====
   var saved = localStorage.getItem(KEY);
-  if (saved) {
-    bootUrl.textContent = saved;
-    var t = setTimeout(showSetup, 6000); // dead server -> setup after 6s
-    check(saved, function (ok) {
-      clearTimeout(t);
-      enter(saved);
-    });
+  var target = saved || DEFAULT_SERVER;
+  // A dead manual override must not brick the app: fall back to the baked default.
+  var fallback = (saved && DEFAULT_SERVER && saved !== DEFAULT_SERVER) ? DEFAULT_SERVER : null;
+  if (target) {
+    launch(target, fallback);
   } else {
     showSetup();
   }
