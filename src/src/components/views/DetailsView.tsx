@@ -7,6 +7,8 @@ import PosterCard from "@/components/anime/PosterCard";
 import CommentsSection from "@/components/anime/CommentsSection";
 import NotifyNextToggle from "@/components/anime/NotifyNextToggle";
 import TrackButton from "@/components/anime/TrackButton";
+import DownloadPanel from "@/components/anime/DownloadPanel";
+import { Download } from "lucide-react";
 import { useMyList, minimalLite } from "@/lib/client-store";
 
 export default function DetailsView({
@@ -25,11 +27,13 @@ export default function DetailsView({
   const [data, setData] = useState<{ for: number; payload: DetailsPayload } | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [downloadOpen, setDownloadOpen] = useState(false);
   const { has, toggle } = useMyList();
 
   useEffect(() => {
     let cancelled = false;
     setExpanded(false);
+    setDownloadOpen(false);
     const memoKey = `clyle:details:${initial.malId}`;
     // INSTANT PAINT: a payload seen before (back-navigation, revisit) renders
     // from the session memo while the network revalidates underneath.
@@ -139,9 +143,18 @@ export default function DetailsView({
             </svg>
           </button>
 
-          {/* ANN tracking — the small circular chart-climb button (same shell as
-              the floating notification bell), opens the AnimeNewsNetwork panel */}
-          <div className="absolute right-3 top-3 pointer-events-auto">
+          {/* corner cluster — download entry (catalog titles only) beside the
+              ANN tracking button; same circular black shell as the back/floating bell */}
+          <div className="absolute right-3 top-3 flex items-center gap-2 pointer-events-auto">
+            {inCatalog ? (
+              <button
+                onClick={() => setDownloadOpen(true)}
+                className="w-9 h-9 rounded-full bg-black/50 backdrop-blur-sm flex items-center justify-center hover:bg-black/70 active:scale-95 transition"
+                aria-label="Download episodes"
+              >
+                <Download className="w-[18px] h-[18px] text-white" />
+              </button>
+            ) : null}
             <TrackButton anime={anime} />
           </div>
         </div>
@@ -228,6 +241,9 @@ export default function DetailsView({
 
       {/* community comments */}
       <CommentsSection malId={anime.malId} />
+
+      {/* offline download flow — resolve + save episode files (SUB/DUB, quality, CC) */}
+      {downloadOpen ? <DownloadPanel anime={anime} onClose={() => setDownloadOpen(false)} /> : null}
     </div>
   );
 }

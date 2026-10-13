@@ -51,3 +51,7 @@ db/export-comments.tmp.json
 
 # runtime-resolved FlixCloud masters (ephemeral JWTs, 5h TTL)
 db/flix-cache/
+
+# sqlite live sidecar files (WAL/SHM are transient — never commit)
+*.db-shm
+*.db-wal

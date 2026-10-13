@@ -58,6 +58,11 @@ const ART_OVERRIDES: Record<number, { image?: string; banner?: string }> = {
     image: "/art/op-elbaph-poster.jpg", // official Elbaph arc KV (portrait)
     banner: "/art/op-elbaph-banner.jpg", // Luffy in Elbaph gear (wide)
   },
+  42310: {
+    // Cyberpunk: Edgerunners — official Netflix key art (owner-supplied), self-hosted.
+    // Sweep-proof: every sync re-pins this over whatever TMDB picks.
+    image: "/art/edgerunners-poster.jpg",
+  },
 };
 
 let running: Promise<SyncResult> | null = null;

@@ -26,6 +26,14 @@ function Badge({ kind, children }: { kind: "type" | "rating" | "score"; children
 
 type ArtStatus = "loading" | "loaded" | "error";
 
+/** Ambient looping background videos layered over a slide's static art.
+ *  Keyed by malId — the video only renders while its slide is the featured
+ *  one and fades in only after the first frame is decodable (bgReady), so a
+ *  slow mp4 never blanks the hero. */
+const BG_VIDEOS: Record<number, string> = {
+  42310: "/art/edgerunners-bg.mp4", // Cyberpunk: Edgerunners — night-city ambient loop
+};
+
 /**
  * Live "next episode in …" countdown, ticking every second. Returns null
  * when there is no scheduled episode, it already aired, or the timer has
@@ -103,6 +111,15 @@ export default function HeroBanner({ items, index, ctaLabel, onCta }: HeroBanner
   // — called BEFORE the skeleton early-return so the hook order never changes
   const countdown = useEpisodeCountdown(anime?.nextEpisodeAt);
 
+  // ambient video backdrop for the featured slide — resets whenever the
+  // featured slide (and thus its video) changes, fading back in when the
+  // first frame is ready so a cold mp4 never flashes blank
+  const [bgReady, setBgReady] = useState(false);
+  const bgVideo = anime ? BG_VIDEOS[anime.malId] : undefined;
+  useEffect(() => {
+    setBgReady(false);
+  }, [bgVideo]);
+
   if (!anime) {
     return <div className="h-[470px] md:h-[560px] lg:h-[640px] bg-black animate-pulse" />;
   }
@@ -128,6 +145,19 @@ export default function HeroBanner({ items, index, ctaLabel, onCta }: HeroBanner
           />
         );
       })}
+      {bgVideo ? (
+        <video
+          key={bgVideo}
+          src={bgVideo}
+          autoPlay
+          muted
+          loop
+          playsInline
+          onCanPlay={() => setBgReady(true)}
+          className="absolute inset-0 w-full h-full object-cover pointer-events-none transition-opacity duration-1000 ease-in-out"
+          style={{ opacity: bgReady ? 1 : 0 }}
+        />
+      ) : null}
       <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-black/35 to-black" />
 
       {/* content */}
