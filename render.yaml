@@ -21,4 +21,4 @@ services:
     image:
       url: ghcr.io/ichial09u/clyle:latest
     healthCheckPath: /
-    autoDeploy: false # image is rebuilt by Actions; redeploy picks up :latest
+    autoDeploy: true # Actions pushes a new :latest on every change to main
