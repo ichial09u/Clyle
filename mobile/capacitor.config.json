@@ -1,0 +1,13 @@
+{
+  "appId": "app.clyle.mobile",
+  "appName": "Clyle",
+  "webDir": "www",
+  "bundledWebRuntime": false,
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https",
+    "errorPath": "index.html"
+  }
+}

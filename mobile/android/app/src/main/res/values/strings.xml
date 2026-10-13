@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Clyle</string>
+    <string name="title_activity_main">Clyle</string>
+    <string name="package_name">app.clyle.mobile</string>
+    <string name="custom_url_scheme">app.clyle.mobile</string>
+</resources>
