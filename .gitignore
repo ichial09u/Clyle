@@ -68,3 +68,6 @@ mobile/*.keystore.tmp
 
 # live user-data dumps — never commit (public repo)
 scripts/data/
+
+# runtime cache churn — the tracked seed cache stays; new entries are rebuildable
+src/db/anilist-cache/

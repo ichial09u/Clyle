@@ -15,10 +15,7 @@ export async function GET() {
   let animeCount: number | null = null;
   let dbError: string | null = null;
   try {
-    const rows = await db.$queryRawUnsafe<{ n: number }[]>(
-      'SELECT COUNT(*) as n FROM "Anime"',
-    );
-    animeCount = rows?.[0]?.n ?? null;
+    animeCount = await db.anime.count();
   } catch (e) {
     dbError = String(e instanceof Error ? e.message : e).slice(0, 400);
   }

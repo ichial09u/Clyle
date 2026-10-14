@@ -13,16 +13,26 @@ import crypto from "node:crypto";
  *   1. console.cloud.google.com → APIs & Services → OAuth consent screen
  *      (External) → Credentials → "Create credentials → OAuth client ID"
  *      → Application type: Web application
- *   2. Authorized redirect URI:
+ *   2. Authorized redirect URIs:
  *        https://clyle-src.vercel.app/api/auth/google/callback
- *      (add https://clyle.onrender.com/api/auth/google/callback for the
- *      Render fallback deployment, and
- *      http://localhost:3000/api/auth/google/callback for local dev)
- *   3. Add the env vars to the Vercel project:
- *        GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+ *        https://clyle.onrender.com/api/auth/google/callback
+ *      (plus http://localhost:3000/api/auth/google/callback for local dev)
+ *   3. Add ONE env var to the Vercel project (and Render for the fallback):
+ *        GOOGLE_CLIENT_SECRET
+ *      The client ID is NOT a secret (it rides in every browser URL during
+ *      sign-in) and is baked in below as a fallback; a GOOGLE_CLIENT_ID env
+ *      var still overrides it if the owner ever rotates clients.
  * Until then every auth route degrades gracefully (configured: false) and
  * the app keeps working with the anonymous local identity.
  */
+
+/** Public OAuth client ID — safe to ship: it is not a credential. */
+const CLIENT_ID_FALLBACK = "995845443072-v5j94ps9l57aqqvpbci178jelbipscev.apps.googleusercontent.com";
+
+/** The active OAuth client ID (env override wins over the baked fallback). */
+export function googleClientId(): string {
+  return process.env.GOOGLE_CLIENT_ID || CLIENT_ID_FALLBACK;
+}
 
 export const SESSION_COOKIE = "clyle_session";
 export const OAUTH_STATE_COOKIE = "clyle_oauth_state";
@@ -49,7 +59,7 @@ export interface SessionUser {
 }
 
 export function googleConfigured(): boolean {
-  return Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+  return Boolean(googleClientId() && process.env.GOOGLE_CLIENT_SECRET);
 }
 
 function secret(): string {
@@ -144,7 +154,7 @@ export function stateCookieValid(cookieVal: string | undefined, queryState: stri
 /** The Google OAuth authorize URL for this deployment. */
 export function googleAuthUrl(redirectUri: string, state: string): string {
   const params = new URLSearchParams({
-    client_id: process.env.GOOGLE_CLIENT_ID ?? "",
+    client_id: googleClientId(),
     redirect_uri: redirectUri,
     response_type: "code",
     scope: "openid email profile",
@@ -171,7 +181,7 @@ export async function exchangeGoogleCode(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
       code,
-      client_id: process.env.GOOGLE_CLIENT_ID ?? "",
+      client_id: googleClientId(),
       client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
       redirect_uri: redirectUri,
       grant_type: "authorization_code",
