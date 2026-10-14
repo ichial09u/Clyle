@@ -67,14 +67,16 @@
 <script>
 (function () {
   // ================= BAKED AT BUILD TIME =================
-  // The APK opens straight into this server. Filled with the Render URL
-  // before building the release APK — never Vercel.
-  var DEFAULT_SERVER = "https://clyle.onrender.com";
+  // The APK opens straight into the primary server and silently falls
+  // back to the backup if the primary is ever unreachable — no dead
+  // ends, no server form.
+  var DEFAULT_SERVER = "https://clyle-src.vercel.app";  // primary
+  var FALLBACK_SERVER = "https://clyle.onrender.com";   // auto-failover
   // ========================================================
 
   var KEY = "clyle.server";      // manual override saved on this phone
   var WINDOW_MS = 40000;         // patience per attempt (Render cold starts ~30-60s)
-  var MAX_ATTEMPTS = 3;          // ~2 min total before asking for a URL
+  var ATTEMPTS_PER_SERVER = 2;   // 2 × 40s per candidate — covers cold starts
 
   var boot = document.getElementById("boot");
   var setup = document.getElementById("setup");
@@ -109,7 +111,13 @@
       .catch(function () { if (!settled) { settled = true; clearTimeout(to); onDone(false); } });
   }
 
-  function launch(url, fallback) {
+  // Try each server in order; every candidate gets its own retry window.
+  // The chain preserves viewer history: whoever launched on a server before
+  // stays pinned to it (their local identity lives per-origin), while dead
+  // entries are skipped and stale manual overrides are forgotten.
+  function launchChain(urls, savedUrl) {
+    var url = urls[0];
+    var rest = urls.slice(1);
     bootUrl.textContent = url;
     var attempts = 0;
     var msgs = ["Opening Clyle…", "Waking the server up…", "Still connecting…"];
@@ -118,14 +126,13 @@
       attempts++;
       probe(url, function (ok) {
         if (ok) { localStorage.setItem(KEY, url.replace(/\/+$/, "")); return enter(url); }
-        if (fallback) {
-          var f = fallback; fallback = null;
-          // stale/broken override (e.g. dead old host): forget it, use baked default
+        if (attempts < ATTEMPTS_PER_SERVER) return setTimeout(attempt, 1500);
+        if (rest.length) {
+          // dead entry — forget a stale manual override, move to the next server
+          if (savedUrl && url === savedUrl) localStorage.removeItem(KEY);
           bootMsg.textContent = "Switching to the Clyle server…";
-          localStorage.removeItem(KEY);
-          return launch(f, null);
+          return launchChain(rest, savedUrl);
         }
-        if (attempts < MAX_ATTEMPTS) return setTimeout(attempt, 1500);
         showSetup("Can't reach " + url + " — the server may be waking up. Try again shortly or check the address.");
       });
     })();
@@ -161,12 +168,18 @@
   });
 
   // ===== boot =====
+  // Chain: this phone's saved server first (keeps each viewer on the origin
+  // their watch history is tied to), then the baked primary, then the baked
+  // fallback. Duplicates drop out; a dead manual override still self-heals
+  // but never blocks the chain.
   var saved = localStorage.getItem(KEY);
-  var target = saved || DEFAULT_SERVER;
-  // A dead manual override must not brick the app: fall back to the baked default.
-  var fallback = (saved && DEFAULT_SERVER && saved !== DEFAULT_SERVER) ? DEFAULT_SERVER : null;
-  if (target) {
-    launch(target, fallback);
+  var chain = [];
+  function addServer(u) { if (u && chain.indexOf(u) === -1) chain.push(u); }
+  addServer(saved);
+  addServer(DEFAULT_SERVER);
+  addServer(FALLBACK_SERVER);
+  if (chain.length) {
+    launchChain(chain, saved);
   } else {
     showSetup();
   }
