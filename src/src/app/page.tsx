@@ -18,6 +18,7 @@ import Top50View from "@/components/views/Top50View";
 import type { Lang, ServerId } from "@/lib/zoko";
 import { isBackupServer } from "@/lib/zoko";
 import { animeFromContinue, minimalLite, readAppSettings, applySettingsToDocument } from "@/lib/client-store";
+import { runIncomingTransfer, transferIdOk, type TransferResult } from "@/lib/transfer";
 
 type View =
   | { name: "home" }
@@ -47,6 +48,7 @@ export default function Page() {
   const [stack, setStack] = useState<View[]>([{ name: "home" }]);
   const [tab, setTab] = useState<TabKey>("home");
   const [anim, setAnim] = useState<ScreenAnim | null>(null);
+  const [transfer, setTransfer] = useState<TransferResult | null>(null);
 
   const view = stack[stack.length - 1];
 
@@ -146,6 +148,40 @@ export default function Page() {
       window.history.replaceState(null, "", window.location.pathname);
     }
   }, [openAnime]);
+
+  // Progress transfer handoff — a mirror site navigates here with
+  // ?migrate=<oldDeviceId>&ml=<favoriteIds>. The URL is the only channel
+  // that legally crosses the origin boundary, so this is how a stranded
+  // anonymous history follows its owner to the main site. The query is
+  // cleaned first so Back / reload can never double-run it (the copy itself
+  // is idempotent — newer-wins server-side — but one run is one toast).
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const from = sp.get("migrate");
+    if (!transferIdOk(from)) return;
+    const ml = (sp.get("ml") ?? "")
+      .split(",")
+      .map((s) => parseInt(s, 10))
+      .filter((n) => Number.isInteger(n) && n > 0)
+      .slice(0, 150);
+    window.history.replaceState(null, "", window.location.pathname);
+    let alive = true;
+    runIncomingTransfer(from as string, ml)
+      .then((r) => {
+        if (alive && (r.copied > 0 || r.total > 0 || r.favorites > 0)) setTransfer(r);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // the toast dismisses itself
+  useEffect(() => {
+    if (!transfer) return;
+    const t = window.setTimeout(() => setTransfer(null), 9000);
+    return () => window.clearTimeout(t);
+  }, [transfer]);
 
   /** Continue Watching tap — straight into the episode at the saved second.
    *  The episode list is pushed UNDER the player so Back (arrow, top-left)
@@ -274,6 +310,28 @@ export default function Page() {
       </div>
 
       {view.name !== "watch" ? <BottomNav active={tab} onNavigate={goTab} /> : null}
+
+      {/* transfer result toast — tappable to dismiss */}
+      {transfer ? (
+        <button
+          onClick={() => setTransfer(null)}
+          className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[92%] rounded-full bg-[#1d1d1d] border border-white/15 px-4 py-2.5 text-[12.5px] font-semibold text-gray-100 shadow-2xl active:scale-95 transition text-center"
+        >
+          {transfer.total > 0 ? (
+            <>
+              Restored {transfer.copied}
+              {transfer.total > transfer.copied ? ` of ${transfer.total}` : ""} episode
+              {transfer.copied === 1 ? "" : "s"} of Continue Watching
+            </>
+          ) : null}
+          {transfer.total > 0 && transfer.favorites > 0 ? " · " : ""}
+          {transfer.favorites > 0 ? (
+            <>
+              {transfer.favorites} favorite{transfer.favorites === 1 ? "" : "s"} added to My List
+            </>
+          ) : null}
+        </button>
+      ) : null}
     </div>
   );
 }

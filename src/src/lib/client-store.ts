@@ -222,6 +222,39 @@ export function useMyList() {
   return { list, malIds, has, toggle, ready: true };
 }
 
+/** Snapshot of favorited malIds — the cross-site transfer handoff carries
+ *  these in the URL (ids only; titles/art are re-fetched on the target).
+ *  Capped so the handoff URL stays sane. */
+export function getMyListMalIds(cap = 150): number[] {
+  const list = readJson<MyListEntry[]>(MYLIST_KEY, []);
+  return list.map((e) => e.malId).slice(0, cap);
+}
+
+/** Merge transferred favorites in — existing entries always win (a favorite
+ *  the user re-added here keeps its place), missing ones append. */
+export function mergeMyListEntries(
+  entries: Array<Pick<MyListEntry, "malId" | "title" | "image">>,
+): number {
+  const current = readJson<MyListEntry[]>(MYLIST_KEY, []);
+  const known = new Set(current.map((e) => e.malId));
+  let added = 0;
+  for (const e of entries) {
+    if (!Number.isInteger(e.malId) || known.has(e.malId)) continue;
+    current.push({ malId: e.malId, title: e.title, image: e.image, addedAt: Date.now() + added });
+    known.add(e.malId);
+    added++;
+  }
+  if (added > 0) {
+    writeJson(MYLIST_KEY, current);
+    try {
+      window.dispatchEvent(new CustomEvent(MYLIST_EVENT));
+    } catch {
+      /* ignore */
+    }
+  }
+  return added;
+}
+
 /* ---------------- Watch progress ---------------- */
 
 export interface Progress {

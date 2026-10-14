@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, Check, LogOut, Pencil, Settings as SettingsIcon } from "lucide-react";
-import { fileToAvatarDataUrl, useProfile, useSaveProfile } from "@/lib/profile-store";
+import { Camera, Check, LogOut, MoveRight, Pencil, Settings as SettingsIcon } from "lucide-react";
+import { fileToAvatarDataUrl, useProfile, useSaveProfile, getUserId } from "@/lib/profile-store";
+import { getMyListMalIds } from "@/lib/client-store";
 import { restoreAccountOnSignOut } from "@/lib/account";
 import { fetchSession } from "@/components/account/AccountSync";
+import { buildTransferUrl, isTransferTarget } from "@/lib/transfer";
 
 /**
  * The Profile page — deliberately minimal (user ask): only the identity
@@ -165,6 +167,27 @@ export default function ProfileView({ onSettings }: { onSettings: () => void }) 
           aria-hidden="true"
         />
       </section>
+
+      {/* cross-site transfer — only on mirror deployments, only while anonymous
+          (signed-in viewers are already portable through their account) */}
+      {session !== null && !session.user && !isTransferTarget() ? (
+        <section className="mx-4 mt-3 rounded-xl bg-gradient-to-b from-[#1c1c1c] to-[#121212] border border-[#242424] p-5">
+          <span className="text-[13px] font-bold uppercase tracking-wide text-gray-300">Move to the main site</span>
+          <p className="mt-3 text-[12.5px] leading-relaxed text-gray-400">
+            You&apos;re on a mirror site. One tap moves your Continue Watching and My List to the
+            main Clyle site — no account needed, nothing is deleted here.
+          </p>
+          <button
+            onClick={() => {
+              window.location.href = buildTransferUrl(getUserId(), getMyListMalIds());
+            }}
+            className="mt-3 inline-flex h-10 items-center gap-2 rounded-lg bg-[#d32f2f] px-4 text-[13px] font-semibold text-white transition hover:bg-[#b71c1c] active:scale-[0.98]"
+          >
+            <MoveRight className="w-4 h-4" />
+            Move my progress
+          </button>
+        </section>
+      ) : null}
 
       {/* Google account card — sign in to track progress in the cloud */}
       <section className="mx-4 mt-3 rounded-xl bg-gradient-to-b from-[#1c1c1c] to-[#121212] border border-[#242424] p-5">

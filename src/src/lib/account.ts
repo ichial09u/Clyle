@@ -54,8 +54,9 @@ function restoreAnonProfile(): void {
 /** Copy the anonymous device rows onto the signed-in identity.
  *  Returns { copied, total } so the caller can tell a FULL merge from a
  *  partial one — marking the sync done after a partial copy stranded rows
- *  with no retry until the next sign-out/sign-in. */
-async function copyProgressRows(fromId: string, toId: string): Promise<{ copied: number; total: number }> {
+ *  with no retry until the next sign-out/sign-in.
+ *  Also reused by the cross-site progress transfer (lib/transfer.ts). */
+export async function copyProgressRows(fromId: string, toId: string): Promise<{ copied: number; total: number }> {
   let copied = 0;
   let total = 0;
   try {
