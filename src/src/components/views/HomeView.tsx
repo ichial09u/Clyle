@@ -7,6 +7,7 @@ import Row from "@/components/anime/Row";
 import PosterCard from "@/components/anime/PosterCard";
 import ContinueRow from "@/components/anime/ContinueRow";
 import Top10Bell from "@/components/anime/Top10Bell";
+import PresenceBadge from "@/components/anime/PresenceBadge";
 import ArrivingRail from "@/components/anime/ArrivingRail";
 import {
   loadContinueItems, removeProgress, sweepRemovedProgress, timeAgo, useProgressVersion,
@@ -242,6 +243,10 @@ export default function HomeView({
 
   return (
     <div className="pb-24">
+      {/* LIVE counter — top-left over the hero: how many people are on the
+          site/app right now (all regions & platforms); tap for the breakdown */}
+      <PresenceBadge />
+
       {/* Top 10 notifications — floating bell (unread badge) over the hero */}
       <Top10Bell onSelect={onSelect} />
 

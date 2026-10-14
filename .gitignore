@@ -71,3 +71,9 @@ scripts/data/
 
 # runtime cache churn — the tracked seed cache stays; new entries are rebuildable
 src/db/anilist-cache/
+
+# probe-result caches (dub/stream verification) — runtime churn like anilist-cache;
+# tracked seed entries stay, new entries are rebuildable by the probes themselves
+src/db/anikoto/
+src/db/megaplay/
+src/db/zoko-stream/

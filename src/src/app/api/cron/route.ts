@@ -6,6 +6,7 @@ import { runSkipAudit } from "@/lib/skip-audit";
 import { refreshTop10Month } from "@/lib/top10-month";
 import { refreshArriving } from "@/lib/arriving";
 import { notifyAiringSoon } from "@/lib/push";
+import { dubBackfillSweep } from "@/lib/dub-backfill";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -65,7 +66,24 @@ export async function GET(req: Request) {
 
   // ---- 3) background heals — network-heavy, run AFTER the response ----
   after(async () => {
-    // 3a) catalog drift -> auto re-sync (heal): new episodes + new anime,
+    // 3a) dub catch-up sweep — "when a dub arrives it auto-fills the dub
+    //     servers": stalest-first recheck probes advance the per-episode
+    //     boundaries (dubThruS1/S2) and DUB buttons/streams follow with
+    //     zero manual work. Runs FIRST so a busy catalog sync can never
+    //     starve it — it is the only scheduled pass the dub feature gets.
+    try {
+      const sweep = await dubBackfillSweep({ budgetMs: 15_000, maxCatchup: 6, maxNew: 3 });
+      if (sweep.checked > 0) {
+        console.log(
+          `[cron] dub sweep: checked ${sweep.checked} anime / ${sweep.probes} probes / ${sweep.advanced} advanced in ${sweep.elapsedMs}ms`,
+        );
+        fixes.push(`dub sweep: ${sweep.advanced} anime caught up (checked ${sweep.checked})`);
+      }
+    } catch (err) {
+      console.error("[cron] dub sweep failed:", String(err).slice(0, 200));
+    }
+
+    // 3b) catalog drift -> auto re-sync (heal): new episodes + new anime,
     //     skip-time prefetch for imports, and "drops in ~N hours" reminders
     try {
       const syncResult = await syncCatalog();
@@ -80,7 +98,7 @@ export async function GET(req: Request) {
       console.error("[cron] catalog-sync heal failed:", String(err).slice(0, 200));
     }
 
-    // 3b) skip intro audit — verifies a Skip Intro button will appear
+    // 3c) skip intro audit — verifies a Skip Intro button will appear
     //     (scout / exact / consensus / live tiers); `probe` asks AniSkip
     //     live and heals gaps in place
     try {
@@ -97,7 +115,7 @@ export async function GET(req: Request) {
       console.error("[cron] skip-intro-audit failed:", String(err).slice(0, 200));
     }
 
-    // 3c) Top 10 rank notifications (bell + push data path) — TTL-gated
+    // 3d) Top 10 rank notifications (bell + push data path) — TTL-gated
     //     inside refreshTop10Month; plus the Arriving rail snapshot (same
     //     discipline: the route after()s the refresh too, cron keeps it warm
     //     even when nobody has the app open)
@@ -108,7 +126,7 @@ export async function GET(req: Request) {
       console.error("[cron] top10/arriving refresh failed:", String(err).slice(0, 200));
     }
   });
-  checks.push({ name: "catalog-sync", ok: true, detail: "background heal scheduled (sync + skip prefetch + airing-soon pushes + audit + top10/arriving refresh)" });
+  checks.push({ name: "catalog-sync", ok: true, detail: "background heal scheduled (dub catch-up sweep + sync + skip prefetch + airing-soon pushes + audit + top10/arriving refresh)" });
 
   // ---- 4) orphaned comment replies -> remove (heal, DB-only) ----
   try {

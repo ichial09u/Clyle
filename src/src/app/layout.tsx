@@ -4,6 +4,7 @@ import RegisterSW from "@/components/pwa/RegisterSW";
 import OfflineManager from "@/components/pwa/OfflineManager";
 import AccountSync from "@/components/account/AccountSync";
 import SignInPrompt from "@/components/account/SignInPrompt";
+import PresenceHeartbeat from "@/components/anime/PresenceHeartbeat";
 import "./globals.css";
 
 const roboto = Roboto({
@@ -60,6 +61,7 @@ export default function RootLayout({
         <OfflineManager />
         <AccountSync />
         <SignInPrompt />
+        <PresenceHeartbeat />
       </body>
     </html>
   );

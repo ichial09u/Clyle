@@ -2,6 +2,7 @@ import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { syncCatalog, lastSync, syncInProgress } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
+import { dubBackfillSweep } from "@/lib/dub-backfill";
 import { isOwnerRequest, rateLimit, clientIp } from "@/lib/guard";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,20 @@ export async function POST(req: Request) {
       try {
         const result = await sweep;
         if (result.newEpisodes.length) await prefetchSkipTimes(result.newEpisodes);
+      } catch {
+        /* background best-effort */
+      }
+      // mini dub catch-up pass — the app opens this kick all day long (the
+      // syncLog throttle above caps it to one per 5 min server-wide), so a
+      // newly arrived dub is picked up within minutes, not just at the
+      // daily cron. Small budget: it must never crowd out the sync itself.
+      try {
+        const dub = await dubBackfillSweep({ budgetMs: 9_000, maxCatchup: 2, maxNew: 1 });
+        if (dub.checked > 0) {
+          console.log(
+            `[dub-sweep] kick pass: checked ${dub.checked} / ${dub.probes} probes / ${dub.advanced} advanced in ${dub.elapsedMs}ms`,
+          );
+        }
       } catch {
         /* background best-effort */
       }
