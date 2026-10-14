@@ -24,7 +24,13 @@ const nextConfig: NextConfig = {
   // Ship the pre-seeded Zoko catalog (SQLite) inside the server bundle.
   // On Vercel, src/lib/db.ts copies it to /tmp at boot so reads AND writes work.
   outputFileTracingIncludes: {
-    "/api/**/*": ["./db/custom.db"],
+    "/api/**/*": [
+      "./db/custom.db",
+      // Prisma query engine + generated client are not always traced
+      // into the standalone output — without them every API query 500s.
+      "./node_modules/.prisma/**/*",
+      "./node_modules/@prisma/**/*",
+    ],
   },
 };
 
