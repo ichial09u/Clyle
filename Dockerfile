@@ -38,5 +38,10 @@ ENV NODE_ENV=production \
 # db/custom.db inside the standalone output.
 COPY --from=build /app/.next/standalone ./
 
+# The seeded catalog DB must be pinned explicitly — tracing does not
+# reliably include it, and without it the API boots against an empty
+# SQLite file ("no such table").
+COPY --from=build /app/src/db/custom.db ./db/custom.db
+
 EXPOSE 3000
 CMD ["node", "server.js"]
