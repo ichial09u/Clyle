@@ -14,8 +14,10 @@ import crypto from "node:crypto";
  *      (External) → Credentials → "Create credentials → OAuth client ID"
  *      → Application type: Web application
  *   2. Authorized redirect URI:
- *        https://temporary-spry-granite-1f0h7ae.vercel.app/api/auth/google/callback
- *      (add http://localhost:3000/api/auth/google/callback for local dev)
+ *        https://clyle-src.vercel.app/api/auth/google/callback
+ *      (add https://clyle.onrender.com/api/auth/google/callback for the
+ *      Render fallback deployment, and
+ *      http://localhost:3000/api/auth/google/callback for local dev)
  *   3. Add the env vars to the Vercel project:
  *        GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
  * Until then every auth route degrades gracefully (configured: false) and

@@ -1,0 +1,81 @@
+# data-sync — keep viewer data durable across free-tier redeploys.
+#
+# Vercel keeps the DB in per-instance /tmp and Render resets the container on
+# every deploy, so anything viewers accumulate between deploys dies with the
+# instance. This workflow folds the live servers' user data back into the
+# bundled catalog DB on a schedule: export (both servers) -> merge -> commit ->
+# push. The push redeploys Vercel with the fresh DB, and the explicit dispatch
+# rebuilds the GHCR image so Render picks it up too. Worst-case data loss
+# shrinks from "forever" to "since the last successful cycle" (~6h).
+
+name: data-sync
+
+on:
+  schedule:
+    - cron: "23 */6 * * *" # every 6h at :23 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: data-sync
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pull live exports (Vercel primary + Render fallback)
+        run: |
+          # NOTE: token below mirrors src/src/lib/guard.ts OWNER_FALLBACK.
+          # If CLYLE_OWNER_TOKEN is ever set on the deployments, move this
+          # into a repository secret and reference it here instead.
+          OWNER_HEADER="x-clyle-owner: clyle-owner-4f8e2d1c9b7a6f3e"
+          mkdir -p /tmp/clyle-export
+          curl -fsS -m 150 -H "$OWNER_HEADER" \
+            https://clyle-src.vercel.app/api/export \
+            -o /tmp/clyle-export/vercel.json \
+            || echo "::warning::vercel export unavailable this cycle"
+          curl -fsS -m 150 -H "$OWNER_HEADER" \
+            https://clyle.onrender.com/api/export \
+            -o /tmp/clyle-export/render.json \
+            || echo "::warning::render export unavailable this cycle"
+          ls -la /tmp/clyle-export
+
+      - name: Merge exports into the bundled DB
+        run: |
+          shopt -s nullglob
+          files=(/tmp/clyle-export/*.json)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::warning::no exports retrieved — skipping merge"
+            exit 0
+          fi
+          python3 scripts/merge_export.py --db src/db/custom.db "${files[@]}"
+
+      - name: Commit + push when data changed
+        id: commit
+        run: |
+          git config user.name "clyle-data-bot"
+          git config user.email "actions@users.noreply.github.com"
+          if git diff --quiet -- src/db/custom.db; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No data changes this cycle"
+          else
+            git add src/db/custom.db
+            git commit -m "data-sync: fold live user data into the bundled DB"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Rebuild the backend image (Render follows :latest)
+        if: steps.commit.outputs.changed == 'true'
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/workflows/docker.yml/dispatches" \
+            -d '{"ref":"main"}'

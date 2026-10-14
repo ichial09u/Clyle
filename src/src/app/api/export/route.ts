@@ -25,7 +25,7 @@ export async function GET(req: Request) {
       { status: 403, headers: { "Cache-Control": "no-store" } },
     );
   }
-  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, introScout, scoutRef, dubProbe, pushSubs] =
+  const [users, comments, watchStats, top10Events, top10Meta, deletedCommentIds, anime, episodes, watchProgress, removedProgress, introScout, scoutRef, dubProbe, pushSubs] =
     await Promise.all([
       db.user.findMany({ select: { id: true, nickname: true, avatar: true, createdAt: true } }),
       db.comment.findMany(),
@@ -42,6 +42,11 @@ export async function GET(req: Request) {
       }),
       db.watchProgress.findMany({
         select: { userId: true, malId: true, episode: true, lang: true, server: true, position: true, duration: true, completed: true, title: true, image: true, updatedAt: true },
+      }),
+      // removal tombstones — without these a redeploy resurrects every item
+      // the viewer deliberately deleted from Continue Watching
+      db.removedProgress.findMany({
+        select: { userId: true, malId: true, removedAt: true },
       }),
       // intro-scout fleet measurements (Skip Intro accuracy data — the
       // fleet re-measures over days, but carrying these forward keeps the
@@ -65,6 +70,7 @@ export async function GET(req: Request) {
       anime,
       episodes,
       watchProgress,
+      removedProgress,
       introScout,
       scoutRef,
       dubProbe,
