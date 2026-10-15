@@ -19,7 +19,7 @@ import type { Lang, ServerId } from "@/lib/zoko";
 import { isBackupServer } from "@/lib/zoko";
 import { animeFromContinue, minimalLite, readAppSettings, applySettingsToDocument } from "@/lib/client-store";
 import { runIncomingTransfer, transferIdOk, type TransferResult } from "@/lib/transfer";
-import MirrorMoveBanner from "@/components/MirrorMoveBanner";
+import SaveProgressBanner from "@/components/SaveProgressBanner";
 
 type View =
   | { name: "home" }
@@ -312,9 +312,10 @@ export default function Page() {
 
       {view.name !== "watch" ? <BottomNav active={tab} onNavigate={goTab} /> : null}
 
-      {/* stranded-viewer banner — mirror origins only (never the main site);
-          hidden in the player and while the transfer toast is showing */}
-      <MirrorMoveBanner active={view.name !== "watch" && !transfer} />
+      {/* progress banner — mirrors: move-to-main handoff; main site:
+          save-your-progress (Google sign-in). Hidden in the player and
+          while the transfer toast is showing */}
+      <SaveProgressBanner active={view.name !== "watch" && !transfer} />
 
       {/* transfer result toast — tappable to dismiss */}
       {transfer ? (
