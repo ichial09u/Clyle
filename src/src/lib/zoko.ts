@@ -14,9 +14,17 @@
  */
 
 import type { BackupServerId } from "@/lib/backup-servers";
+import { MEGAPLAY_IFRAME_SERVER } from "@/lib/backup-servers";
 
 export type { BackupServerId } from "@/lib/backup-servers";
-export { isBackupServer, backupProviderOf, backupServerId, backupServerName } from "@/lib/backup-servers";
+export {
+  isBackupServer,
+  backupProviderOf,
+  backupServerId,
+  backupServerName,
+  MEGAPLAY_IFRAME_SERVER,
+  isIframeDubServer,
+} from "@/lib/backup-servers";
 
 export const ZOKO_BASE = "https://zokoanime.video";
 
@@ -30,7 +38,7 @@ export type Lang = "sub" | "dub";
  * episodes where that provider carries a dub our main chain can't serve,
  * and resolve through /api/stream like every other server.
  */
-export type ServerId = "zoko" | "kiwi" | BackupServerId;
+export type ServerId = "zoko" | "kiwi" | BackupServerId | typeof MEGAPLAY_IFRAME_SERVER;
 
 export const SERVERS: Array<{ id: ServerId; name: string; note: string }> = [
   { id: "zoko", name: "Zoko", note: "Zoko player" },
@@ -51,6 +59,16 @@ export function zokoStreamPageUrl(malId: number, episode: number, lang: Lang, se
 /** Embeddable player page for one episode (used as the iframe fallback). */
 export function zokoPlayerUrl(malId: number, episode: number, lang: Lang = "sub"): string {
   return `${ZOKO_BASE}/stream/mal/${malId}/${episode}/${lang}`;
+}
+
+/**
+ * Megaplay's MAL-keyed embed player — the DUB iframe fallback for titles
+ * whose dub our resolvers can't extract (their getSources API answers
+ * client-side-encrypted payloads; their own player decrypts in-browser).
+ * DUB only — the sub stays on Zoko/Kiwi.
+ */
+export function megaplayPlayerUrl(malId: number, episode: number): string {
+  return `https://megaplay.buzz/stream/mal/${malId}/${episode}/dub`;
 }
 
 /** Zoko's download page for one episode (mirrors the player URL pattern). */

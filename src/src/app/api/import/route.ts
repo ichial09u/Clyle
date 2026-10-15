@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
 import { jikanOne, type JikanAnime } from "@/lib/jikan";
 import { anilistToJikan, airedEpisodeCount, mediaByMal } from "@/lib/anilist";
-import { upsertAnime, importEpisodes, importEpisodesFromList, isAdultAnime } from "@/lib/sync";
+import { upsertAnime, importEpisodes, importEpisodesFromList, isAdultAnime, backfillEpisodeTitles } from "@/lib/sync";
 import { isOwnerRequest, rateLimit, clientIp } from "@/lib/guard";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { fanartLogoFor, fanartEnabled } from "@/lib/fanart";
@@ -73,6 +73,11 @@ export async function POST(req: Request) {
 
   // imported episodes bring their skip intro/ending along (background, rate-limited)
   if (newEpisodes.length) after(() => prefetchSkipTimes(newEpisodes, 40));
+
+  // correct episode titles land WITH the import (background): count-known
+  // imports create untitled rows first — fill them from AniList/Jikan now
+  // instead of waiting for the first episodes-page visit to do it
+  if (episodesAdded > 0) after(() => backfillEpisodeTitles(malId).catch(() => undefined));
 
   // official title logo for the poster cards (background; only with FANART_API_KEY)
   if (fanartEnabled()) {

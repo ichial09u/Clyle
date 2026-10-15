@@ -12,7 +12,7 @@ import {
   setLangPref,
   useProgressVersion,
 } from "@/lib/client-store";
-import { type Lang, type ServerId } from "@/lib/zoko";
+import { type Lang, type ServerId, MEGAPLAY_IFRAME_SERVER } from "@/lib/zoko";
 
 /** percent -> red bar width inside the episode button (8% padding each side) */
 function barWidth(p: { pos: number; dur: number; completed: boolean } | undefined): number {
@@ -438,9 +438,16 @@ export default function EpisodesView({
                         (b) => (b.covered ?? []).includes(picked!),
                       )
                     : [];
+                  // MEGAPLAY embed — the dub iframe fallback: when NEITHER the
+                  // main chain NOR the backup network can resolve this
+                  // episode's dub, Megaplay's MAL-keyed player usually still
+                  // carries it (their player decrypts client-side, so it
+                  // works where stream extraction can't). DUB only, last.
+                  const showMegaplay = !mainCanDub && backups.length === 0;
                   const allWithBackups: Array<{ lang: Lang; server: ServerId }> = [
                     ...all,
                     ...backups.map((b) => ({ lang: "dub" as Lang, server: b.server as ServerId })),
+                    ...(showMegaplay ? [{ lang: "dub" as Lang, server: MEGAPLAY_IFRAME_SERVER }] : []),
                   ];
                   // your last-used language first (so the top-left button is
                   // what you were watching), then the other language
@@ -454,6 +461,7 @@ export default function EpisodesView({
                       {ordered.map(({ lang, server }) => {
                         const n: 1 | 2 | null = server === "zoko" ? 1 : server === "kiwi" ? 2 : null;
                         const isBackup = server.startsWith("anivexa-");
+                        const isMegaplay = server === MEGAPLAY_IFRAME_SERVER;
                         const backupName =
                           (episodesData?.backupDub ?? []).find((b) => b.server === server)?.name ?? "Backup";
                         const isPref =
@@ -469,19 +477,21 @@ export default function EpisodesView({
                                 ? "Your last choice"
                                 : isBackup
                                   ? `DUB via ${backupName} (backup server)`
-                                  : undefined
+                                  : isMegaplay
+                                    ? "DUB via Megaplay's embedded player"
+                                    : undefined
                             }
                             className={`flex items-center justify-center gap-2 rounded-lg active:scale-[0.98] transition text-[13px] font-bold py-3 text-center ${
                               isPref
                                 ? "bg-[#ff5252] hover:bg-[#ff6b6b] text-white"
-                                : isBackup
+                                : isBackup || isMegaplay
                                   ? "bg-[#26263a] hover:bg-[#32324a] text-gray-100"
                                   : "bg-white hover:bg-gray-200 text-black"
                             }`}
                           >
                             <MonitorPlay
                               className={`w-4 h-4 ${
-                                isPref ? "text-white" : isBackup ? "text-[#8f9bff]" : "text-[#d32f2f]"
+                                isPref ? "text-white" : isBackup || isMegaplay ? "text-[#8f9bff]" : "text-[#d32f2f]"
                               }`}
                             />
                           {(() => {
@@ -490,11 +500,13 @@ export default function EpisodesView({
                             // so the buttons are plain "Server 1"/"Server 2".
                             // Anime keeps the classic "<LANG> Server #N" labels.
                             const spName = (episodesData?.serverNames ?? {})[server as "zoko" | "kiwi"];
-                            return isBackup
-                              ? `DUB ${backupName}`
-                              : spName
-                                ? `Server ${n}`
-                                : `${lang.toUpperCase()} Server #${n}`;
+                            return isMegaplay
+                              ? "DUB Megaplay"
+                              : isBackup
+                                ? `DUB ${backupName}`
+                                : spName
+                                  ? `Server ${n}`
+                                  : `${lang.toUpperCase()} Server #${n}`;
                           })()}
                           </button>
                         );
@@ -527,10 +539,26 @@ export default function EpisodesView({
                   const backupCovers = (episodesData?.backupDub ?? []).some(
                     (b) => (b.covered ?? []).includes(picked!),
                   );
+                  // the Megaplay embed button means a dub MIGHT still play —
+                  // word the notice around it instead of "no dub at all"
+                  const megaplayShown =
+                    !backupCovers &&
+                    !((episodesData?.dubMissing ?? []).includes(picked!)
+                      ? false
+                      : (bt.s1 != null && picked! <= bt.s1 && bt.s1 > 0) ||
+                        (bt.s2 != null && picked! <= bt.s2 && bt.s2 > 0) ||
+                        (episodesData?.dubServers?.length ?? 0) > 0);
                   if (backupCovers) {
                     return (
                       <p className="mt-2 text-center text-[10.5px] text-gray-500">
                         English DUB available on the backup servers above
+                      </p>
+                    );
+                  }
+                  if (megaplayShown) {
+                    return (
+                      <p className="mt-2 text-center text-[10.5px] text-gray-500">
+                        No DUB on Zoko/Kiwi for this episode — the Megaplay embed above usually carries it
                       </p>
                     );
                   }

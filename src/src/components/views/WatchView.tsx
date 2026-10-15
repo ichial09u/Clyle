@@ -7,13 +7,13 @@ import {
   Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward, Settings,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
-import { zokoPlayerUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer } from "@/lib/zoko";
+import { zokoPlayerUrl, megaplayPlayerUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupServerName, MEGAPLAY_IFRAME_SERVER } from "@/lib/zoko";
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings, updateAppSettings } from "@/lib/client-store";
 import {
   ensureCastSdk, castLoad, castLoadNext, castStop, castPosition, castDuration,
   castIsPlaying, castTogglePlay, castSeek, getCastState, onCastStateChange,
   onCastMediaError, castSetCaptions, castCaptionsAvailable, castCaptionsActive,
-  castSetAutoNextHandler, castReattach, castEnsureTracking,
+  castSetAutoNextHandler, castReattach, castEnsureTracking, castSetFailoverHandler,
   type CastState, type CastProgressDescriptor,
 } from "@/lib/cast";
 import { pickSubtitleTrack } from "@/lib/subtitles";
@@ -91,6 +91,10 @@ export default function WatchView({
   // handler must know the embedded Zoko player is up without re-binding)
   const iframeFallbackRef = useRef(false);
   iframeFallbackRef.current = iframeFallback;
+  // true while the Megaplay embed server set the fallback — lets the stream
+  // effect clear it when the viewer leaves Megaplay without touching the
+  // MANUAL "Use Zoko player" pick (which must stick until its own change)
+  const megaplayIframeRef = useRef(false);
   // does this title have a REAL English dub? (null = still asking).
   // The server /api/stream also validates every dub play, so a stale value
   // can never put Japanese audio under a DUB label — this only drives the UI.
@@ -928,6 +932,21 @@ export default function WatchView({
         return;
       }
     }
+    // MEGAPLAY IFRAME SERVER — no resolve call at all: their embed player
+    // carries dubs our resolvers can't extract (client-side-encrypted
+    // getSources), so the episode hands straight to their MAL-keyed page
+    // inside the sandboxed iframe (same chrome as the Zoko fallback).
+    if (server === MEGAPLAY_IFRAME_SERVER) {
+      megaplayIframeRef.current = true;
+      setStream(null);
+      setStreamError(false);
+      setIframeFallback(true);
+      return;
+    }
+    if (megaplayIframeRef.current) {
+      megaplayIframeRef.current = false; // leaving the Megaplay embed
+      setIframeFallback(false);
+    }
     // a staged seek is only valid for the episode it was staged on — without
     // this guard a failed SUB↔DUB toggle left the spot staged and pressing
     // Next resumed the NEW episode at the OLD episode's position
@@ -1001,7 +1020,18 @@ export default function WatchView({
             : `${window.location.origin}/api/stream/proxy?type=${isHls ? "m3u8" : "seg"}&u=${encodeURIComponent(data.src)}${data.referer ? `&rf=${encodeURIComponent(data.referer)}` : ""}${data.pk ? `&pk=${encodeURIComponent(data.pk)}` : ""}`;
         }
       } catch {
-        if (!cancelled) setStreamError(true);
+        if (!cancelled) {
+          // While CASTING the TV is waiting on this resolve — walk to the
+          // next server automatically instead of leaving it on a dead load
+          // (manual server switches are blocked mid-cast, so this is the
+          // only way forward). The per-episode language auto-fallback above
+          // already had its shot; this walk is SERVERS.
+          if (castStateRef.current === "casting" && castFailoverRef.current) {
+            window.setTimeout(() => castFailoverRef.current?.("resolve"), 400);
+          } else {
+            setStreamError(true);
+          }
+        }
       }
     })();
     return () => {
@@ -1200,6 +1230,53 @@ export default function WatchView({
       return null;
     });
   };
+
+  /* -------- cast AUTO-FAILOVER (the "TV can't load this stream" fix) -----
+     When the receiver can't load/play the current stream, walk to the next
+     server BY ITSELF and side-load it into the live session (the stream
+     effect's casting branch hands every newly resolved stream to the TV via
+     castLoadNext). One attempt per link in the chain; ANY manual change
+     (episode / language / server) resets the walk. The Megaplay embed is
+     deliberately NOT in the chain — iframes can't cast. ---------------- */
+  const castFailoverIdxRef = useRef(0);
+  const castFailoverSigRef = useRef("");
+  const castFailoverRef = useRef<((reason?: "stuck" | "media-error" | "resolve") => void) | null>(null);
+  useEffect(() => {
+    const sig = `${anime.malId}:${episode}:${lang}:${server}`;
+    if (castFailoverSigRef.current !== sig) castFailoverIdxRef.current = 0; // manual change
+    castFailoverSigRef.current = sig;
+    const advance = (reason?: "stuck" | "media-error" | "resolve") => {
+      if (castStateRef.current !== "casting") return;
+      void reason;
+      const chain: ServerId[] =
+        lang === "dub"
+          ? [
+              server === "kiwi" ? "zoko" : "kiwi",
+              "anivexa-anineko",
+              "anivexa-animegg",
+              "anivexa-hianime",
+              "anivexa-allmanga",
+              "anivexa-reanime",
+            ]
+          : [server === "kiwi" ? "zoko" : "kiwi"];
+      const options = chain.filter((s) => s !== server);
+      const idx = castFailoverIdxRef.current;
+      if (idx >= options.length) {
+        showPlayerMsg("The TV can't play this episode — stop casting and try another server or quality", 9_000);
+        return;
+      }
+      const next = options[idx];
+      castFailoverIdxRef.current = idx + 1;
+      const nextLang: Lang = isBackupServer(next) ? "dub" : lang;
+      castFailoverSigRef.current = `${anime.malId}:${episode}:${nextLang}:${next}`; // our own change
+      const label = isBackupServer(next) ? backupServerName(next) : next === "kiwi" ? "Server 2" : "Server 1";
+      showPlayerMsg(`TV couldn't load this stream — switching to ${label}…`, 6_000);
+      onEpisodeChange(episode, nextLang, next);
+    };
+    castFailoverRef.current = advance;
+    castSetFailoverHandler(advance);
+    return () => castSetFailoverHandler(null);
+  }, [anime.malId, episode, lang, server]);
 
   /* -------- attach hls.js -------- */
   useEffect(() => {
@@ -1564,6 +1641,7 @@ export default function WatchView({
   /** Switch stream server mid-playback without losing the spot. */
   const switchServer = (next: ServerId) => {
     if (next === server || castStateRef.current === "casting") return;
+    castFailoverIdxRef.current = 0; // manual pick — restart the failover walk
     stageSpot();
     setPanel(null);
     // backup servers are DUB only — switching to one flips the language too
@@ -2179,8 +2257,12 @@ export default function WatchView({
           <div className={`w-full h-full flex items-center justify-center ${resizeMode === 2 ? "" : "px-2"}`}>
             <div className="relative w-full h-full rounded-md overflow-hidden ring-2 ring-[#d32f2f]/80 shadow-[0_0_24px_rgba(211,47,47,0.35)] bg-black">
               <iframe
-                key={`zoko-${episode}-${lang}`}
-                src={zokoPlayerUrl(anime.malId, episode, lang)}
+                key={`embed-${server}-${episode}-${lang}`}
+                src={
+                  server === MEGAPLAY_IFRAME_SERVER
+                    ? megaplayPlayerUrl(anime.malId, episode)
+                    : zokoPlayerUrl(anime.malId, episode, lang)
+                }
                 title={castTitle}
                 className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
                 allow="autoplay; fullscreen; encrypted-media; picture-in-picture"

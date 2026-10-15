@@ -24,11 +24,27 @@ export const BACKUP_PROVIDER_NAMES: Record<AnivexaProvider, string> = {
 /** "anivexa-anineko" etc. — never shown for SUB (backup servers are DUB only). */
 export type BackupServerId = `anivexa-${AnivexaProvider}`;
 
-/** Every server the app can play: the main chain + the backup dub network. */
-export type ServerId = "zoko" | "kiwi" | BackupServerId;
+/**
+ * Megaplay's MAL-keyed embed player — the DUB iframe fallback. Megaplay
+ * carries English dubs for a huge MAL-keyed catalog, but its getSources API
+ * now answers client-side-encrypted ({"enc": ...}) payloads our resolvers
+ * can't peel — while their OWN player decrypts in the browser. When no
+ * resolvable dub exists for an episode, this server hands the episode to
+ * their embed (same pattern as the Zoko iframe fallback). DUB only.
+ */
+export const MEGAPLAY_IFRAME_SERVER = "megaplay-dub" as const;
+
+/** Every server the app can play: the main chain + the backup dub network
+ *  + the Megaplay iframe fallback. */
+export type ServerId = "zoko" | "kiwi" | BackupServerId | typeof MEGAPLAY_IFRAME_SERVER;
 
 export function isBackupServer(s: string): s is BackupServerId {
   return s.startsWith("anivexa-");
+}
+
+/** The Megaplay iframe fallback server (dub-only, embed-only). */
+export function isIframeDubServer(s: string): boolean {
+  return s === MEGAPLAY_IFRAME_SERVER;
 }
 
 export function backupProviderOf(s: BackupServerId): AnivexaProvider {

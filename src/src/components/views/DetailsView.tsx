@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import type { AnimeLite, DetailsPayload, RelatedCard } from "@/lib/types";
 import HeroBanner from "@/components/anime/HeroBanner";
 import PosterCard from "@/components/anime/PosterCard";
@@ -89,19 +90,30 @@ export default function DetailsView({
   const inList = has(anime.malId);
   const inCatalog = anime.inCatalog;
 
-  async function importAnime() {
-    setImporting(true);
+  // AUTO-IMPORT — the old "Import now" button is gone: opening a title that
+  // isn't in the catalog yet adds it automatically. Fire-and-forget POST to
+  // /api/import (which materialises every episode with its titles); the
+  // detail poll above fills the page the moment the import lands. One
+  // attempt per title per browser session so back-navigation and re-opens
+  // never spam the endpoint (the server rate-limits on top of that).
+  useEffect(() => {
+    if (initial.inCatalog) return;
+    const key = `clyle:autoimport:${initial.malId}`;
     try {
-      await fetch("/api/import", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ malId: anime.malId }),
-      });
-      window.location.reload();
-    } finally {
-      setImporting(false);
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, "1");
+    } catch {
+      /* private mode — proceed, the server rate-limit protects upstream */
     }
-  }
+    setImporting(true);
+    fetch("/api/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ malId: initial.malId }),
+    })
+      .catch(() => undefined)
+      .finally(() => setImporting(false));
+  }, [initial.malId, initial.inCatalog]);
 
   const relatedCard = (r: RelatedCard) => (
     <button
@@ -184,13 +196,16 @@ export default function DetailsView({
         ) : null}
 
         {!inCatalog ? (
-          <button
-            onClick={importAnime}
-            disabled={importing}
-            className="mt-4 w-full rounded-md bg-[#d32f2f] hover:bg-[#b71c1c] disabled:opacity-60 text-white text-[14px] font-bold py-2.5 transition"
-          >
-            {importing ? "Importing from MAL…" : "Not in catalog yet — Import now (free, instant)"}
-          </button>
+          <p className="mt-4 w-full flex items-center gap-2 rounded-md bg-[#161616] border border-[#242424] px-4 py-3 text-[12.5px] text-gray-400">
+            {importing ? (
+              <Loader2 className="w-4 h-4 shrink-0 animate-spin text-[#d32f2f]" />
+            ) : (
+              <span className="w-2 h-2 shrink-0 rounded-full bg-[#d32f2f]/80" />
+            )}
+            {importing
+              ? "Adding to the catalog — episodes, titles and details land in a moment…"
+              : "Being added to the catalog — episodes and titles load automatically"}
+          </p>
         ) : null}
 
         {/* Other Seasons */}

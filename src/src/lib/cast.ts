@@ -99,6 +99,30 @@ let autoNextEpoch = 0;
 let autoNextFiredEpoch = -1;
 let autoNextHandler: (() => void) | null = null;
 
+/* ---- automatic stream failover (the "TV can't load this stream" fix) ----
+ * When the receiver can't load/play the cast URL (CDN blocks the proxy's
+ * datacenter IP, dead gateway), don't leave the viewer staring at dead
+ * 0:00 controls with a "try Server 2" instruction — SWITCH servers for
+ * them. WatchView registers the next-server chooser below; cast.ts just
+ * fires it once per loaded media (epoch-guarded so a failing failover
+ * can't loop inside cast.ts itself). */
+let failoverHandler: ((reason: "stuck" | "media-error") => void) | null = null;
+let failoverFiredEpoch = -1;
+export function castSetFailoverHandler(fn: ((reason: "stuck" | "media-error") => void) | null): void {
+  failoverHandler = fn;
+}
+function tryFailover(reason: "stuck" | "media-error"): boolean {
+  if (currentState !== "casting" || !failoverHandler) return false;
+  if (failoverFiredEpoch === autoNextEpoch) return false; // one auto-switch per loaded media
+  failoverFiredEpoch = autoNextEpoch;
+  try {
+    failoverHandler(reason);
+  } catch {
+    /* navigation is best-effort */
+  }
+  return true;
+}
+
 /** Register the "roll into the next episode" hook (WatchView navigates; the
  * stream effect then side-loads the next episode into the live session). */
 export function castSetAutoNextHandler(fn: (() => void) | null): void {
@@ -125,7 +149,11 @@ function wireMediaErrorListener(client: any) {
     const st = statusOf(client);
     if (st?.playerState === "IDLE" && st?.idleReason === "ERROR") {
       noteTrail("receiver-media-error");
-      notifyMediaError("The TV couldn't play this stream — try another server or quality");
+      // auto-failover first — a server that dies MID-episode switches over
+      // by itself; the manual advice only appears once the walk is exhausted
+      if (!tryFailover("media-error")) {
+        notifyMediaError("The TV couldn't play this stream — try another server or quality");
+      }
     }
   });
 }
@@ -319,7 +347,12 @@ function armStuckLoadWatchdog() {
     if (Date.now() - startedAt > 12_000) {
       disarmStuckWatchdog();
       noteTrail("stuck-loading");
-      notifyMediaError("The TV can't load this stream — try Server 2, or stop casting and cast again");
+      // auto-failover: hand the walk to the next server instead of telling
+      // the user to do it — the stream effect side-loads the new stream and
+      // the TV is playing again without anyone touching the phone
+      if (!tryFailover("stuck")) {
+        notifyMediaError("The TV can't load this stream — try Server 2, or stop casting and cast again");
+      }
     }
   }, 1_000);
 }

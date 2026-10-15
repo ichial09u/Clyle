@@ -59,6 +59,31 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     if (!row) return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
+  // ---- missing-title backfill --------------------------------------------
+  // Some rows landed without a usable name (legacy list imports, partial
+  // lookups). A title-less card renders as blank strings everywhere — hero,
+  // Continue Watching, My List — so when one shows up, repair it from MAL
+  // right here (budget-raced; a dead MAL just delays the fix to a later
+  // view via the same 5-minute memo the section fallbacks use).
+  if ((!row.title?.trim() || !row.titleEnglish?.trim()) && !isJikanFallbackDead("title", malId)) {
+    const full = await Promise.race([
+      jikanOne<JikanAnime>(`/anime/${malId}/full`),
+      sleep(2_500).then(() => null),
+    ]);
+    if (full?.title) {
+      const patch: { title?: string; titleEnglish?: string } = {};
+      if (!row.title?.trim()) patch.title = full.title;
+      const english = full.title_english?.trim() || full.title;
+      if (!row.titleEnglish?.trim() && english) patch.titleEnglish = english;
+      if (Object.keys(patch).length) {
+        await db.anime.update({ where: { malId }, data: patch }).catch(() => undefined);
+        row = { ...row, ...patch } as typeof row;
+      }
+    } else {
+      markJikanFallbackDead("title", malId);
+    }
+  }
+
   const anime = lite(row);
 
   // ---- FAST PATH: pre-baked sections (ships with the DB) ----
