@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, Download, Loader2, Search, X } from "lucide-react";
+import { Download, Loader2, Search, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { artUrl } from "@/lib/art";
 import {
@@ -23,9 +23,10 @@ import {
  * What it does
  *   1. pulls the episode grid from /api/anime/{malId}/episodes (same data the
  *      player grid uses: numbers, titles, hasDub/hasSub verdicts)
- *   1b. episodes render as a vertical list with a search bar — exact number
- *      ("543"), range ("100-120") or title match — so 1000+ episode shows
- *      stay navigable (One Piece's tile grid was unusable)
+ *   1b. the horizontal 3-column poster grid stays (side-by-side cards = more
+ *      rows visible per screen) with a sticky search bar on top — exact
+ *      episode number ("543"), range ("100-120") or title match — so 1000+
+ *      episode shows stay navigable without giving up screen room
  *   2. SUB / DUB toggle gated by the anime's real availability
  *   3. quality ladder chips + an honest MB estimate (fleet-measured bitrates,
  *      not the naive 1080p≈4.5Mbps guess that scared everyone off)
@@ -272,10 +273,10 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
             </div>
           ) : (
             <>
-              {/* search — pins above its own scroll area so it stays reachable
-                  even when the list runs 1000+ rows deep */}
-              <div className="relative mt-2">
-                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+              {/* search — sticky over the grid so it stays reachable while
+                  scrolling 1000+ poster tiles deep */}
+              <div className="sticky top-0 z-10 -mx-4 px-4 pt-1 pb-2.5 bg-[#101010] border-b border-[#242424]">
+                <Search className="pointer-events-none absolute left-7 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
@@ -289,15 +290,16 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
                   <button
                     onClick={() => setQuery("")}
                     aria-label="Clear search"
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#2a2a2a] transition"
+                    className="absolute right-7 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#2a2a2a] transition"
                   >
                     <X className="w-3.5 h-3.5 text-gray-400" />
                   </button>
                 ) : null}
               </div>
 
-              {/* vertical episode list — one row per episode */}
-              <div className="flex flex-col gap-1.5 mt-2 max-h-[44vh] md:max-h-[48vh] overflow-y-auto -mx-1 px-1 py-0.5 overscroll-contain">
+              {/* poster grid — cards side by side so rows stay compact and the
+                  panel shows as many episodes as possible */}
+              <div className="grid grid-cols-3 gap-2 mt-2">
                 {filtered.map((e) => {
                   const on = picked.has(e.number);
                   const job = jobs[e.number];
@@ -305,54 +307,41 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
                     <button
                       key={e.number}
                       onClick={() => !running && toggleEp(e.number)}
-                      className={`flex items-center gap-2.5 rounded-[8px] border px-2 py-1.5 text-left transition active:scale-[0.99] ${
-                        on ? "border-[#d32f2f] bg-[#d32f2f]/[0.08]" : "border-[#242424] bg-[#161616] hover:border-[#333333]"
+                      className={`relative rounded-[6px] overflow-hidden border-2 transition active:scale-[0.97] ${
+                        on ? "border-[#d32f2f]" : "border-transparent"
                       }`}
                     >
-                      <span className="relative shrink-0">
-                        <img
-                          src={artUrl(anime.image)}
-                          alt=""
-                          loading="lazy"
-                          className="w-10 aspect-[2/3] object-cover rounded-[4px] bg-[#1a1a1a]"
-                        />
-                        {job ? (
-                          <span
-                            className={`absolute -right-1 -top-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
-                              job.state === "done"
-                                ? "bg-green-600 text-white"
-                                : job.state === "error"
-                                  ? "bg-[#d32f2f] text-white"
-                                  : "bg-black/85 text-gray-200"
-                            }`}
-                          >
-                            {job.state === "done" ? "✓" : job.state === "error" ? "!" : "…"}
-                          </span>
-                        ) : null}
+                      <img src={artUrl(anime.image)} alt="" loading="lazy" className="w-full aspect-[2/3] object-cover bg-[#1a1a1a]" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
+                      <span className="absolute left-1.5 top-1.5 bg-black/75 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                        EP {e.number}
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[12.5px] font-bold leading-tight text-gray-100">EP {e.number}</span>
-                        <span className="block text-[11px] text-gray-400 truncate leading-tight mt-0.5">
-                          {e.title || `Episode ${e.number}`}
+                      {job ? (
+                        <span
+                          className={`absolute right-1.5 top-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                            job.state === "done"
+                              ? "bg-green-600 text-white"
+                              : job.state === "error"
+                                ? "bg-[#d32f2f] text-white"
+                                : "bg-black/80 text-gray-200"
+                          }`}
+                        >
+                          {job.state === "done" ? "✓" : job.state === "error" ? "!" : "…"}
                         </span>
-                      </span>
-                      <span
-                        className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-                          on ? "border-[#d32f2f] bg-[#d32f2f]" : "border-[#3a3a3a]"
-                        }`}
-                      >
-                        {on ? <Check className="w-3 h-3 text-white" strokeWidth={3.5} /> : null}
+                      ) : null}
+                      <span className="absolute inset-x-1 bottom-1 text-[10px] text-gray-200 truncate text-left">
+                        {e.title || `Episode ${e.number}`}
                       </span>
                     </button>
                   );
                 })}
                 {!eps.length ? (
-                  <p className="text-center text-[12px] text-gray-500 py-8">
+                  <p className="col-span-3 text-center text-[12px] text-gray-500 py-8">
                     No local episodes yet — open the episodes page once to materialize the grid, then come back.
                   </p>
                 ) : null}
                 {eps.length && !filtered.length ? (
-                  <p className="text-center text-[12px] text-gray-500 py-8">
+                  <p className="col-span-3 text-center text-[12px] text-gray-500 py-8">
                     No episodes match “{query.trim()}” — try a number like 543, a range like 100-120, or a title word.
                   </p>
                 ) : null}
