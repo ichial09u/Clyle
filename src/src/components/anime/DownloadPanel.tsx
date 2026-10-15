@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Loader2, X } from "lucide-react";
+import { Check, Download, Loader2, Search, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { artUrl } from "@/lib/art";
 import {
@@ -23,6 +23,9 @@ import {
  * What it does
  *   1. pulls the episode grid from /api/anime/{malId}/episodes (same data the
  *      player grid uses: numbers, titles, hasDub/hasSub verdicts)
+ *   1b. episodes render as a vertical list with a search bar — exact number
+ *      ("543"), range ("100-120") or title match — so 1000+ episode shows
+ *      stay navigable (One Piece's tile grid was unusable)
  *   2. SUB / DUB toggle gated by the anime's real availability
  *   3. quality ladder chips + an honest MB estimate (fleet-measured bitrates,
  *      not the naive 1080p≈4.5Mbps guess that scared everyone off)
@@ -64,6 +67,7 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
   const [jobs, setJobs] = useState<Record<number, Job>>({});
   const [running, setRunning] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
   // episode grid (same endpoint the player grid uses)
@@ -88,6 +92,30 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
   const durationMin = useMemo(() => anime.durationMin || 24, [anime.durationMin]);
   const hasDub = anime.hasDub === true;
   const canRun = picked.size > 0 && !running;
+
+  /** Search filter: pure digits jump by episode number (exact match first,
+   *  then prefix hits so "10" also surfaces 100-109), "100-120" is an
+   *  inclusive range, anything else is a case-insensitive title match. */
+  const filtered = useMemo(() => {
+    const q = query.trim();
+    if (!q) return eps;
+    const range = q.match(/^(\d+)\s*[-–]\s*(\d+)$/);
+    if (range) {
+      const a = Number(range[1]);
+      const b = Number(range[2]);
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      return eps.filter((e) => e.number >= lo && e.number <= hi);
+    }
+    if (/^\d+$/.test(q)) {
+      const n = Number(q);
+      const exact = eps.filter((e) => e.number === n);
+      const rest = eps.filter((e) => e.number !== n && String(e.number).startsWith(q));
+      return [...exact, ...rest];
+    }
+    const t = q.toLowerCase();
+    return eps.filter((e) => (e.title || "").toLowerCase().includes(t));
+  }, [eps, query]);
 
   const toggleEp = (n: number) =>
     setPicked((p) => {
@@ -221,13 +249,16 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
 
           {/* episode grid */}
           <div className="flex items-center justify-between mt-3 mb-1.5">
-            <span className="text-[12px] font-bold text-gray-300">{eps.length || "—"} episodes</span>
+            <span className="text-[12px] font-bold text-gray-300">
+              {eps.length || "—"} episodes
+              {query.trim() && eps.length ? ` · ${filtered.length} shown` : ""}
+            </span>
             <div className="flex gap-2">
               <button
-                onClick={() => setPicked(new Set(eps.map((e) => e.number)))}
+                onClick={() => setPicked(new Set((query.trim() ? filtered : eps).map((e) => e.number)))}
                 className="text-[11px] text-gray-400 hover:text-white"
               >
-                Select all
+                {query.trim() ? `Select shown (${filtered.length})` : "Select all"}
               </button>
               <button onClick={() => setPicked(new Set())} className="text-[11px] text-gray-400 hover:text-white">
                 Clear
@@ -240,48 +271,93 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
               <Loader2 className="w-6 h-6 text-gray-500 animate-spin" />
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {eps.map((e) => {
-                const on = picked.has(e.number);
-                const job = jobs[e.number];
-                return (
+            <>
+              {/* search — pins above its own scroll area so it stays reachable
+                  even when the list runs 1000+ rows deep */}
+              <div className="relative mt-2">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search episode # or title — e.g. 543"
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label="Search episodes"
+                  className="w-full rounded-md bg-[#181818] border border-[#2c2c2c] pl-9 pr-9 py-2 text-[12.5px] text-gray-100 placeholder:text-gray-600 focus:outline-none focus:border-[#d32f2f]/70 transition"
+                />
+                {query ? (
                   <button
-                    key={e.number}
-                    onClick={() => !running && toggleEp(e.number)}
-                    className={`relative rounded-[6px] overflow-hidden border-2 transition active:scale-[0.97] ${
-                      on ? "border-[#d32f2f]" : "border-transparent"
-                    }`}
+                    onClick={() => setQuery("")}
+                    aria-label="Clear search"
+                    className="absolute right-1.5 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full flex items-center justify-center hover:bg-[#2a2a2a] transition"
                   >
-                    <img src={artUrl(anime.image)} alt="" loading="lazy" className="w-full aspect-[2/3] object-cover bg-[#1a1a1a]" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent" />
-                    <span className="absolute left-1.5 top-1.5 bg-black/75 text-[10px] font-bold px-1.5 py-0.5 rounded">
-                      EP {e.number}
-                    </span>
-                    {job ? (
+                    <X className="w-3.5 h-3.5 text-gray-400" />
+                  </button>
+                ) : null}
+              </div>
+
+              {/* vertical episode list — one row per episode */}
+              <div className="flex flex-col gap-1.5 mt-2 max-h-[44vh] md:max-h-[48vh] overflow-y-auto -mx-1 px-1 py-0.5 overscroll-contain">
+                {filtered.map((e) => {
+                  const on = picked.has(e.number);
+                  const job = jobs[e.number];
+                  return (
+                    <button
+                      key={e.number}
+                      onClick={() => !running && toggleEp(e.number)}
+                      className={`flex items-center gap-2.5 rounded-[8px] border px-2 py-1.5 text-left transition active:scale-[0.99] ${
+                        on ? "border-[#d32f2f] bg-[#d32f2f]/[0.08]" : "border-[#242424] bg-[#161616] hover:border-[#333333]"
+                      }`}
+                    >
+                      <span className="relative shrink-0">
+                        <img
+                          src={artUrl(anime.image)}
+                          alt=""
+                          loading="lazy"
+                          className="w-10 aspect-[2/3] object-cover rounded-[4px] bg-[#1a1a1a]"
+                        />
+                        {job ? (
+                          <span
+                            className={`absolute -right-1 -top-1 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                              job.state === "done"
+                                ? "bg-green-600 text-white"
+                                : job.state === "error"
+                                  ? "bg-[#d32f2f] text-white"
+                                  : "bg-black/85 text-gray-200"
+                            }`}
+                          >
+                            {job.state === "done" ? "✓" : job.state === "error" ? "!" : "…"}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[12.5px] font-bold leading-tight text-gray-100">EP {e.number}</span>
+                        <span className="block text-[11px] text-gray-400 truncate leading-tight mt-0.5">
+                          {e.title || `Episode ${e.number}`}
+                        </span>
+                      </span>
                       <span
-                        className={`absolute right-1.5 top-1.5 text-[9px] font-bold px-1.5 py-0.5 rounded ${
-                          job.state === "done"
-                            ? "bg-green-600 text-white"
-                            : job.state === "error"
-                              ? "bg-[#d32f2f] text-white"
-                              : "bg-black/80 text-gray-200"
+                        className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          on ? "border-[#d32f2f] bg-[#d32f2f]" : "border-[#3a3a3a]"
                         }`}
                       >
-                        {job.state === "done" ? "✓" : job.state === "error" ? "!" : "…"}
+                        {on ? <Check className="w-3 h-3 text-white" strokeWidth={3.5} /> : null}
                       </span>
-                    ) : null}
-                    <span className="absolute inset-x-1 bottom-1 text-[10px] text-gray-200 truncate text-left">
-                      {e.title || `Episode ${e.number}`}
-                    </span>
-                  </button>
-                );
-              })}
-              {!eps.length ? (
-                <p className="col-span-3 text-center text-[12px] text-gray-500 py-8">
-                  No local episodes yet — open the episodes page once to materialize the grid, then come back.
-                </p>
-              ) : null}
-            </div>
+                    </button>
+                  );
+                })}
+                {!eps.length ? (
+                  <p className="text-center text-[12px] text-gray-500 py-8">
+                    No local episodes yet — open the episodes page once to materialize the grid, then come back.
+                  </p>
+                ) : null}
+                {eps.length && !filtered.length ? (
+                  <p className="text-center text-[12px] text-gray-500 py-8">
+                    No episodes match “{query.trim()}” — try a number like 543, a range like 100-120, or a title word.
+                  </p>
+                ) : null}
+              </div>
+            </>
           )}
 
           {/* job log */}
