@@ -4,6 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Loader2, X } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
 import { artUrl } from "@/lib/art";
+import {
+  type DlStreamPayload,
+  downloadDirect,
+  downloadHls,
+  episodeFileBase,
+  estMB,
+  LADDER,
+  pickHeight,
+  proxied,
+  saveBlob,
+  saveSubtitleSrt,
+} from "@/lib/device-download";
 
 /**
  * DownloadPanel — offline download flow mounted from the details page.
@@ -18,11 +30,12 @@ import { artUrl } from "@/lib/art";
  *      (WCO/LM2 progressive encodes) or the proxied HLS variant downloaded
  *      segment-by-segment through our own /api/stream/proxy (everything stays
  *      same-origin, so fetch + progress just work) → Blob → save
- *   5. CC comes bundled with SUB: the resolved subtitle track is saved as a
- *      sidecar .vtt right after the video file
+ *   5. CC comes bundled with SUB: the resolved subtitle track is converted
+ *      VTT → SRT and saved as a sidecar right after the video file
+ *      (engine shared with the per-episode sheet: lib/device-download.ts)
  *
  * Files land in the browser's download folder as
- *   "{Show} EP{n} [{h}p].{mp4|ts}" (+ ".vtt" when subtitles ride along).
+ *   "{Show} EP{n} [{h}p].{mp4|ts}" (+ ".srt" when subtitles ride along).
  */
 
 interface EpRow {
@@ -35,131 +48,11 @@ interface EpRow {
  *  so the prop accepts the flag as an optional overlay. */
 type PanelAnime = AnimeLite & { hasDub?: boolean | null };
 
-interface StreamPayload {
-  src: string;
-  subtitles?: Array<{ lang: string; label: string; src: string }>;
-  heights?: number[];
-  qualitySrcs?: Array<{ height: number; src: string }>;
-  referer?: string;
-  pk?: string;
-  direct?: boolean;
-  provider?: string;
-  serverUsed?: string;
-}
-
 interface Job {
   ep: number;
   state: "queued" | "resolving" | "downloading" | "done" | "error" | "cancelled";
   gotBytes: number;
   error?: string;
-}
-
-/** measured-average bitrates (Mbps) — the "why was the estimate huge" fix */
-const MBPS: Record<number, number> = { 1080: 1.8, 720: 1.0, 360: 0.5 };
-const LADDER = [1080, 720, 360];
-
-const estMB = (height: number, minutes: number) =>
-  Math.round(((MBPS[height] ?? 1.0) * 7.5) * Math.max(minutes || 24, 1));
-
-const proxied = (u: string, s?: StreamPayload) =>
-  /^https?:/i.test(u) && !u.startsWith(location.origin)
-    ? `/api/stream/proxy?u=${encodeURIComponent(u)}${s?.referer ? `&rf=${encodeURIComponent(s.referer)}` : ""}${s?.pk ? `&pk=${encodeURIComponent(s.pk)}` : ""}`
-    : u;
-
-const safeName = (s: string) => s.replace(/[/\\:*?"<>|]+/g, " ").trim().slice(0, 80);
-
-function saveBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-}
-
-/** Nearest available rung on the resolved ladder for the wanted height. */
-const pickHeight = (want: number, available?: number[]) =>
-  !available?.length ? want : available.reduce((b, h) => (Math.abs(h - want) < Math.abs(b - want) ? h : b), available[0]);
-
-/** Download one progressive MP4 (through the proxy for foreign hosts). */
-async function downloadDirect(src: string, s: StreamPayload, onBytes: (n: number) => void, ctl: AbortSignal) {
-  const res = await fetch(proxied(src, s), { signal: ctl });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const reader = res.body?.getReader();
-  if (!reader) {
-    const buf = await res.arrayBuffer();
-    onBytes(buf.byteLength);
-    return new Blob([buf]);
-  }
-  const parts: BlobPart[] = [];
-  let acc = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    parts.push(value);
-    acc += value.length;
-    onBytes(acc);
-  }
-  return new Blob(parts, { type: "video/mp4" });
-}
-
-/** Download one HLS variant: master → child playlist → segments → .ts blob. */
-async function downloadHls(
-  playlistUrl: string,
-  wantHeight: number,
-  onBytes: (n: number) => void,
-  ctl: AbortSignal,
-): Promise<{ blob: Blob; height: number }> {
-  const masterRes = await fetch(playlistUrl, { signal: ctl });
-  if (!masterRes.ok) throw new Error(`playlist HTTP ${masterRes.status}`);
-  const master = await masterRes.text();
-
-  // pick the variant whose RESOLUTION height best matches the request
-  const lines = master.split("\n").map((l) => l.trim());
-  let childUrl: string | null = null;
-  let best = -1;
-  for (let i = 0; i < lines.length; i++) {
-    if (!lines[i].startsWith("#EXT-X-STREAM-INF")) continue;
-    const m = /RESOLUTION=\d+x(\d+)/.exec(lines[i]);
-    const h = m ? parseInt(m[1], 10) : 0;
-    const uri = lines[i + 1] && !lines[i + 1].startsWith("#") ? lines[i + 1] : null;
-    if (uri && (childUrl === null || Math.abs(h - wantHeight) < Math.abs(best - wantHeight))) {
-      childUrl = uri;
-      best = h;
-    }
-  }
-  if (!childUrl) {
-    // masterless playlist — the src itself is a media playlist
-    childUrl = playlistUrl;
-    best = wantHeight;
-  } else {
-    childUrl = new URL(childUrl, playlistUrl).toString();
-  }
-
-  const childRes = await fetch(childUrl, { signal: ctl });
-  if (!childRes.ok) throw new Error(`variant HTTP ${childRes.status}`);
-  const child = await childRes.text();
-
-  const segs = child
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith("#"));
-  if (!segs.length) throw new Error("no segments in playlist");
-
-  const parts: BlobPart[] = [];
-  let acc = 0;
-  for (const seg of segs) {
-    const segUrl = new URL(seg, childUrl).toString();
-    const r = await fetch(segUrl, { signal: ctl });
-    if (!r.ok) throw new Error(`segment HTTP ${r.status}`);
-    const buf = await r.arrayBuffer();
-    parts.push(buf);
-    acc += buf.byteLength;
-    onBytes(acc);
-  }
-  return { blob: new Blob(parts, { type: "video/mp2t" }), height: best };
 }
 
 export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; onClose: () => void }) {
@@ -225,9 +118,9 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
       try {
         const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${ep}&lang=${lang}`, { signal: ctl.signal });
         if (!res.ok) throw new Error(`resolve HTTP ${res.status}`);
-        const s = (await res.json()) as StreamPayload;
+        const s = (await res.json()) as DlStreamPayload;
 
-        const base = `${safeName(anime.titleEnglish || anime.title || String(anime.malId))} EP${String(ep).padStart(2, "0")}`;
+        const base = episodeFileBase(anime.titleEnglish || anime.title || String(anime.malId), ep);
         const h = pickHeight(quality, s.heights ?? s.qualitySrcs?.map((q) => q.height));
         setStatus(`Downloading EP ${ep} (${h}p)…`);
         setJob({ state: "downloading" });
@@ -251,17 +144,9 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
         }
         saveBlob(blob, `${base} [${h}p].${ext}`);
 
-        // CC bundled with SUB — sidecar subtitle next to the video
+        // CC bundled with SUB — sidecar subtitle (.srt) next to the video
         if (lang === "sub" && s.subtitles?.length) {
-          try {
-            const r = await fetch(proxied(s.subtitles[0].src, s), { signal: ctl.signal });
-            if (r.ok) {
-              const vtt = await r.text();
-              saveBlob(new Blob([vtt], { type: "text/vtt" }), `${base}.vtt`);
-            }
-          } catch {
-            /* subtitle is best-effort */
-          }
+          await saveSubtitleSrt(s.subtitles[0].src, s, base, ctl.signal);
         }
         setJob({ state: "done" });
       } catch (e) {
@@ -331,7 +216,7 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
             </div>
           </div>
           <p className="mt-2 text-[11px] text-gray-500">
-            ≈ {estMB(quality, durationMin)} MB / episode ({durationMin} min avg) · {lang === "sub" ? "CC (.vtt) bundled" : "dub audio"}
+            ≈ {estMB(quality, durationMin)} MB / episode ({durationMin} min avg) · {lang === "sub" ? "CC (.srt) bundled" : "dub audio"}
           </p>
 
           {/* episode grid */}

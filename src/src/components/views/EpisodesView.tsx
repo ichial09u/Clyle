@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, ArrowUpDown, MonitorPlay, Search, X } from "lucide-react";
+import { ArrowLeft, ArrowUpDown, Download, MonitorPlay, Search, X } from "lucide-react";
 import type { AnimeLite, EpisodesPayload } from "@/lib/types";
+import EpisodeDownloadSheet from "@/components/anime/EpisodeDownloadSheet";
 import {
   fetchServerProgress,
   getEpProgressAll,
@@ -34,6 +35,22 @@ function computeNewEpisodes(episodes: Array<{ number: number; addedAt: string }>
   return new Set(recent.map((e) => e.number));
 }
 
+/**
+ * Does a real DUB exist for THIS episode? Same truthing the server sheet
+ * uses: per-server boundary (dubThrough), proven holes (dubMissing), the
+ * anime-level verdict as fallback when the boundary was never probed, and
+ * the Anivexa backup network as the last resort.
+ */
+function dubForEpisode(d: EpisodesPayload | null, n: number): boolean {
+  if (!d) return false;
+  if ((d.dubMissing ?? []).includes(n)) return false;
+  const bt = d.dubThrough ?? { s1: null, s2: null };
+  if (bt.s1 != null && n <= bt.s1) return true;
+  if (bt.s2 != null && n <= bt.s2) return true;
+  if (bt.s1 == null && bt.s2 == null) return (d.dubServers?.length ?? 0) > 0;
+  return (d.backupDub ?? []).some((b) => (b.covered ?? []).includes(n));
+}
+
 export default function EpisodesView({
   anime,
   onBack,
@@ -49,6 +66,7 @@ export default function EpisodesView({
   const [desc, setDesc] = useState(false);
   const [filter, setFilter] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null); // episode awaiting server choice
+  const [dlEp, setDlEp] = useState<number | null>(null); // episode awaiting the download sheet
   // season dropdown (franchise entries like South Park carry every season on
   // one row) — null = flat list (payload has no seasons)
   const [seasonIdx, setSeasonIdx] = useState<number | null>(null);
@@ -158,7 +176,7 @@ export default function EpisodesView({
     }
     const idx = seasons.findIndex((s) => furthest >= s.from && furthest <= s.to);
     setSeasonIdx(idx >= 0 ? idx : 0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [loadedFor]);
 
   const newEpisodes = useMemo(
@@ -304,25 +322,38 @@ export default function EpisodesView({
             const pr = epProgress[String(n)];
             const pct = barWidth(pr);
             return (
-              <button
-                key={n}
-                onClick={() => openServerSheet(n)}
-                className="relative h-[46px] rounded-md bg-[#1c1c1c] hover:bg-[#282828] active:scale-95 transition text-[14px] font-medium overflow-hidden"
-                title={titlesByNumber.get(n) ?? `Episode ${n}${pct ? ` — ${pct}% watched` : ""}`}
-              >
-                {n}
+              <div key={n} className="relative">
+                <button
+                  onClick={() => openServerSheet(n)}
+                  className="w-full h-[46px] rounded-md bg-[#1c1c1c] hover:bg-[#282828] active:scale-95 transition text-[14px] font-medium overflow-hidden"
+                  title={titlesByNumber.get(n) ?? `Episode ${n}${pct ? ` — ${pct}% watched` : ""}`}
+                >
+                  {n}
+                  {/* accurate watch-progress bar (red), sits at the bottom of the button */}
+                  {pct > 0 ? (
+                    <span className="absolute left-[8%] right-[8%] bottom-[3px] h-[3px] rounded-full bg-white/12 overflow-hidden">
+                      <span className="block h-full bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
+                    </span>
+                  ) : null}
+                </button>
                 {newEpisodes.has(n) ? (
-                  <span className="absolute -top-1 -right-1 bg-[#d32f2f] text-[8px] font-bold px-1 py-[1px] rounded-full">
+                  <span className="absolute -top-1 -right-1 bg-[#d32f2f] text-[8px] font-bold px-1 py-[1px] rounded-full z-10">
                     NEW
                   </span>
                 ) : null}
-                {/* accurate watch-progress bar (red), sits at the bottom of the button */}
-                {pct > 0 ? (
-                  <span className="absolute left-[8%] right-[8%] bottom-[3px] h-[3px] rounded-full bg-white/12 overflow-hidden">
-                    <span className="block h-full bg-[#d32f2f] rounded-full" style={{ width: `${pct}%` }} />
-                  </span>
-                ) : null}
-              </button>
+                {/* per-episode download chip — opens the download sheet */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDlEp(n);
+                  }}
+                  className="absolute -top-1.5 -left-1.5 z-10 w-[22px] h-[22px] rounded-full bg-black/85 border border-white/15 flex items-center justify-center hover:bg-[#d32f2f] hover:border-[#d32f2f] active:scale-90 transition shadow-md"
+                  title={`Download episode ${n}`}
+                  aria-label={`Download episode ${n}`}
+                >
+                  <Download className="w-[11px] h-[11px] text-gray-200" />
+                </button>
+              </div>
             );
           })}
         </div>
@@ -471,6 +502,16 @@ export default function EpisodesView({
                     </div>
                   );
               })()}
+                {/* download handoff — the "press episode → popup → download" flow */}
+                <button
+                  onClick={() => {
+                    setDlEp(picked);
+                    setPicked(null);
+                  }}
+                  className="mt-3 w-full flex items-center justify-center gap-2 rounded-lg bg-[#1c1c1c] hover:bg-[#282828] ring-1 ring-inset ring-white/10 text-gray-100 text-[13px] font-bold py-2.5 transition active:scale-[0.98]"
+                >
+                  <Download className="w-4 h-4 text-[#ff5252]" /> Download this episode
+                </button>
                 {(() => {
                   // no DUB on this episode at all — say which kind of "not yet"
                   const bt = episodesData?.dubThrough ?? { s1: null, s2: null };
@@ -523,6 +564,19 @@ export default function EpisodesView({
           document.body,
           )
         : null}
+
+      {/* per-episode download popup — opened by the tile corner chip or the
+          server sheet's "Download this episode" (SUB/DUB + quality + .srt) */}
+      {dlEp != null ? (
+        <EpisodeDownloadSheet
+          anime={anime}
+          episode={dlEp}
+          episodeTitle={titlesByNumber.get(dlEp) ?? null}
+          dubAvailable={dubForEpisode(episodesData, dlEp)}
+          durationMin={episodesData?.durationMin ?? anime.durationMin ?? 24}
+          onClose={() => setDlEp(null)}
+        />
+      ) : null}
     </div>
   );
 }
