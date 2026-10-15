@@ -18,7 +18,7 @@ import Top50View from "@/components/views/Top50View";
 import type { Lang, ServerId } from "@/lib/zoko";
 import { isBackupServer } from "@/lib/zoko";
 import { animeFromContinue, minimalLite, readAppSettings, applySettingsToDocument } from "@/lib/client-store";
-import { runIncomingTransfer, transferIdOk, type TransferResult } from "@/lib/transfer";
+import { runIncomingTransfer, transferIdOk, parseTransferProgress, type TransferResult } from "@/lib/transfer";
 import SaveProgressBanner from "@/components/SaveProgressBanner";
 
 type View =
@@ -151,11 +151,13 @@ export default function Page() {
   }, [openAnime]);
 
   // Progress transfer handoff — a mirror site navigates here with
-  // ?migrate=<oldDeviceId>&ml=<favoriteIds>. The URL is the only channel
-  // that legally crosses the origin boundary, so this is how a stranded
-  // anonymous history follows its owner to the main site. The query is
-  // cleaned first so Back / reload can never double-run it (the copy itself
-  // is idempotent — newer-wins server-side — but one run is one toast).
+  // ?migrate=<oldDeviceId>&ml=<favoriteIds>&p=<packedHistory>. The URL is the
+  // only channel that legally crosses the origin boundary, so this is how a
+  // stranded anonymous history follows its owner to the main site — the `p`
+  // payload carries the device's FULL local history (the server copy can
+  // lag). The query is cleaned first so Back / reload can never double-run
+  // it (the copy itself is idempotent — newer-wins server-side — but one
+  // run is one toast).
   useEffect(() => {
     const sp = new URLSearchParams(window.location.search);
     const from = sp.get("migrate");
@@ -165,11 +167,12 @@ export default function Page() {
       .map((s) => parseInt(s, 10))
       .filter((n) => Number.isInteger(n) && n > 0)
       .slice(0, 150);
+    const rows = parseTransferProgress(sp.get("p"));
     window.history.replaceState(null, "", window.location.pathname);
     let alive = true;
-    runIncomingTransfer(from as string, ml)
+    runIncomingTransfer(from as string, ml, rows)
       .then((r) => {
-        if (alive && (r.copied > 0 || r.total > 0 || r.favorites > 0)) setTransfer(r);
+        if (alive && (r.copied > 0 || r.total > 0 || r.favorites > 0 || r.carried > 0)) setTransfer(r);
       })
       .catch(() => undefined);
     return () => {
@@ -323,11 +326,11 @@ export default function Page() {
           onClick={() => setTransfer(null)}
           className="fixed bottom-20 lg:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[92%] rounded-full bg-[#1d1d1d] border border-white/15 px-4 py-2.5 text-[12.5px] font-semibold text-gray-100 shadow-2xl active:scale-95 transition text-center"
         >
-          {transfer.total > 0 ? (
+          {(transfer.total > 0 || transfer.carried > 0) && transfer.copied + transfer.carried > 0 ? (
             <>
-              Restored {transfer.copied}
-              {transfer.total > transfer.copied ? ` of ${transfer.total}` : ""} episode
-              {transfer.copied === 1 ? "" : "s"} of Continue Watching
+              Restored {transfer.copied + transfer.carried}
+              {transfer.total > transfer.copied ? ` of ${transfer.total + transfer.carried}` : ""} episode
+              {transfer.copied + transfer.carried === 1 ? "" : "s"} of Continue Watching
             </>
           ) : null}
           {transfer.total > 0 && transfer.favorites > 0 ? " · " : ""}

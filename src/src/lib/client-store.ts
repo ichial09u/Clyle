@@ -555,6 +555,120 @@ export async function fetchServerProgress(malId: number): Promise<Record<string,
   }
 }
 
+/* ---------------- Transfer handoff (dump + import) ---------------- */
+
+/** One flattened progress row as it travels through the ?migrate= handoff. */
+export interface TransferProgressRow {
+  malId: number;
+  episode: number;
+  pos: number; // seconds watched
+  dur: number; // total seconds
+  lang: "sub" | "dub";
+  server: string;
+  completed: boolean;
+  total?: number; // anime total episodes snapshot
+  updatedAt: number; // epoch ms; 0 = unknown (never beats newer local rows)
+}
+
+/**
+ * Everything this device knows about watching, newest first. Detailed
+ * per-episode rows come first-class; the coarse Continue-Watching entries
+ * are folded in for anime that never produced a detailed row.
+ */
+export function getAllTransferProgress(): TransferProgressRow[] {
+  const rows: TransferProgressRow[] = [];
+  for (const [malId, eps] of Object.entries(readEpMap())) {
+    const m = Number(malId);
+    if (!Number.isInteger(m) || m <= 0) continue;
+    for (const [episode, d] of Object.entries(eps)) {
+      const ep = Number(episode);
+      if (!Number.isInteger(ep) || ep <= 0) continue;
+      rows.push({
+        malId: m,
+        episode: ep,
+        pos: d.pos,
+        dur: d.dur,
+        lang: d.lang === "dub" ? "dub" : "sub",
+        server: d.server,
+        completed: Boolean(d.completed),
+        total: d.total,
+        updatedAt: d.updatedAt,
+      });
+    }
+  }
+  for (const [malId, p] of Object.entries(getProgressMap())) {
+    const m = Number(malId);
+    if (!Number.isInteger(m) || m <= 0 || rows.some((r) => r.malId === m)) continue;
+    rows.push({
+      malId: m,
+      episode: Math.max(1, p.ep),
+      pos: 0,
+      dur: 0,
+      lang: p.lang === "dub" ? "dub" : "sub",
+      server: "zoko",
+      completed: false,
+      updatedAt: p.updatedAt,
+    });
+  }
+  return rows.sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+/**
+ * Newer-wins merge of handoff rows into the local stores so Continue
+ * Watching / resume bars appear instantly. The caller separately POSTs the
+ * same rows so they re-mirror onto this origin's server identity. Rows for
+ * tombstoned (deliberately removed) anime are skipped.
+ */
+export function importTransferProgress(
+  rows: TransferProgressRow[],
+  meta: Map<number, { title: string; image: string | null }>,
+): number {
+  if (!rows.length) return 0;
+  const epMap = readEpMap();
+  const coarse = getProgressMap();
+  let n = 0;
+  for (const r of rows) {
+    if (!Number.isInteger(r.malId) || r.malId <= 0) continue;
+    if (!Number.isInteger(r.episode) || r.episode <= 0) continue;
+    if (isProgressRemoved(r.malId)) continue;
+    const anime = (epMap[String(r.malId)] ??= {});
+    const key = String(r.episode);
+    const cur = anime[key];
+    if (cur && cur.updatedAt >= r.updatedAt) continue; // local is newer
+    const m = meta.get(r.malId);
+    anime[key] = {
+      pos: r.pos,
+      dur: r.dur,
+      completed: r.completed,
+      lang: r.lang === "dub" ? "dub" : "sub",
+      server: r.server,
+      title: m?.title,
+      image: m ? m.image : undefined,
+      total: r.total,
+      updatedAt: r.updatedAt || Date.now(),
+    };
+    const c = coarse[String(r.malId)];
+    if (!c || c.updatedAt < r.updatedAt) {
+      coarse[String(r.malId)] = {
+        ep: Math.max(1, r.episode),
+        lang: r.lang === "dub" ? "dub" : "sub",
+        updatedAt: r.updatedAt || Date.now(),
+      };
+    }
+    n++;
+  }
+  if (n) {
+    writeJson(EP_PROGRESS_KEY, epMap);
+    writeJson(PROGRESS_KEY, coarse);
+    try {
+      window.dispatchEvent(new CustomEvent("progress-changed"));
+    } catch {
+      /* ignore */
+    }
+  }
+  return n;
+}
+
 /* ---------------- Continue Watching ---------------- */
 
 /**
