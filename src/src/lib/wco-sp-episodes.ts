@@ -1,13 +1,16 @@
 /**
  * South Park — the WCO (wcostream) episode manifest, baked at import time
- * (2026-10-09, wcoflix.tv/anime/south-park + wcostream.tv mirror).
+ * (2026-10-09, wcoflix.tv/anime/south-park + wcostream.tv mirror; S29E3
+ * baked 2026-10-17 from the same pages the day it surfaced).
  *
- * Flat `number` is what the app plays (Episode.number / /api/stream ep=):
- * season-major order S1..S29, then Movies & Specials (336..338). `slug` is
- * the WCO page path (https://www.wcostream.tv/<slug>) the stream resolver
- * walks to reach the video. Season 29 is AIRING — new episodes arrive via
- * refreshWcoCatalog() (lib/wco.ts), which re-scrapes the series page and
- * appends.
+ * Flat `number` is the legacy single-entry addressing (the retired 999999
+ * aggregator still resolves by it): season-major order S1..S29, then Movies
+ * & Specials (337..339). The per-season entries (999900 + season) key on the
+ * REAL per-season number instead. `slug` is the WCO page path
+ * (https://www.wcostream.tv/<slug>) the stream resolver walks to reach the
+ * video. Season 29 is AIRING — new episodes arrive via the freshness scrape
+ * (wcoFreshEpisodes in lib/wco.ts), which re-scrapes the series page and
+ * upserts them into the Episode table keyed by their real numbers.
  */
 export interface WcoEpisode {
   number: number;
@@ -17,7 +20,7 @@ export interface WcoEpisode {
   slug: string;
 }
 
-export const WCO_SP_TOTAL = 338;
+export const WCO_SP_TOTAL = 339;
 
 /**
  * Slugs WCO can no longer serve (verified 2026-10-09 with the bot fleet):
@@ -69,8 +72,8 @@ export const WCO_SP_SEASON_RANGES: Array<{ season: number; from: number; to: num
   { season: 26, from: 318, to: 323 },
   { season: 27, from: 324, to: 329 },
   { season: 28, from: 330, to: 333 },
-  { season: 29, from: 334, to: 335 },
-  { season: 0, from: 336, to: 338 }, // Movies & Specials
+  { season: 29, from: 334, to: 336 },
+  { season: 0, from: 337, to: 339 }, // Movies & Specials
 ];
 
 export const WCO_SP_EPISODES: WcoEpisode[] = [
@@ -409,7 +412,39 @@ export const WCO_SP_EPISODES: WcoEpisode[] = [
   { number: 333, season: 28, episode: 5, title: "The Crap Out", slug: "south-park-season-28-episode-5-the-crap-out" },
   { number: 334, season: 29, episode: 1, title: "South American Biker Gangs", slug: "south-park-season-29-episode-1-south-american-biker-gangs" },
   { number: 335, season: 29, episode: 2, title: "Billionaire Weenietown", slug: "south-park-season-29-episode-2-billionaire-weenietown" },
-  { number: 336, season: null, episode: null, title: "Special: Streaming Wars Part 2", slug: "south-park-streaming-wars-part-2" },
-  { number: 337, season: null, episode: null, title: "Special: Streaming Wars", slug: "south-park-streaming-wars" },
-  { number: 338, season: null, episode: null, title: "Movie: Bigger, Longer & Uncut", slug: "south-park-bigger-longer-uncut" },
+  { number: 336, season: 29, episode: 3, title: "You Like That On Your Face", slug: "south-park-season-29-episode-3-you-like-that-on-your-face" },
+  { number: 337, season: null, episode: null, title: "Special: Streaming Wars Part 2", slug: "south-park-streaming-wars-part-2" },
+  { number: 338, season: null, episode: null, title: "Special: Streaming Wars", slug: "south-park-streaming-wars" },
+  { number: 339, season: null, episode: null, title: "Movie: Bigger, Longer & Uncut", slug: "south-park-bigger-longer-uncut" },
 ];
+
+/**
+ * Season 29's real broadcast schedule — Comedy Central drops new episodes
+ * biweekly Wednesdays 10pm ET (TVmaze show 112, fetched 2026-10-17; the
+ * airstamp is the exact instant TVmaze publishes, 02:00Z during EDT /
+ * 03:00Z after the November DST flip). The live TVmaze lookup in lib/wco.ts
+ * is primary; this table is the offline fallback so the "next episode"
+ * countdown keeps working even when the API is unreachable. New drops:
+ * append the row the week it's announced (title TBA is fine — only the
+ * instant matters).
+ */
+export const WCO_SP_AIR_SCHEDULE: ReadonlyArray<{ season: number; episode: number; airAtSec: number }> = [
+  { season: 29, episode: 1, airAtSec: 1789610400 }, // 2026-09-16 10pm ET
+  { season: 29, episode: 2, airAtSec: 1790820000 }, // 2026-09-30 10pm ET
+  { season: 29, episode: 3, airAtSec: 1792029600 }, // 2026-10-14 10pm ET — "You Like That On Your Face"
+  { season: 29, episode: 4, airAtSec: 1793239200 }, // 2026-10-28 10pm ET
+  { season: 29, episode: 5, airAtSec: 1794452400 }, // 2026-11-11 10pm ET
+  { season: 29, episode: 6, airAtSec: 1795662000 }, // 2026-11-25 10pm ET
+];
+
+/**
+ * The soonest still-future airing at or after `fromEpisode` (the helper
+ * only looks FORWARD — past entries can't feed a countdown). Returns the
+ * season-29 row the "next episode" timer should point at, or null when the
+ * baked schedule is exhausted.
+ */
+export function wcoSpNextAiring(fromEpisode: number, nowSec: number = Math.floor(Date.now() / 1000)): { season: number; episode: number; airAtSec: number } | null {
+  const future = WCO_SP_AIR_SCHEDULE.filter((r) => r.episode >= fromEpisode && r.airAtSec > nowSec);
+  if (!future.length) return null;
+  return future.reduce((a, b) => (a.airAtSec <= b.airAtSec ? a : b));
+}

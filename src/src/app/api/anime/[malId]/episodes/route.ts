@@ -67,50 +67,65 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     });
     const total = episodes.length > 0 ? episodes[episodes.length - 1].number : anime.totalEpisodes;
 
-    // background refresh (10-min GLOBAL memo): one re-scrape of the WCO
+    // background refresh (10-min GLOBAL memo): (1) one re-scrape of the WCO
     // series page, with each new episode routed to its OWN entry — the
     // airing S29 (999929) keyed by its real episode number, brand-new
-    // specials appended to Movies & Specials (999900)
+    // specials appended to Movies & Specials (999900); (2) the next-episode
+    // timer — TVmaze's schedule (baked-table fallback) written onto 999929
+    // so the airing season gets the same countdown surfaces as the animes
     const wcoMemo = Date.now() - (lastFreshRun.get(0) ?? 0) < FRESHNESS_MEMO_MS;
     if (!wcoMemo) {
       lastFreshRun.set(0, Date.now());
       after(async () => {
         try {
-          const { wcoFreshEpisodes } = await import("@/lib/wco");
+          const { wcoFreshEpisodes, wcoNextAiring } = await import("@/lib/wco");
           const fresh = await wcoFreshEpisodes();
-          if (!fresh.length) return;
-          const touched = new Map<number, number>();
-          let nextSpecial = -1;
-          for (const f of fresh) {
-            if (f.season != null && f.season >= 1 && f.season <= 29 && f.episode != null) {
-              const target = 999900 + f.season;
-              await db.episode.upsert({
-                where: { animeId_number_lang: { animeId: target, number: f.episode, lang: "sub" } },
-                update: { title: f.title, slug: f.slug },
-                create: { animeId: target, number: f.episode, title: f.title, slug: f.slug, lang: "sub" },
-              });
-              touched.set(target, Math.max(touched.get(target) ?? 0, f.episode));
-            } else {
-              // a new special/movie — append to the Movies & Specials entry
-              if (nextSpecial < 0) {
-                const last = await db.episode.findFirst({
-                  where: { animeId: 999900, lang: "sub" },
-                  orderBy: { number: "desc" },
-                  select: { number: true },
+          if (fresh.length) {
+            const touched = new Map<number, number>();
+            let nextSpecial = -1;
+            for (const f of fresh) {
+              if (f.season != null && f.season >= 1 && f.season <= 29 && f.episode != null) {
+                const target = 999900 + f.season;
+                await db.episode.upsert({
+                  where: { animeId_number_lang: { animeId: target, number: f.episode, lang: "sub" } },
+                  update: { title: f.title, slug: f.slug },
+                  create: { animeId: target, number: f.episode, title: f.title, slug: f.slug, lang: "sub" },
                 });
-                nextSpecial = (last?.number ?? 0) + 1;
+                touched.set(target, Math.max(touched.get(target) ?? 0, f.episode));
+              } else {
+                // a new special/movie — append to the Movies & Specials entry
+                if (nextSpecial < 0) {
+                  const last = await db.episode.findFirst({
+                    where: { animeId: 999900, lang: "sub" },
+                    orderBy: { number: "desc" },
+                    select: { number: true },
+                  });
+                  nextSpecial = (last?.number ?? 0) + 1;
+                }
+                await db.episode.upsert({
+                  where: { animeId_number_lang: { animeId: 999900, number: nextSpecial, lang: "sub" } },
+                  update: { title: f.title, slug: f.slug },
+                  create: { animeId: 999900, number: nextSpecial, title: f.title, slug: f.slug, lang: "sub" },
+                });
+                touched.set(999900, nextSpecial);
+                nextSpecial += 1;
               }
-              await db.episode.upsert({
-                where: { animeId_number_lang: { animeId: 999900, number: nextSpecial, lang: "sub" } },
-                update: { title: f.title, slug: f.slug },
-                create: { animeId: 999900, number: nextSpecial, title: f.title, slug: f.slug, lang: "sub" },
-              });
-              touched.set(999900, nextSpecial);
-              nextSpecial += 1;
+            }
+            for (const [id, max] of touched) {
+              await db.anime.update({ where: { malId: id }, data: { totalEpisodes: max } }).catch(() => undefined);
             }
           }
-          for (const [id, max] of touched) {
-            await db.anime.update({ where: { malId: id }, data: { totalEpisodes: max } }).catch(() => undefined);
+          // the countdown: next unaired S29 episode (live TVmaze, baked
+          // fallback) → Anime.nextEpisodeAt/Num. Compared before writing so
+          // the common case is a no-op; once an episode airs and imports,
+          // the lookup naturally advances to the following drop.
+          const next = await wcoNextAiring();
+          const nextAt = next?.airAtSec ?? null;
+          const nextNum = next?.episode ?? null;
+          if (anime.nextEpisodeAt !== nextAt || anime.nextEpisodeNum !== nextNum) {
+            await db.anime
+              .update({ where: { malId: 999929 }, data: { nextEpisodeAt: nextAt, nextEpisodeNum: nextNum } })
+              .catch(() => undefined);
           }
         } catch {
           /* background best-effort */
@@ -125,6 +140,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       airing: anime.airing,
       durationMin: anime.durationMin,
       total,
+      // the airing season's countdown (the animes' NEXT EPISODE pill food):
+      // null on every finished season, E4's air time on 999929
+      nextEpisodeAt: anime.nextEpisodeAt,
+      nextEpisodeNum: anime.nextEpisodeNum,
       // per-season entries can have number gaps (S28 starts at 2 — WCO never
       // carried S28E1): the grid renders EXACTLY these numbers instead of a
       // contiguous 1..total range. Absent for every other show.

@@ -29,7 +29,7 @@
 import { execFile } from "node:child_process";
 import { db } from "@/lib/db";
 import { WCO_NODES_PRIMARY, WCO_NODES_REST } from "@/lib/stream-proxy-registry";
-import { WCO_SP_EPISODES, WCO_SP_SEASON_RANGES, WCO_SP_TOTAL, WCO_SP_DEAD_SLUGS, type WcoEpisode } from "@/lib/wco-sp-episodes";
+import { WCO_SP_EPISODES, WCO_SP_SEASON_RANGES, WCO_SP_TOTAL, WCO_SP_DEAD_SLUGS, wcoSpNextAiring, type WcoEpisode } from "@/lib/wco-sp-episodes";
 
 const SITE = "https://www.wcostream.tv";
 const EMBED_BASE = "https://embed.wcostream.com";
@@ -370,6 +370,70 @@ export async function wcoFreshEpisodes(): Promise<WcoEpisode[]> {
     }
   }
   return fresh;
+}
+
+/**
+ * ---- the Season-29 "next episode" timer ----------------------------------
+ * South Park has no AniList row, so the field that feeds every anime
+ * countdown (Anime.nextEpisodeAt) used to stay null and the airing season
+ * never got the "NEXT EPISODE · EP n · …" pill the animes have. TVmaze
+ * carries the real Comedy Central schedule (show 112, exact airstamps,
+ * future drops included while titles are still TBA), so the freshness
+ * pass reads the next unaired S29 episode from there and writes it onto
+ * the 999929 row — after which every surface an animes' timer lives on
+ * (detail hero pill, Top Airing ordering, the 3-day card badge) lights up
+ * for free. The baked schedule in wco-sp-episodes.ts is the offline
+ * fallback; a failed lookup changes nothing.
+ * -----------------------------------------------------------------------
+ */
+
+interface TvmazeEp {
+  season: number;
+  number: number | null;
+  airstamp: string | null; // ISO instant, e.g. 2026-10-29T02:00:00+00:00
+}
+
+const TVMAZE_SP_URL = "https://api.tvmaze.com/singlesearch/shows?q=south%20park&embed=episodes";
+const TVMAZE_TTL_MS = 6 * 3600_000; // schedule data is stable — one call per 6h per instance
+const TVMAZE_RETRY_MS = 30 * 60_000; // after a failure, retry sooner
+let tvmazeNext: { at: number; next: { episode: number; airAtSec: number } | null } | null = null;
+
+/**
+ * The next still-future Season-29 airing: TVmaze live first, baked schedule
+ * as fallback. Never throws; the result feeds Anime.nextEpisodeAt/Num on
+ * the airing-season row (999929).
+ */
+export async function wcoNextAiring(): Promise<{ episode: number; airAtSec: number } | null> {
+  if (tvmazeNext && Date.now() - tvmazeNext.at < (tvmazeNext.next ? TVMAZE_TTL_MS : TVMAZE_RETRY_MS)) {
+    return tvmazeNext.next;
+  }
+  try {
+    const res = await fetch(TVMAZE_SP_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(8_000),
+      cache: "no-store",
+    });
+    if (res.ok) {
+      const data = (await res.json()) as { _embedded?: { episodes?: TvmazeEp[] } };
+      const eps = data._embedded?.episodes ?? [];
+      const nowSec = Math.floor(Date.now() / 1000);
+      const future = eps
+        .filter((e) => e.season === 29 && e.number != null && e.airstamp)
+        .map((e) => ({ episode: e.number as number, airAtSec: Math.floor(Date.parse(e.airstamp as string) / 1000) }))
+        .filter((e) => Number.isFinite(e.airAtSec) && e.airAtSec > nowSec)
+        .sort((a, b) => a.airAtSec - b.airAtSec);
+      // live wins; when TVmaze's tail is exhausted (season over) fall through
+      // to the baked table in case it knows a drop the API no longer lists
+      const next = future[0] ?? wcoSpNextAiring(0);
+      tvmazeNext = { at: Date.now(), next };
+      return next;
+    }
+  } catch {
+    /* network/API hiccup — use the baked schedule below */
+  }
+  const next = wcoSpNextAiring(0);
+  tvmazeNext = { at: Date.now(), next };
+  return next;
 }
 
 export { WCO_SP_TOTAL };

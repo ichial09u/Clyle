@@ -1,17 +1,27 @@
 /**
- * Import South Park (MAL 2304) — the one-entry franchise (Pokémon-tile
- * pattern): a single Anime row carrying ALL seasons + the movie + the
- * specials (338 playable items), TMDB poster art, the owner-supplied
- * wooden-sign logo + town-sign banner, and an empty DetailCache row so the
- * details page answers pending:false instantly (South Park has no AniList
- * mapping — without the row the details route would poll forever).
- *
- * Playback flows through lib/wco.ts (Anime.source = "wco").
+ * RETIRED — do not run. This script seeds the OLD single-entry aggregator
+ * (malId 999999, flat episode numbers 1..338+). Task 27 split the franchise
+ * into per-season entries (999900 = Movies & Specials, 999901..999929 =
+ * Seasons 1..29) keyed by their REAL per-season numbers; re-running this
+ * would resurrect the retired 999999 catalog row and pollute the genre
+ * grid. Episode data now flows from lib/wco-sp-episodes.ts (baked manifest)
+ * + the freshness scrape in the episodes API; see scripts/sp-s29e3.mjs for
+ * the per-season baking pattern.
  *
  * Usage: DATABASE_URL=file:<src>/db/custom.db node scripts/import-south-park.mjs
  * Idempotent — safe to re-run (upserts).
  */
 import { PrismaClient } from "@prisma/client";
+
+if (!process.env.SP_LEGACY_IMPORT) {
+  console.error(
+    "[south-park] RETIRED: this legacy single-entry import would resurrect the retired 999999 aggregator row.\n" +
+      "Per-season data comes from lib/wco-sp-episodes.ts + the freshness scrape; per-season baking lives in scripts/sp-s29e3.mjs.\n" +
+      "(Set SP_LEGACY_IMPORT=1 if you truly need the legacy behaviour.)",
+  );
+  process.exit(1);
+}
+
 
 const TMDB_KEY = "da679b1021912724c1ed572201e2864c";
 const MAL_ID = 999999; // synthetic id — outside MAL range; the real 2304 is SD Gundam Mk-IV
