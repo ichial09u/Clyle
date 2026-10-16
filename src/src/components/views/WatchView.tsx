@@ -95,6 +95,14 @@ export default function WatchView({
   // effect clear it when the viewer leaves Megaplay without touching the
   // MANUAL "Use Zoko player" pick (which must stick until its own change)
   const megaplayIframeRef = useRef(false);
+  // Megaplay embed pre-flight verdict: Megaplay's catalog ROTS (takedowns
+  // delete files, whole shows get unmapped) and the viewer used to sit on
+  // their 410 error page inside the iframe with no way out (Bleach TYBW
+  // Calamity ep 8). A definitive server-side "dead" swaps the embed for an
+  // honest card with a Play-SUB exit. null/unknown = the embed stays.
+  const [megaplayDead, setMegaplayDead] = useState(false);
+  // retry nonce — "Try again" on the dead-embed card re-runs the pre-flight
+  const [embedNonce, setEmbedNonce] = useState(0);
   // does this title have a REAL English dub? (null = still asking).
   // The server /api/stream also validates every dub play, so a stale value
   // can never put Japanese audio under a DUB label — this only drives the UI.
@@ -940,12 +948,14 @@ export default function WatchView({
       megaplayIframeRef.current = true;
       setStream(null);
       setStreamError(false);
+      setMegaplayDead(false);
       setIframeFallback(true);
       return;
     }
     if (megaplayIframeRef.current) {
       megaplayIframeRef.current = false; // leaving the Megaplay embed
       setIframeFallback(false);
+      setMegaplayDead(false);
     }
     // a staged seek is only valid for the episode it was staged on — without
     // this guard a failed SUB↔DUB toggle left the spot staged and pressing
@@ -1038,6 +1048,33 @@ export default function WatchView({
       cancelled = true;
     };
   }, [anime.malId, episode, lang, server]);
+
+  /* -------- Megaplay embed pre-flight --------
+     The embed server skips /api/stream entirely, so nothing used to notice
+     when Megaplay's copy was gone — the viewer met their 410 page INSIDE the
+     iframe. This asks the server-side verdict (24h cached) while the embed
+     mounts; a definitive "dead" swaps it for the honest card below. null
+     (network trouble / encrypted payload) never blocks the embed. */
+  useEffect(() => {
+    if (server !== MEGAPLAY_IFRAME_SERVER) return;
+    let dead = false;
+    // "Try again" bumps embedNonce — retries must BYPASS the server's 24h
+    // verdict cache or a recovered episode would still answer dead instantly
+    const fresh = embedNonce > 0 ? "&fresh=1" : "";
+    fetch(`/api/anime/${anime.malId}/megaplay-embed?ep=${episode}${fresh}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ok?: boolean | null } | null) => {
+        if (dead) return;
+        if (d && d.ok === false) {
+          setIframeFallback(false);
+          setMegaplayDead(true);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      dead = true;
+    };
+  }, [anime.malId, episode, server, embedNonce]);
 
   /* -------- keep the CAST url fresh (WCO evids expire) --------
      The TV fetches through our proxy, and a pinned getvid evid dies after a
@@ -2392,6 +2429,42 @@ export default function WatchView({
           </div>
         ) : null}
 
+        {/* Megaplay embed pre-flight said dead: the file was taken down or
+            the show got unmapped — an honest exit instead of Megaplay's own
+            410 "removed due a copyright violation" page */}
+        {megaplayDead && !casting ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
+            <p className="text-[13px] text-gray-300">
+              Megaplay doesn&rsquo;t have this episode&rsquo;s English DUB right now
+              (taken down or not uploaded yet).
+            </p>
+            <div className="flex gap-2">
+              {!dubOnly ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEpisodeChange(episode, "sub", "zoko");
+                  }}
+                  className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+                >
+                  Play SUB
+                </button>
+              ) : null}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setMegaplayDead(false);
+                  setIframeFallback(true);
+                  setEmbedNonce((n) => n + 1);
+                }}
+                className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+              >
+                Try again
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {streamError && !casting && !iframeFallback ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
             <p className="text-[13px] text-gray-300">
@@ -2432,6 +2505,48 @@ export default function WatchView({
                 Use Zoko player
               </button>
             </div>
+          </div>
+        ) : null}
+
+        {/* embed escape hatch — third-party embeds rot (takedowns delete
+            files after the page was served) and the pre-flight can't catch
+            every case. A viewer staring at the embed's own error page gets
+            a one-tap exit: a backup DUB server when one covers the episode,
+            else the SUB. Always visible (it must work even with the player
+            chrome hidden); tiny enough to ignore while playback is fine. */}
+        {iframeFallback && !casting && !megaplayDead && !dubOnly ? (
+          <div className="absolute bottom-[4.75rem] left-1/2 -translate-x-1/2 z-20 flex items-center gap-2 bg-black/75 backdrop-blur rounded-full pl-3 pr-1.5 py-1.5 whitespace-nowrap max-w-[92%]">
+            {(() => {
+              const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
+              const isMega = server === MEGAPLAY_IFRAME_SERVER;
+              const label = b
+                ? `DUB also on ${b.name}`
+                : isMega
+                  ? "Megaplay not playing?"
+                  : "Player not working?";
+              return (
+                <>
+                  <span className="text-[11px] text-gray-200 truncate">{label}</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (b) {
+                        stageSpot();
+                        showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
+                        onEpisodeChange(episode, "dub", b.server as ServerId);
+                      } else if (isMega) {
+                        onEpisodeChange(episode, "sub", "zoko");
+                      } else {
+                        switchServer("kiwi");
+                      }
+                    }}
+                    className="text-[11px] font-bold text-[#ff8a80] hover:text-white bg-white/10 hover:bg-[#d32f2f] rounded-full px-2.5 py-1 transition shrink-0"
+                  >
+                    {b ? `Try ${b.name}` : isMega ? "Switch to SUB" : "Try Kiwi"}
+                  </button>
+                </>
+              );
+            })()}
           </div>
         ) : null}
 

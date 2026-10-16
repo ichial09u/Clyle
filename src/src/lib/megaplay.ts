@@ -315,6 +315,124 @@ export async function verifyRealMegaplayDub(malId: number, ep: number): Promise<
   }
 }
 
+/* ---- embed pre-flight (dead-embed gate) --------------------------------
+
+ * The "DUB Megaplay" button hands the episode to megaplay.buzz's own embed
+ * player — and their catalog ROTS: takedowns delete files (the embed then
+ * shows their own 410 "removed due a copyright violation" page) and whole
+ * shows get unmapped (the /stream/mal/ route answers their 404 template).
+ * Either way the viewer was stranded inside a cross-origin iframe with no
+ * way out. This check runs BEFORE the embed renders:
+ *   false = DEFINITIVE dead embed — the page doesn't resolve to a data-id
+ *           (show unmapped), or a plaintext sources.file verifies as the
+ *           ad-stub playlist (file gone / fake)
+ *   true  = mapped (and no definitive proof the file is dead — their
+ *           client-side-encrypted payloads can't be liveness-checked, but
+ *           their own player decrypts those in-browser, so mapped = playable)
+ *   null  = couldn't tell right now (network) — never cached, optimistic
+ */
+type EmbedVerdictEntry = { data: boolean; expires: number };
+const embedVerdicts = new Map<string, EmbedVerdictEntry>();
+
+function embedCheckKey(malId: number, ep: number): string {
+  return `embedcheck/${malId}/${ep}`;
+}
+
+async function cacheEmbedVerdict(key: string, verdict: boolean): Promise<void> {
+  const entry: EmbedVerdictEntry = { data: verdict, expires: Date.now() + DUB_CHECK_TTL_MS };
+  embedVerdicts.set(key, entry);
+  await diskWrite(key, entry);
+}
+
+const embedInFlight = new Map<string, Promise<boolean | null>>();
+
+/**
+ * Does Megaplay's MAL-keyed embed actually have this episode's dub page?
+ * One cheap page fetch decides most cases (mapped vs unmapped); when the
+ * page maps AND getSources answers plaintext we additionally verify the
+ * file isn't the ad-stub playlist. Never blocks: any trouble -> null.
+ */
+export async function verifyMegaplayEmbed(
+  malId: number,
+  ep: number,
+  opts: { fresh?: boolean } = {},
+): Promise<boolean | null> {
+  const key = embedCheckKey(malId, ep);
+  if (!opts.fresh) {
+    const mem = embedVerdicts.get(key);
+    if (mem && mem.expires > Date.now()) return mem.data;
+    const disk = (await diskRead<EmbedVerdictEntry>(key)) as EmbedVerdictEntry | null;
+    if (disk && disk.expires > Date.now() && typeof disk.data === "boolean") {
+      embedVerdicts.set(key, disk);
+      return disk.data;
+    }
+  }
+
+  const existing = embedInFlight.get(key);
+  if (existing) return existing;
+
+  const job = (async () => {
+    try {
+      // 1. the embed page must resolve to a per-episode data-id — an OK
+      //    response WITHOUT one is megaplay's 404 template (show unmapped)
+      const page = await fetch(`${MEGAPLAY_BUZZ}/stream/mal/${malId}/${ep}/dub`, {
+        headers: { "User-Agent": UA, Referer: MEGAPLAY_REFERER, Accept: "text/html" },
+        cache: "no-store",
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!page.ok) {
+        await cacheEmbedVerdict(key, false);
+        return false;
+      }
+      const html = await page.text();
+      const m = html.match(/data-id="(\d+)"/);
+      if (!m) {
+        await cacheEmbedVerdict(key, false);
+        return false;
+      }
+      // 2. mapped — a PLAINTEXT sources.file can still be the dead/ad-stub
+      //    file; an encrypted payload is their own player's job (it decrypts
+      //    in the browser), so mapped-but-encrypted stays optimistic-true
+      try {
+        const srcRes = await fetch(`${MEGAPLAY_BUZZ}/stream/getSources?id=${m[1]}&type=dub`, {
+          headers: {
+            "User-Agent": UA,
+            Referer: MEGAPLAY_REFERER,
+            Accept: "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(12_000),
+        });
+        if (srcRes.ok) {
+          const json = (await srcRes.json()) as {
+            sources?: { file?: string };
+            enc?: string;
+          };
+          if (json?.sources?.file) {
+            const count = await realSegmentCount(json.sources.file).catch(() => null);
+            if (count != null) {
+              const real = count >= 3; // a real episode has hundreds; stubs have 0
+              await cacheEmbedVerdict(key, real);
+              return real;
+            }
+          }
+        }
+      } catch {
+        /* getSources trouble — the mapping is what we know: mapped = show it */
+      }
+      await cacheEmbedVerdict(key, true);
+      return true;
+    } catch {
+      return null; // network trouble — never cached, never blocks the embed
+    } finally {
+      embedInFlight.delete(key);
+    }
+  })();
+  embedInFlight.set(key, job);
+  return job;
+}
+
 /** Per-anime probe used by the episodes route (verdict at ep 1). */
 export async function probeMegaplayDub(malId: number, ep = 1): Promise<boolean | null> {
   return verifyRealMegaplayDub(malId, ep);

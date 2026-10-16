@@ -67,6 +67,12 @@ export default function EpisodesView({
   const [filter, setFilter] = useState<string | null>(null);
   const [picked, setPicked] = useState<number | null>(null); // episode awaiting server choice
   const [dlEp, setDlEp] = useState<number | null>(null); // episode awaiting the download sheet
+  // Megaplay embed pre-flight verdict for the OPEN server sheet's episode:
+  // Megaplay's catalog rots (takedowns delete files / unmapped shows) and
+  // the last-resort "DUB Megaplay" button used to hand the viewer straight
+  // to their 410 error page. A definitive false hides the button live.
+  // null = unchecked/unknown — optimistic, matching pre-verdict behavior.
+  const [megaVerdict, setMegaVerdict] = useState<boolean | null>(null);
   // season dropdown (franchise entries like South Park carry every season on
   // one row) — null = flat list (payload has no seasons)
   const [seasonIdx, setSeasonIdx] = useState<number | null>(null);
@@ -133,6 +139,43 @@ export default function EpisodesView({
   }, [anime.malId]);
 
   const episodesData = loadedFor === anime.malId ? data : null;
+
+  // Megaplay embed pre-flight for the open server sheet — only fires when
+  // the sheet's last-resort Megaplay button would show (main chain can't
+  // dub the episode and no backup covers it). 24h-cached server verdict;
+  // network trouble -> null -> the button stays optimistic.
+  useEffect(() => {
+    if (picked == null) {
+      setMegaVerdict(null);
+      return;
+    }
+    const bt = episodesData?.dubThrough ?? { s1: null, s2: null };
+    const missing = episodesData?.dubMissing ?? [];
+    const animeLevel = episodesData?.dubServers ?? ["zoko", "kiwi"];
+    const canDub =
+      !missing.includes(picked) &&
+      (["zoko", "kiwi"] as const).some((s) => {
+        const thru = s === "zoko" ? bt.s1 : bt.s2;
+        return thru != null ? picked <= thru : animeLevel.includes(s);
+      });
+    const backupsCover = (episodesData?.backupDub ?? []).some((b) =>
+      (b.covered ?? []).includes(picked),
+    );
+    setMegaVerdict(null);
+    if (canDub || backupsCover) return; // Megaplay button never shows here
+    let dead = false;
+    fetch(`/api/anime/${anime.malId}/megaplay-embed?ep=${picked}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { ok?: boolean | null } | null) => {
+        if (!dead) setMegaVerdict(d && typeof d.ok === "boolean" ? d.ok : null);
+      })
+      .catch(() => {
+        if (!dead) setMegaVerdict(null);
+      });
+    return () => {
+      dead = true;
+    };
+  }, [picked, episodesData, anime.malId]);
 
   const numbers = useMemo(() => {
     // per-season WCO entries (South Park) ship the EXACT numbers to render —
@@ -443,7 +486,7 @@ export default function EpisodesView({
                   // episode's dub, Megaplay's MAL-keyed player usually still
                   // carries it (their player decrypts client-side, so it
                   // works where stream extraction can't). DUB only, last.
-                  const showMegaplay = !mainCanDub && backups.length === 0;
+                  const showMegaplay = !mainCanDub && backups.length === 0 && megaVerdict !== false;
                   const allWithBackups: Array<{ lang: Lang; server: ServerId }> = [
                     ...all,
                     ...backups.map((b) => ({ lang: "dub" as Lang, server: b.server as ServerId })),
@@ -542,6 +585,7 @@ export default function EpisodesView({
                   // the Megaplay embed button means a dub MIGHT still play —
                   // word the notice around it instead of "no dub at all"
                   const megaplayShown =
+                    megaVerdict !== false &&
                     !backupCovers &&
                     !((episodesData?.dubMissing ?? []).includes(picked!)
                       ? false
