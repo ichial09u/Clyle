@@ -7,7 +7,7 @@ import {
   Check, Play, Pause, Maximize, Minimize, Subtitles, Zap, Cast, RotateCcw, RotateCw, FastForward, Settings,
 } from "lucide-react";
 import type { AnimeLite } from "@/lib/types";
-import { zokoPlayerUrl, megaplayPlayerUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupServerName, MEGAPLAY_IFRAME_SERVER } from "@/lib/zoko";
+import { zokoPlayerUrl, megaplayPlayerUrl, estimateSizeMB, type Lang, type ServerId, isBackupServer, backupServerName, backupServerLangs, MEGAPLAY_IFRAME_SERVER, MEGAFLIX_IFRAME_SERVER, isIframeServer, isAniweebServer, ANIWEEB_SERVER_NAMES, ANIWEEB_SUBDUB_SERVERS } from "@/lib/zoko";
 import { ANIVEXA_PROVIDERS, backupServerId } from "@/lib/backup-servers";
 import { setProgress, getEpProgress, fetchServerProgress, saveProgressDetailed, recordWatchSeconds, setLangPref, clearProgressTombstone, useAppSettings, updateAppSettings } from "@/lib/client-store";
 import {
@@ -102,6 +102,10 @@ export default function WatchView({
   // Calamity ep 8). A definitive server-side "dead" swaps the embed for an
   // honest card with a Play-SUB exit. null/unknown = the embed stays.
   const [megaplayDead, setMegaplayDead] = useState(false);
+  // which embed died ("Megaplay" | "MegaFlix") — the dead-embed card names it
+  const [deadEmbedName, setDeadEmbedName] = useState("Megaplay");
+  // MegaFlix's resolved embed URL (AniList-keyed; from the pre-flight route)
+  const [megaflixUrl, setMegaflixUrl] = useState<string | null>(null);
   // retry nonce — "Try again" on the dead-embed card re-runs the pre-flight
   const [embedNonce, setEmbedNonce] = useState(0);
   // does this title have a REAL English dub? (null = still asking).
@@ -949,15 +953,17 @@ export default function WatchView({
         return;
       }
     }
-    // MEGAPLAY IFRAME SERVER — no resolve call at all: their embed player
-    // carries dubs our resolvers can't extract (client-side-encrypted
-    // getSources), so the episode hands straight to their MAL-keyed page
-    // inside the sandboxed iframe (same chrome as the Zoko fallback).
-    if (server === MEGAPLAY_IFRAME_SERVER) {
+    // MEGAPLAY / MEGAFLIX IFRAME SERVERS — no resolve call at all: their
+    // embed players carry episodes our resolvers can't extract (Megaplay's
+    // client-side-encrypted getSources; MegaFlix's NL-gated edge), so the
+    // episode hands straight to their embed page inside the sandboxed iframe
+    // (same chrome as the Zoko fallback).
+    if (isIframeServer(server)) {
       megaplayIframeRef.current = true;
       setStream(null);
       setStreamError(false);
       setMegaplayDead(false);
+      if (server === MEGAFLIX_IFRAME_SERVER) setMegaflixUrl(null); // refetch on entry
       setIframeFallback(true);
       return;
     }
@@ -983,22 +989,13 @@ export default function WatchView({
       try {
         const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}`);
         if (!res.ok) {
-          // A DUB resolve failure never falls straight to SUB — the catch
-          // below walks the whole DUB chain (other main server → Anivexa
-          // backups → Megaplay embed) and SUB is its honest last resort.
-          // SUB failures keep the ONE-SHOT dub flip for Pokémon-class
-          // DUB-ONLY titles whose sub pages are shells; the guard makes a
-          // both-sides-dead title unable to ping-pong forever.
-          const guardKey = `${anime.malId}:${episode}`;
-          if (lang === "dub") throw new Error("unavailable");
-          if (fallbackTriedRef.current !== guardKey) {
-            fallbackTriedRef.current = guardKey;
-            if (lang === "sub" && ((dubServers?.length ?? 0) > 0 || (backupDub?.length ?? 0) > 0)) {
-              showPlayerMsg("No SUB available for this title — DUB only", 8_000);
-              setLang("dub");
-              return;
-            }
-          }
+          // ANY main-server 404 walks its language chain (the catch below):
+          // DUB has the full backup chain; SUB walks the other main server —
+          // the /api/stream route itself already gap-filled the Aniweeb
+          // network before answering 404. The exhaustion exits (SUB → the
+          // one-shot DUB flip for Pokémon-class DUB-ONLY titles; DUB → the
+          // honest SUB) live in the walk too — fallbackTriedRef keeps a
+          // both-sides-dead title from ping-ponging forever.
           throw new Error("unavailable");
         }
         const data = (await res.json()) as Resolved;
@@ -1011,10 +1008,12 @@ export default function WatchView({
           // seg path ignored Range (200 full-body), so EVERY forward seek
           // (progress bar, Skip Intro) reset the media element to 0.
           setStream({ src: data.src, subtitles: data.subtitles ?? [], skip: data.skip, referer: data.referer ?? null, pk: data.pk ?? null, heights: Array.isArray(data.heights) ? data.heights : undefined, direct: data.direct === true, qualitySrcs: Array.isArray(data.qualitySrcs) ? data.qualitySrcs : undefined });
-          // the DUB backfill sources (SupaPlay / yenime / the Anivexa backup
-          // network) kick in when neither Zoko nor Kiwi carries a real dub —
-          // say so, it explains any minor differences (sub style, quality ladder)
-          if (lang === "dub" && data.provider) {
+          // the backfill sources (SupaPlay / Yenime / the Aniweeb network /
+          // the Anivexa backup servers) kick in when neither Zoko nor Kiwi
+          // carries the episode — say so, it explains any minor differences
+          // (sub style, quality ladder)
+          if (data.provider) {
+            const isAni = isAniweebServer(data.provider);
             if (data.provider === "yenime" || data.provider === "supaplay") {
               showPlayerMsg(
                 data.provider === "yenime"
@@ -1024,9 +1023,9 @@ export default function WatchView({
               );
             } else if (data.provider === "flix") {
               showPlayerMsg("English DUB via FlixCloud — dual-audio source", 5_000);
-            } else if (data.provider.startsWith("anivexa-")) {
-              const nm = data.providerName || data.provider.slice("anivexa-".length);
-              showPlayerMsg(`English DUB via ${nm} (backup server) — Zoko/Kiwi had none`, 6_000);
+            } else if (isAni || data.provider.startsWith("anivexa-")) {
+              const nm = isAni ? (ANIWEEB_SERVER_NAMES as Record<string, string>)[data.provider] ?? data.provider : data.providerName || data.provider.slice("anivexa-".length);
+              showPlayerMsg(`${lang === "dub" ? "English DUB" : "Sub"} via ${nm} (backup server) — Zoko/Kiwi had none`, 6_000);
             }
           }
           // absolute public URL the Chromecast receiver can fetch through our proxy
@@ -1045,24 +1044,36 @@ export default function WatchView({
           // already had its shot; this walk is SERVERS.
           if (castStateRef.current === "casting" && castFailoverRef.current) {
             window.setTimeout(() => castFailoverRef.current?.("resolve"), 400);
-          } else if (lang === "dub" && typeof navigator !== "undefined" && navigator.onLine !== false) {
-            // DUB auto-failover — the backups-for-every-server chain. A dead
-            // DUB resolve on Server 1 or Server 2 walks Server 1 → Server 2 →
-            // the Anivexa backup network (only providers covering THIS
-            // episode when the dub map knows; the full roster when it
-            // doesn't) → the Megaplay embed. SUB is the honest last resort.
-            const covered = (backupDub ?? [])
-              .filter((b) => (b.covered ?? []).includes(episode))
-              .map((b) => b.server as ServerId);
-            const west = !!serverNames; // western shows — the dub-backup chain is anime-only
-            const chain: ServerId[] = west
-              ? [server === "kiwi" ? "zoko" : "kiwi"]
-              : [
-                  server === "kiwi" ? "zoko" : "kiwi",
-                  ...(covered.length ? covered : ANIVEXA_PROVIDERS.map((p) => backupServerId(p))),
-                  MEGAPLAY_IFRAME_SERVER,
-                ];
-            const walkKey = `${anime.malId}:${episode}`;
+          } else if ((lang === "dub" || lang === "sub") && typeof navigator !== "undefined" && navigator.onLine !== false) {
+            // LANGUAGE-AWARE auto-failover — the backups-for-every-server
+            // chain. A dead DUB resolve walks Server 1 → Server 2 → the
+            // Aniweeb network (user-requested pool) → the Anivexa backups
+            // (only providers covering THIS episode when the dub map knows;
+            // the full roster when it doesn't) → the Megaplay embed → the
+            // MegaFlix embed. A dead SUB resolve walks to the other main
+            // server (the route's own Aniweeb gap-fill already ran inside
+            // the 404). Exhaustion: DUB falls to SUB; SUB takes the one-shot
+            // DUB flip (DUB-ONLY titles) — fallbackTriedRef (episode-keyed,
+            // language-agnostic) keeps the two from ping-ponging forever.
+            const epKey = `${anime.malId}:${episode}`;
+            const west = !!serverNames; // western shows — the backup chains are anime-only
+            let chain: ServerId[];
+            if (lang === "dub") {
+              const covered = (backupDub ?? [])
+                .filter((b) => (b.covered ?? []).includes(episode))
+                .map((b) => b.server as ServerId);
+              chain = west
+                ? [server === "kiwi" ? "zoko" : "kiwi"]
+                : [
+                    server === "kiwi" ? "zoko" : "kiwi",
+                    ...(covered.length ? covered : [...ANIWEEB_SUBDUB_SERVERS, ...ANIVEXA_PROVIDERS.map((p) => backupServerId(p))]),
+                    MEGAPLAY_IFRAME_SERVER,
+                    MEGAFLIX_IFRAME_SERVER,
+                  ];
+            } else {
+              chain = [server === "kiwi" ? "zoko" : "kiwi"];
+            }
+            const walkKey = `${epKey}:${lang}`;
             const rest = dubWalkRef.current?.key === walkKey ? dubWalkRef.current.rest : chain.filter((s) => s !== server);
             const next = rest[0];
             if (next) {
@@ -1071,18 +1082,32 @@ export default function WatchView({
                 ? backupServerName(next)
                 : next === MEGAPLAY_IFRAME_SERVER
                   ? "Megaplay"
-                  : next === "kiwi"
-                    ? "Server 2"
-                    : "Server 1";
-              showPlayerMsg(`DUB stream dead — switching to ${label}…`, 5_000);
-              onEpisodeChange(episode, "dub", next);
-            } else {
+                  : next === MEGAFLIX_IFRAME_SERVER
+                    ? "MegaFlix"
+                    : next === "kiwi"
+                      ? "Server 2"
+                      : "Server 1";
+              showPlayerMsg(`${lang === "dub" ? "DUB" : "SUB"} stream dead — switching to ${label}…`, 5_000);
+              onEpisodeChange(episode, lang, next);
+            } else if (lang === "dub") {
               // chain exhausted — consume the language fallback so the SUB
               // resolve below can't bounce straight back into this walk
               dubWalkRef.current = { key: walkKey, rest: [] };
-              fallbackTriedRef.current = walkKey;
+              fallbackTriedRef.current = epKey;
               showPlayerMsg("No English DUB available for this episode yet — playing SUB", 8_000);
               setLang("sub");
+            } else {
+              // SUB walk exhausted — the ONE-SHOT dub flip (DUB-ONLY titles
+              // like Pokémon whose sub pages are shells) stays as the last
+              // resort, guarded against ping-pong as before
+              dubWalkRef.current = { key: walkKey, rest: [] };
+              if (fallbackTriedRef.current !== epKey && ((dubServers?.length ?? 0) > 0 || (backupDub?.length ?? 0) > 0)) {
+                fallbackTriedRef.current = epKey;
+                showPlayerMsg("No SUB available for this title — DUB only", 8_000);
+                setLang("dub");
+                return;
+              }
+              setStreamError(true);
             }
           } else {
             setStreamError(true);
@@ -1095,35 +1120,54 @@ export default function WatchView({
     };
   }, [anime.malId, episode, lang, server]);
 
-  /* -------- Megaplay embed pre-flight --------
-     The embed server skips /api/stream entirely, so nothing used to notice
-     when Megaplay's copy was gone — the viewer met their 410 page INSIDE the
-     iframe. This asks the server-side verdict (24h cached) while the embed
-     mounts; a definitive "dead" swaps it for the honest card below. null
-     (network trouble / encrypted payload) never blocks the embed. */
+  /* -------- embed pre-flight (Megaplay + MegaFlix) --------
+     The embed servers skip /api/stream entirely, so nothing used to notice
+     when the third-party copy was gone — the viewer met Megaplay's 410 (or
+     MegaFlix's NL placeholder) INSIDE the iframe. This asks the server-side
+     verdict (24h cached) while the embed mounts; a definitive "dead" swaps
+     it for the honest card below — or, when a backup covers the episode,
+     jumps straight there. null (network trouble) never blocks the embed. */
   useEffect(() => {
-    if (server !== MEGAPLAY_IFRAME_SERVER) return;
+    if (server !== MEGAPLAY_IFRAME_SERVER && server !== MEGAFLIX_IFRAME_SERVER) return;
+    const isFlix = server === MEGAFLIX_IFRAME_SERVER;
     let dead = false;
     // "Try again" bumps embedNonce — retries must BYPASS the server's 24h
     // verdict cache or a recovered episode would still answer dead instantly
     const fresh = embedNonce > 0 ? "&fresh=1" : "";
-    fetch(`/api/anime/${anime.malId}/megaplay-embed?ep=${episode}${fresh}`)
+    const endpoint = isFlix
+      ? `/api/anime/${anime.malId}/megaflix-embed?ep=${episode}&lang=${lang}${fresh}`
+      : `/api/anime/${anime.malId}/megaplay-embed?ep=${episode}${fresh}`;
+    fetch(endpoint)
       .then((r) => (r.ok ? r.json() : null))
-      .then((d: { ok?: boolean | null } | null) => {
+      .then((d: { ok?: boolean | null; url?: string } | null) => {
         if (dead) return;
+        if (isFlix && d?.url) setMegaflixUrl(d.url);
         if (d && d.ok === false) {
-          // Definitive dead (file taken down / show unmapped): the viewer
-          // asked for English audio — when a backup DUB covers this episode
-          // it IS the answer, so jump straight there instead of showing a
-          // card that only says no. Casting is excluded: iframes can't cast
-          // and the cast failover walk handles its own chain.
+          // Definitive dead (file taken down / show unmapped / the NL gate):
+          // the viewer asked for this language — when a backup covers the
+          // episode it IS the answer, so jump straight there instead of
+          // showing a card that only says no. Casting is excluded: iframes
+          // can't cast and the cast failover walk handles its own chain.
           const b = (backupDub ?? []).find((x) => (x.covered ?? []).includes(episode));
-          if (b && castStateRef.current !== "casting") {
-            showPlayerMsg(`Megaplay doesn't have this DUB — switching to ${b.name} (backup server)…`, 6_000);
+          const jumpLang: Lang = lang;
+          if (b && jumpLang === "dub" && castStateRef.current !== "casting") {
+            showPlayerMsg(`${isFlix ? "MegaFlix" : "Megaplay"} doesn't have this DUB — switching to ${b.name} (backup server)…`, 6_000);
             onEpisodeChange(episode, "dub", b.server as ServerId);
+          } else if (isFlix && castStateRef.current !== "casting") {
+            // no known coverage — MegaFlix is the END of the dub chain:
+            // hand back to the Megaplay embed (dub) or the main chain (sub)
+            if (jumpLang === "dub") {
+              showPlayerMsg("MegaFlix doesn't have this episode — trying the Megaplay embed…", 6_000);
+              onEpisodeChange(episode, "dub", MEGAPLAY_IFRAME_SERVER);
+            } else {
+              setIframeFallback(false);
+              setMegaplayDead(true);
+              setDeadEmbedName("MegaFlix");
+            }
           } else {
             setIframeFallback(false);
             setMegaplayDead(true);
+            setDeadEmbedName(isFlix ? "MegaFlix" : "Megaplay");
           }
         }
       })
@@ -1131,7 +1175,7 @@ export default function WatchView({
     return () => {
       dead = true;
     };
-  }, [anime.malId, episode, server, embedNonce, backupDub]);
+  }, [anime.malId, episode, server, lang, embedNonce, backupDub]);
 
   /* -------- keep the CAST url fresh (WCO evids expire) --------
      The TV fetches through our proxy, and a pinned getvid evid dies after a
@@ -1346,13 +1390,14 @@ export default function WatchView({
         lang === "dub"
           ? [
               server === "kiwi" ? "zoko" : "kiwi",
+              ...ANIWEEB_SUBDUB_SERVERS,
               "anivexa-anineko",
               "anivexa-animegg",
               "anivexa-hianime",
               "anivexa-allmanga",
               "anivexa-reanime",
             ]
-          : [server === "kiwi" ? "zoko" : "kiwi"];
+          : [server === "kiwi" ? "zoko" : "kiwi", ...ANIWEEB_SUBDUB_SERVERS];
       const options = chain.filter((s) => s !== server);
       const idx = castFailoverIdxRef.current;
       if (idx >= options.length) {
@@ -1361,7 +1406,11 @@ export default function WatchView({
       }
       const next = options[idx];
       castFailoverIdxRef.current = idx + 1;
-      const nextLang: Lang = isBackupServer(next) ? "dub" : lang;
+      // a backup that can't serve the CURRENT language keeps the viewer on
+      // their language only when it actually carries it (Anivexa is DUB-only;
+      // the Aniweeb network serves both)
+      const nextLang: Lang =
+        isBackupServer(next) && !backupServerLangs(next).includes(lang) ? "dub" : lang;
       castFailoverSigRef.current = `${anime.malId}:${episode}:${nextLang}:${next}`; // our own change
       const label = isBackupServer(next) ? backupServerName(next) : next === "kiwi" ? "Server 2" : "Server 1";
       showPlayerMsg(`TV couldn't load this stream — switching to ${label}…`, 6_000);
@@ -1739,8 +1788,10 @@ export default function WatchView({
     dubWalkRef.current = null; // manual pick — a dead-DUB walk restarts clean
     stageSpot();
     setPanel(null);
-    // backup servers are DUB only — switching to one flips the language too
-    onEpisodeChange(episode, isBackupServer(next) ? "dub" : lang, next);
+    // DUB-only backups (the Anivexa network) flip the language too; the
+    // Aniweeb network carries SUB as well, so a sub viewer stays on sub
+    const nextLang: Lang = isBackupServer(next) && !backupServerLangs(next).includes(lang) ? "dub" : lang;
+    onEpisodeChange(episode, nextLang, next);
   };
 
   const applySpeed = (s: number) => {
@@ -2356,7 +2407,9 @@ export default function WatchView({
                 src={
                   server === MEGAPLAY_IFRAME_SERVER
                     ? megaplayPlayerUrl(anime.malId, episode)
-                    : zokoPlayerUrl(anime.malId, episode, lang)
+                    : server === MEGAFLIX_IFRAME_SERVER
+                      ? megaflixUrl ?? "about:blank"
+                      : zokoPlayerUrl(anime.malId, episode, lang)
                 }
                 title={castTitle}
                 className={`w-full h-full border-0 bg-black ${resizeMode === 1 ? "max-w-[240px] mx-auto" : ""}`}
@@ -2487,14 +2540,13 @@ export default function WatchView({
           </div>
         ) : null}
 
-        {/* Megaplay embed pre-flight said dead: the file was taken down or
-            the show got unmapped — an honest exit instead of Megaplay's own
-            410 "removed due a copyright violation" page */}
+        {/* dead embed (Megaplay / MegaFlix) — the pre-flight said the copy
+            is gone: an honest exit instead of the embed's own error page */}
         {megaplayDead && !casting ? (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-8 text-center z-20">
             <p className="text-[13px] text-gray-300">
-              Megaplay doesn&rsquo;t have this episode&rsquo;s English DUB right now
-              (taken down or not uploaded yet).
+              {deadEmbedName} doesn&rsquo;t have this episode right now (taken
+              down or not available yet).
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               {(backupDub ?? [])
@@ -2588,6 +2640,18 @@ export default function WatchView({
                       </button>
                     ))
                 : null}
+              {lang === "dub" && !serverNames && !offline && !(backupDub ?? []).some((b) => isAniweebServer(b.server)) ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dubWalkRef.current = null;
+                    onEpisodeChange(episode, "dub", "aniweeb-1");
+                  }}
+                  className="bg-[#1c1c2e] hover:bg-[#282840] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+                >
+                  Try Aniweeb (DUB)
+                </button>
+              ) : null}
               {lang === "dub" && !serverNames && !offline ? (
                 <button
                   onClick={(e) => {
@@ -2598,6 +2662,18 @@ export default function WatchView({
                   className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
                 >
                   Try Megaplay (DUB)
+                </button>
+              ) : null}
+              {lang === "dub" && !serverNames && !offline ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dubWalkRef.current = null;
+                    onEpisodeChange(episode, "dub", MEGAFLIX_IFRAME_SERVER);
+                  }}
+                  className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+                >
+                  Try MegaFlix (DUB)
                 </button>
               ) : null}
               {lang === "dub" && !dubOnly ? (
@@ -2622,6 +2698,18 @@ export default function WatchView({
                   className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
                 >
                   Try {server === "kiwi" ? "Server 1" : "Server 2"}
+                </button>
+              ) : null}
+              {lang === "sub" && !offline && !serverNames ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dubWalkRef.current = null;
+                    onEpisodeChange(episode, "sub", "aniweeb-1");
+                  }}
+                  className="bg-[#1c1c2e] hover:bg-[#282840] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
+                >
+                  Try Aniweeb (SUB)
                 </button>
               ) : null}
               <button
@@ -3002,7 +3090,7 @@ export default function WatchView({
                 // Western show: the anime dub-backfill chain doesn't apply
                 <p className="mt-1 text-[10.5px] text-gray-600">Both servers carry the full series.</p>
               ) : (
-                <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB episodes auto-fall back to SupaPlay, Yenime, or the Anivexa backup servers — and a dead DUB stream walks Server 1 → Server 2 → backups by itself.</p>
+                <p className="mt-1 text-[10.5px] text-gray-600">Missing DUB or SUB episodes auto-fill from the Aniweeb network, SupaPlay, Yenime, or the Anivexa backup servers — and a dead stream walks Server 1 → Server 2 → backups by itself.</p>
               )}
             </div>
           </div>

@@ -13,17 +13,24 @@
  * (MyAnimeList) API and playback is always delegated to Zoko's own player.
  */
 
-import type { BackupServerId } from "@/lib/backup-servers";
-import { MEGAPLAY_IFRAME_SERVER } from "@/lib/backup-servers";
+import type { ServerId } from "@/lib/backup-servers";
 
-export type { BackupServerId } from "@/lib/backup-servers";
+export type { BackupServerId, AnivexaServerId, AniweebServerId } from "@/lib/backup-servers";
 export {
   isBackupServer,
   backupProviderOf,
   backupServerId,
   backupServerName,
+  backupServerLangs,
   MEGAPLAY_IFRAME_SERVER,
+  MEGAFLIX_IFRAME_SERVER,
+  isIframeServer,
   isIframeDubServer,
+  isAniweebServer,
+  isAnivexaServer,
+  ANIWEEB_SERVER_IDS,
+  ANIWEEB_SERVER_NAMES,
+  ANIWEEB_SUBDUB_SERVERS,
 } from "@/lib/backup-servers";
 
 export const ZOKO_BASE = "https://zokoanime.video";
@@ -33,12 +40,13 @@ export type Lang = "sub" | "dub";
 /**
  * Playback servers, as shown in the app's episode sheet.
  *
- * "zoko" / "kiwi" are the main chain. The "anivexa-*" ids are the BACKUP DUB
- * servers (the Anivexa network) — they exist per-title, appear ONLY on
- * episodes where that provider carries a dub our main chain can't serve,
- * and resolve through /api/stream like every other server.
+ * "zoko" / "kiwi" are the main chain. The backup ids (anivexa-* DUB-only,
+ * aniweeb-1/2 + vidcloud SUB+DUB) exist per-title and appear on episodes
+ * their network actually covers; the two iframe fallbacks (megaplay-dub,
+ * megaflix) hand the episode to the third-party embed player. All resolve
+ * through /api/stream (iframes skip the resolve) like every other server.
  */
-export type ServerId = "zoko" | "kiwi" | BackupServerId | typeof MEGAPLAY_IFRAME_SERVER;
+export type { ServerId } from "@/lib/backup-servers";
 
 export const SERVERS: Array<{ id: ServerId; name: string; note: string }> = [
   { id: "zoko", name: "Zoko", note: "Zoko player" },

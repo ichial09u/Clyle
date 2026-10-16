@@ -8,8 +8,15 @@ import { probeMegaplayDub, storeMegaplayVerdict } from "@/lib/megaplay";
 import { jikanHealthy } from "@/lib/jikan";
 import { recomputeDubBoundaries } from "@/lib/dub-boundary";
 import { cachedBackupDubSummary, warmBackupDubSummary } from "@/lib/anivexa";
+import { cachedAniweebCoverage, warmAniweebCoverage } from "@/lib/aniweeb";
 import { flixDubThrough } from "@/lib/flixcloud";
-import { backupServerId, type BackupServerId } from "@/lib/backup-servers";
+import {
+  backupServerId,
+  ANIWEEB_SERVER_NAMES,
+  isAniweebServer,
+  type BackupServerId,
+  type AniweebServerId,
+} from "@/lib/backup-servers";
 import { getDubAudioVerdict } from "@/lib/dub-audio";
 
 export const dynamic = "force-dynamic";
@@ -327,12 +334,18 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
   const dubServers: Array<"zoko" | "kiwi"> = [];
   if (hasDub !== false) dubServers.push("zoko");
   if (hasDubKiwi !== false) dubServers.push("kiwi");
+  // Aniweeb coverage (cache-only read — never blocks the grid): when its
+  // network dubs ANY episode of this show, a missing main-chain dub is
+  // fillable (the DUB buttons stay; /api/stream lands on the backup).
+  const aniweebCov = await cachedAniweebCoverage(malId, "dub").catch(() => undefined);
+  const aniweebPossible =
+    !!aniweebCov && Object.values(aniweebCov).some((eps) => Array.isArray(eps) && eps.length > 0);
   // no Zoko/Kiwi dub but a backfill source can serve one — still offer both
   // DUB buttons; /api/stream transparently lands them on the backfill source
   // (flikhub megaplay, the megaplay-embed network when the anime is mapped,
-  // or the FlixCloud dual-audio embeds when the title carries one)
+  // the Aniweeb network, or the FlixCloud dual-audio embeds)
   const flixThru = flixDubThrough(malId);
-  const backfillPossible = hasDubMega === true || anime.anikotoSeriesId != null || flixThru != null;
+  const backfillPossible = hasDubMega === true || anime.anikotoSeriesId != null || flixThru != null || aniweebPossible;
   if (!dubServers.length && backfillPossible) dubServers.push("zoko", "kiwi");
 
   // ---- per-EPISODE dub boundaries (the Elbaph fix) ------------------------
@@ -353,7 +366,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
     anime.hasDubMega !== false ||
     anime.anikotoSeriesId != null ||
     !!anime.supaplayPath?.trim() ||
-    flixThru != null;
+    flixThru != null ||
+    aniweebPossible;
   // a chain's search is CLOSED only when its boundary converged (thru = hi-1,
   // thru = total, or thru = 0 proven-none); anything else keeps probing
   const chainClosed = (thru: number | null, hi: number | null) => {
@@ -420,9 +434,34 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
       }
     }
     if (needed.length > 0) {
+      const neededSet = new Set(needed);
+      const entries: Array<{
+        server: BackupServerId;
+        provider: string;
+        name: string;
+        through: number | null;
+        covered: number[];
+      }> = [];
+      // ---- Aniweeb network first (user-requested backup pool; real
+      //      resolvable playlists, per-episode coverage oracle) ----
+      if (aniweebCov) {
+        for (const [srv, eps] of Object.entries(aniweebCov)) {
+          if (!Array.isArray(eps) || !eps.length) continue;
+          const covered = eps.filter((e) => neededSet.has(e));
+          if (!covered.length) continue;
+          const id = srv as AniweebServerId;
+          if (!isAniweebServer(id)) continue;
+          entries.push({
+            server: id,
+            provider: id,
+            name: ANIWEEB_SERVER_NAMES[id],
+            through: covered[covered.length - 1],
+            covered,
+          });
+        }
+      }
       const summary = await cachedBackupDubSummary(malId);
       if (summary != null) {
-        const neededSet = new Set(needed);
         // Fleet verdict gate: a provider the audio fleet measured FAKE for an
         // episode (Japanese audio under a DUB label — the DAN DA DAN pattern)
         // must not claim that episode. Providers whose entire needed coverage
@@ -438,23 +477,30 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
           if (!set) fakeByServer.set(r.server, (set = new Set()));
           set.add(r.ep);
         }
-        backupDub = summary
-          .map((b) => {
-            const fakes = fakeByServer.get(backupServerId(b.provider));
-            const covered = fakes ? b.covered.filter((ep) => !fakes.has(ep)) : b.covered;
-            return {
-              server: backupServerId(b.provider),
-              provider: b.provider,
-              name: b.name,
-              through: covered.length ? covered[covered.length - 1] : null,
-              covered,
-            };
-          })
+        for (const b of summary) {
+          const fakes = fakeByServer.get(backupServerId(b.provider));
+          const covered = (fakes ? b.covered.filter((ep) => !fakes.has(ep)) : b.covered).filter((ep) =>
+            neededSet.has(ep),
+          );
           // only providers that actually dub at least ONE uncovered episode
-          .filter((b) => b.covered.some((ep) => neededSet.has(ep)));
+          if (!covered.length) continue;
+          entries.push({
+            server: backupServerId(b.provider),
+            provider: b.provider,
+            name: b.name,
+            through: covered[covered.length - 1],
+            covered,
+          });
+        }
       } else {
         const title = anime.titleEnglish?.trim() || anime.title;
         after(() => warmBackupDubSummary(malId, title).catch(() => undefined));
+      }
+      if (entries.length) backupDub = entries;
+      // warm the per-episode Aniweeb coverage for the uncovered tail
+      // (capped — one cheap servers-JSON fetch per episode, 24h cached)
+      if (needed.length && !aniweebCov) {
+        after(() => warmAniweebCoverage(malId, needed.slice(0, 24), "dub").catch(() => undefined));
       }
     } else if (totalNum > 0) {
       backupDub = []; // chain covers everything — no backup clutter

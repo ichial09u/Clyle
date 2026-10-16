@@ -13,6 +13,9 @@
 
 export const ZOKO_REFERER = "https://zokoanime.video/";
 export const MEGAPLAY_REFERER = "https://megaplay.buzz/";
+/** Aniweeb's echovideo CDN expects the echo player's origin (it also 200s
+ *  without one — belt and suspenders for the proxy + cast receiver). */
+export const ANIWEEB_ECHO_REFERER = "https://play.echovideo.ru/";
 /** empty string = send no Referer/Origin at all (plain signed URLs) */
 export const NO_REFERER = "";
 
@@ -31,6 +34,15 @@ const MEGAP_SUFFIX_REFERERS: Array<[string, string]> = [
   [".vaelith.top", MEGAPLAY_REFERER], // segment cloak host (DAN DA DAN dub)
 ];
 
+/** Aniweeb's echovideo CDN family (ru-cdn2.echovideo.to, …) — plays with the
+ *  echo player Referer, though the CDN answered 200 even without it. */
+const ANIWEEB_SUFFIX_REFERERS: Array<[string, string]> = [
+  [".echovideo.to", ANIWEEB_ECHO_REFERER],
+  [".echovideo.ru", ANIWEEB_ECHO_REFERER],
+  [".echovideo.com", ANIWEEB_ECHO_REFERER],
+  [".aniweeb.net", ANIWEEB_ECHO_REFERER],
+];
+
 /**
  * Host suffixes the playback proxy may fetch. Static on purpose: on Vercel
  * each route is its own lambda, so runtime "allowHost" registration in one
@@ -41,10 +53,12 @@ const MEGAP_SUFFIX_REFERERS: Array<[string, string]> = [
 const NO_REFERER_SUFFIXES: Array<[string, string]> = [
   [".horrowing.cyou", NO_REFERER], // LM2 (lookmovie2) SP fallback storage — srvNNN rotate
   [".lookmovie2.to", NO_REFERER], // LM2 app host (movie session pages)
+  [".vidcloud.sbs", NO_REFERER], // Aniweeb "Sakamoto" player — self-proxied HLS, no referer
 ];
 
 export const PROXY_SUFFIXES: string[] = [
   ...MEGAP_SUFFIX_REFERERS.map(([suffix]) => suffix),
+  ...ANIWEEB_SUFFIX_REFERERS.map(([suffix]) => suffix),
   ...NO_REFERER_SUFFIXES.map(([suffix]) => suffix),
   ".hakunaymatata.com", // SupaPlay's moviebox video CDN (signed MP4s)
   ".wcostream.com", // WCO source (South Park) — video hosts rotate (e01/u14/…), plain signed URLs
@@ -86,6 +100,9 @@ export function refererForHost(hostname: string): string | undefined {
   const explicit = hostReferers.get(h);
   if (explicit != null) return explicit;
   for (const [suffix, referer] of MEGAP_SUFFIX_REFERERS) {
+    if (h.endsWith(suffix)) return referer;
+  }
+  for (const [suffix, referer] of ANIWEEB_SUFFIX_REFERERS) {
     if (h.endsWith(suffix)) return referer;
   }
   for (const [suffix, referer] of NO_REFERER_SUFFIXES) {
