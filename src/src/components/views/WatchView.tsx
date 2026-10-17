@@ -1781,6 +1781,32 @@ export default function WatchView({
     stagedForRef.current = `${anime.malId}:${episode}`;
   };
 
+  /** Human name for ANY playable source — the main chain (respecting a
+   * western show's embedded site names), both embed fallbacks and the two
+   * backup networks. Feeds the "now playing" popups. */
+  const sourceLabel = (id: ServerId): string =>
+    id === MEGAPLAY_IFRAME_SERVER
+      ? "Megaplay"
+      : id === MEGAFLIX_IFRAME_SERVER
+        ? "MegaFlix"
+        : id === "zoko"
+          ? (serverNames?.zoko ?? "Server 1")
+          : id === "kiwi"
+            ? (serverNames?.kiwi ?? "Server 2")
+            : backupServerName(id);
+
+  /** The little "what the player is playing" popup for every manual DUB/SUB
+   *  server change (owner: "make sure it tells the people what the player is
+   *  playing"). Western shows skip the language suffix — their players are
+   *  single-track English and the SUB/DUB control is hidden for them. */
+  const announceSource = (id: ServerId, audio: Lang) => {
+    showPlayerMsg(
+      serverNames
+        ? `Now playing on ${sourceLabel(id)}`
+        : `Now playing ${audio === "dub" ? "English DUB" : "SUB"} on ${sourceLabel(id)}`,
+    );
+  };
+
   /** Switch stream server mid-playback without losing the spot. */
   const switchServer = (next: ServerId) => {
     if (next === server || castStateRef.current === "casting") return;
@@ -1791,6 +1817,7 @@ export default function WatchView({
     // DUB-only backups (the Anivexa network) flip the language too; the
     // Aniweeb network carries SUB as well, so a sub viewer stays on sub
     const nextLang: Lang = isBackupServer(next) && !backupServerLangs(next).includes(lang) ? "dub" : lang;
+    announceSource(next, nextLang); // say what the player just became
     onEpisodeChange(episode, nextLang, next);
   };
 
@@ -2557,6 +2584,7 @@ export default function WatchView({
                     onClick={(e) => {
                       e.stopPropagation();
                       dubWalkRef.current = null;
+                      announceSource(b.server as ServerId, "dub");
                       onEpisodeChange(episode, "dub", b.server as ServerId);
                     }}
                     className="bg-[#1c1c2e] hover:bg-[#282840] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2568,6 +2596,7 @@ export default function WatchView({
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
+                    announceSource("zoko", "sub");
                     onEpisodeChange(episode, "sub", "zoko");
                   }}
                   className="bg-[#d32f2f] hover:bg-[#b71c1c] text-white text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2632,6 +2661,7 @@ export default function WatchView({
                         onClick={(e) => {
                           e.stopPropagation();
                           dubWalkRef.current = null;
+                          announceSource(b.server as ServerId, "dub");
                           onEpisodeChange(episode, "dub", b.server as ServerId);
                         }}
                         className="bg-[#1c1c2e] hover:bg-[#282840] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2645,6 +2675,7 @@ export default function WatchView({
                   onClick={(e) => {
                     e.stopPropagation();
                     dubWalkRef.current = null;
+                    announceSource("aniweeb-1", "dub");
                     onEpisodeChange(episode, "dub", "aniweeb-1");
                   }}
                   className="bg-[#1c1c2e] hover:bg-[#282840] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2657,6 +2688,7 @@ export default function WatchView({
                   onClick={(e) => {
                     e.stopPropagation();
                     dubWalkRef.current = null;
+                    announceSource(MEGAPLAY_IFRAME_SERVER, "dub");
                     onEpisodeChange(episode, "dub", MEGAPLAY_IFRAME_SERVER);
                   }}
                   className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2669,6 +2701,7 @@ export default function WatchView({
                   onClick={(e) => {
                     e.stopPropagation();
                     dubWalkRef.current = null;
+                    announceSource(MEGAFLIX_IFRAME_SERVER, "dub");
                     onEpisodeChange(episode, "dub", MEGAFLIX_IFRAME_SERVER);
                   }}
                   className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2681,6 +2714,7 @@ export default function WatchView({
                   onClick={(e) => {
                     e.stopPropagation();
                     dubWalkRef.current = null;
+                    announceSource("zoko", "sub");
                     onEpisodeChange(episode, "sub", "zoko");
                   }}
                   className="bg-[#1c1c1c] hover:bg-[#282828] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2705,6 +2739,7 @@ export default function WatchView({
                   onClick={(e) => {
                     e.stopPropagation();
                     dubWalkRef.current = null;
+                    announceSource("aniweeb-1", "sub");
                     onEpisodeChange(episode, "sub", "aniweeb-1");
                   }}
                   className="bg-[#1c1c2e] hover:bg-[#282840] text-gray-200 text-[12.5px] font-bold rounded-full px-4 py-2 transition"
@@ -2753,6 +2788,7 @@ export default function WatchView({
                         showPlayerMsg(`English DUB is on ${b.name} (backup server) — switched`);
                         onEpisodeChange(episode, "dub", b.server as ServerId);
                       } else if (isMega) {
+                        announceSource("zoko", "sub");
                         onEpisodeChange(episode, "sub", "zoko");
                       } else {
                         switchServer("kiwi");
@@ -2806,6 +2842,7 @@ export default function WatchView({
                   if (lang !== "sub") {
                     stageSpot();
                     dubWalkRef.current = null; // manual pick — restart any dead-DUB walk
+                    announceSource(server, "sub"); // say what the player just became
                     setLang("sub");
                   }
                 }}
@@ -2849,6 +2886,7 @@ export default function WatchView({
                     return;
                   }
                   stageSpot(); // SUB↔DUB on the same server re-resolves the stream
+                  announceSource(server, "dub"); // say what the player just became
                   setLang("dub");
                 }}
                 aria-pressed={lang === "dub"}
