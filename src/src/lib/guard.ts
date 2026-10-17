@@ -58,3 +58,23 @@ export function clientIp(req: Request): string {
   const fwd = req.headers.get("x-forwarded-for") ?? "";
   return fwd.split(",")[0].trim() || "anon";
 }
+
+/**
+ * Scheduled-entrypoint gate (/api/cron, /api/cron-sync, /api/bots/tsa-cron).
+ * Vercel Cron sends `Authorization: Bearer <CRON_SECRET>` automatically once
+ * the env var exists — so: secret set → the header is REQUIRED; secret unset
+ * → the entrypoint stays open (local + Render behavior unchanged). Without
+ * this anyone on the internet could stack the heal sweeps / segment probes
+ * per request and burn the upstream budget.
+ */
+export function cronAuthorized(req: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true;
+  const got = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!got || got.length !== secret.length) return false;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(got), Buffer.from(secret));
+  } catch {
+    return false;
+  }
+}

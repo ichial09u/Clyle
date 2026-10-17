@@ -99,12 +99,11 @@ export async function POST(req: Request) {
 
   for (const f of findings) {
     if (!f?.kind || !f?.targetKey || !KINDS.has(f.kind)) continue;
-    const existing = await db.bugReport.findUnique({
-      where: { kind_targetKey: { kind: f.kind, targetKey: f.targetKey } },
-    });
-
-    if (!existing) {
-      await db.bugReport.create({
+    // upsert (not findUnique→create): two bots reporting the same NEW finding
+    // concurrently both saw "missing" and the losing create threw P2002,
+    // aborting the rest of the ingest loop
+    const created = await db.bugReport
+      .create({
         data: {
           kind: f.kind,
           targetKey: f.targetKey.slice(0, 300),
@@ -113,10 +112,18 @@ export async function POST(req: Request) {
           status: "open",
           count: 1,
         },
-      });
+      })
+      .catch(() => null);
+
+    if (created) {
       ingested++;
       continue;
     }
+
+    const existing = await db.bugReport.findUnique({
+      where: { kind_targetKey: { kind: f.kind, targetKey: f.targetKey } },
+    });
+    if (!existing) continue; // vanished between create and read — skip
 
     if (existing.status === "fixed") {
       // REGRESSION: a finding we already fixed came back — reopen loudly
@@ -124,7 +131,7 @@ export async function POST(req: Request) {
         where: { id: existing.id },
         data: {
           status: "open",
-          count: existing.count + 1,
+          count: { increment: 1 }, // increment, not read-modify-write: concurrent re-observations lost bumps
           lastSeen: new Date(),
           detail: `REOPENED: ${f.detail?.slice(0, 400) ?? existing.detail ?? "re-observed after fix"}`,
         },
@@ -138,7 +145,7 @@ export async function POST(req: Request) {
     await db.bugReport.update({
       where: { id: existing.id },
       data: {
-        count: existing.count + 1,
+        count: { increment: 1 },
         lastSeen: new Date(),
         detail: f.detail?.slice(0, 500) ?? existing.detail,
       },

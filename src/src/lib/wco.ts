@@ -314,7 +314,7 @@ export async function wcoStreamSlug(slug: string, key: string): Promise<WcoStrea
       // quality sheet offers the REAL ladder — never a fabricated 1080p
       // that doesn't exist, never hiding a 360p that does.
       const subtitles: WcoStream["subtitles"] = [];
-      if (link.sub) subtitles.push({ lang: "en", label: "English", src: `${link.server}/getvid?evid=${link.sub}` });
+      if (link.sub && link.server) subtitles.push({ lang: "en", label: "English", src: `${link.server}/getvid?evid=${link.sub}` });
       const ladder: Array<{ height: number; evid?: string }> = [
         { height: 1080, evid: link.fhd },
         { height: 720, evid: link.hd },
@@ -334,6 +334,10 @@ export async function wcoStreamSlug(slug: string, key: string): Promise<WcoStrea
         return out;
       }
     }
+    // every getvid probe died (upstream hiccup — the page itself resolved):
+    // negative-cache briefly like the login-gated branch, or every subsequent
+    // hit re-runs the whole 3-fetch scrape chain for the same answer
+    cache.set(key, { data: null, expires: Date.now() + NEG_TTL_MS });
     return null;
   })();
 
@@ -396,7 +400,7 @@ interface TvmazeEp {
 const TVMAZE_SP_URL = "https://api.tvmaze.com/singlesearch/shows?q=south%20park&embed=episodes";
 const TVMAZE_TTL_MS = 6 * 3600_000; // schedule data is stable — one call per 6h per instance
 const TVMAZE_RETRY_MS = 30 * 60_000; // after a failure, retry sooner
-let tvmazeNext: { at: number; next: { episode: number; airAtSec: number } | null } | null = null;
+let tvmazeNext: { at: number; next: { episode: number; airAtSec: number } | null; fallback?: boolean } | null = null;
 
 /**
  * The next still-future Season-29 airing: TVmaze live first, baked schedule
@@ -404,7 +408,10 @@ let tvmazeNext: { at: number; next: { episode: number; airAtSec: number } | null
  * the airing-season row (999929).
  */
 export async function wcoNextAiring(): Promise<{ episode: number; airAtSec: number } | null> {
-  if (tvmazeNext && Date.now() - tvmazeNext.at < (tvmazeNext.next ? TVMAZE_TTL_MS : TVMAZE_RETRY_MS)) {
+  // a BAKED fallback (live lookup failed) only holds for the short retry
+  // window — otherwise one 429 pinned the baked schedule for the full 6h and
+  // the live airstamp (e.g. a DST time shift) stayed stale
+  if (tvmazeNext && Date.now() - tvmazeNext.at < (tvmazeNext.fallback ? TVMAZE_RETRY_MS : tvmazeNext.next ? TVMAZE_TTL_MS : TVMAZE_RETRY_MS)) {
     return tvmazeNext.next;
   }
   try {
@@ -432,7 +439,7 @@ export async function wcoNextAiring(): Promise<{ episode: number; airAtSec: numb
     /* network/API hiccup — use the baked schedule below */
   }
   const next = wcoSpNextAiring(0);
-  tvmazeNext = { at: Date.now(), next };
+  tvmazeNext = { at: Date.now(), next, fallback: true }; // short TTL — retry the live lookup sooner
   return next;
 }
 

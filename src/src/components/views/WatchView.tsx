@@ -78,6 +78,18 @@ export default function WatchView({
   onEpisodeChange: (ep: number, lang: Lang, server: ServerId) => void;
 }) {
   const [lang, setLang] = useState<Lang>(initialLang);
+  // The `lang` prop is initial-only: page.tsx replaces the watch stack entry
+  // IN PLACE (no remount), so any onEpisodeChange(...) that flips the language
+  // (backup-DUB jumps, the "Play SUB" exits, switchServer to a DUB-only
+  // backup, cast failover) would otherwise leave this state behind and the
+  // stream-resolve effect would fetch the OLD language — tap DUB, hear SUB.
+  // Re-sync whenever the prop moves (render-phase adjust; state-only changes
+  // from the [SUB|DUB] control never touch the prop, so they don't clobber).
+  const [langFromProp, setLangFromProp] = useState<Lang>(initialLang);
+  if (initialLang !== langFromProp) {
+    setLangFromProp(initialLang);
+    setLang(initialLang);
+  }
   // remember what the player is using so the episode list's server sheet
   // leads with the same language when you press back (DUB stays DUB)
   useEffect(() => {
@@ -985,6 +997,11 @@ export default function WatchView({
     setReady(false);
     setCurrentTime(0);
     setDuration(0);
+    // the exit-flush mirrors are only valid for the target that was playing —
+    // a new episode/lang/server starts from a clean slate (otherwise the
+    // stream-error Retry would seek the NEW target to the OLD target's spot)
+    lastPosRef.current = 0;
+    lastDurRef.current = 0;
     (async () => {
       try {
         const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}`);
@@ -1043,7 +1060,9 @@ export default function WatchView({
           // only way forward). The per-episode language auto-fallback above
           // already had its shot; this walk is SERVERS.
           if (castStateRef.current === "casting" && castFailoverRef.current) {
-            window.setTimeout(() => castFailoverRef.current?.("resolve"), 400);
+            // tracked + cancelled in the effect cleanup — an untracked timer
+            // fired after unmount and re-opened the player via onEpisodeChange
+            castWalkTimerRef.current = window.setTimeout(() => castFailoverRef.current?.("resolve"), 400);
           } else if ((lang === "dub" || lang === "sub") && typeof navigator !== "undefined" && navigator.onLine !== false) {
             // LANGUAGE-AWARE auto-failover — the backups-for-every-server
             // chain. A dead DUB resolve walks Server 1 → Server 2 → the
@@ -1185,12 +1204,18 @@ export default function WatchView({
      `stream` state is untouched, so phone playback never interrupts. The
      next Cast tap / episode hand-off then carries a link the TV can fetch. */
   useEffect(() => {
+    // epoch guard: an in-flight refresh from the OLD episode/lang/server must
+    // not overwrite castMediaUrlRef after the target changed — the next Cast
+    // tap would hand the TV the previous episode's link
+    let epoch = 0;
     const refresh = async () => {
+      const mine = ++epoch;
       try {
         const res = await fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}`);
         if (!res.ok) return;
         const data = (await res.json()) as Resolved;
         if (!data || typeof data.src !== "string" || !data.src) return;
+        if (mine !== epoch) return; // superseded by a newer target
         const isProxied = data.src.startsWith("/api/");
         const isHls = /\.m3u8($|\?|%3f)/i.test(data.src) || isProxied;
         castMediaUrlRef.current = isProxied
@@ -1379,6 +1404,8 @@ export default function WatchView({
   const castFailoverIdxRef = useRef(0);
   const castFailoverSigRef = useRef("");
   const castFailoverRef = useRef<((reason?: "stuck" | "media-error" | "resolve") => void) | null>(null);
+  // the resolve-effect's deferred walk handoff — must not outlive the view
+  const castWalkTimerRef = useRef<number | null>(null);
   useEffect(() => {
     const sig = `${anime.malId}:${episode}:${lang}:${server}`;
     if (castFailoverSigRef.current !== sig) castFailoverIdxRef.current = 0; // manual change
@@ -1418,7 +1445,17 @@ export default function WatchView({
     };
     castFailoverRef.current = advance;
     castSetFailoverHandler(advance);
-    return () => castSetFailoverHandler(null);
+    return () => {
+      castSetFailoverHandler(null);
+      // the stale advance closure must die with the view: it calls
+      // onEpisodeChange, which re-opens the watch stack entry even after
+      // unmount (the player popping back open on its own)
+      castFailoverRef.current = null;
+      if (castWalkTimerRef.current != null) {
+        window.clearTimeout(castWalkTimerRef.current);
+        castWalkTimerRef.current = null;
+      }
+    };
   }, [anime.malId, episode, lang, server]);
 
   /* -------- attach hls.js -------- */
@@ -2630,6 +2667,11 @@ export default function WatchView({
               <button
                 onClick={(e) => {
                   e.stopPropagation();
+                  // resume where the session actually was: the hls teardown
+                  // reset currentTime, and pendingSeekRef was already
+                  // consumed at first start — without this the Retry
+                  // restarted at the mount-time resume point (often 0:00)
+                  if (lastPosRef.current > 1) pendingSeekRef.current = lastPosRef.current;
                   setStreamError(false);
                   setStream(null);
                   fetch(`/api/stream?malId=${anime.malId}&ep=${episode}&lang=${lang}&server=${server}&fresh=1`)

@@ -64,7 +64,9 @@ export async function GET(req: Request) {
   const backupWanted = isBackupServer(rawServer);
   const server: ServerId = rawServer === "kiwi" ? "kiwi" : backupWanted ? rawServer : "zoko";
   const fresh = sp.get("fresh") === "1";
-  if (!Number.isFinite(malId) || malId <= 0 || !Number.isFinite(ep) || ep <= 0) {
+  // Number.isInteger, not isFinite — a fractional malId (1.5) passed this and
+  // blew up in the Prisma Int-column query as a raw 500
+  if (!Number.isInteger(malId) || malId <= 0 || !Number.isInteger(ep) || ep <= 0) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
 

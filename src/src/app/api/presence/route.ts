@@ -42,6 +42,9 @@ const g = globalThis as typeof globalThis & { __clylePresence?: Map<string, Pres
 const sessions: Map<string, PresenceSession> = g.__clylePresence ?? new Map();
 g.__clylePresence = sessions;
 
+/** Hard cap on tracked heartbeats — a uid flood cannot grow the map past this. */
+const MAX_SESSIONS = 5_000;
+
 function platformOf(ua: string): string {
   if (/android/i.test(ua)) return "Android"; // APK WebView + Android browsers
   if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
@@ -97,6 +100,20 @@ export async function POST(req: Request) {
   if (body.leave === true) {
     sessions.delete(uid); // explicit pagehide beacon — drop immediately
   } else {
+    // cap the map: a script POSTing random uids grew it without bound inside
+    // the 3-min window (eviction only happens inside aggregate()). At the cap,
+    // drop the OLDEST heartbeats first — real viewers re-heartbeat in seconds.
+    if (!sessions.has(uid) && sessions.size >= MAX_SESSIONS) {
+      const cutoff = Date.now() - 30_000;
+      for (const [k, v] of sessions) {
+        if (v.lastSeen < cutoff) sessions.delete(k);
+        if (sessions.size < MAX_SESSIONS) break;
+      }
+      if (sessions.size >= MAX_SESSIONS) {
+        // all fresh (flood): reject the new uid instead of growing further
+        return NextResponse.json(aggregate(), { headers: { "Cache-Control": "no-store" } });
+      }
+    }
     sessions.set(uid, { lastSeen: Date.now(), region, platform });
   }
   return NextResponse.json(aggregate(), { headers: { "Cache-Control": "no-store" } });

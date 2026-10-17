@@ -82,6 +82,9 @@ const MEDIA_PATH_RE = /\.(m3u8|ts|m4s|mp4|aac|vtt|srt|key|jpg|jpeg|png|webp)($|\
 
 function mediaHostPlausible(u: URL): boolean {
   if (u.username || u.password) return false;
+  // IPv6 literals ([::1], [::ffff:127.0.0.1]) match neither the IPv4 regex
+  // nor PRIVATE_HOST_RE — reject any bracketed/colon host outright
+  if (u.hostname.startsWith("[") || u.hostname.includes(":")) return false;
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) return false; // raw IPv4
   if (PRIVATE_HOST_RE.test(u.hostname)) return false; // internal vhosts
   if (u.port && u.port !== "443") return false; // only standard https ports
@@ -602,12 +605,19 @@ export async function GET(req: Request) {
     const text = flixDecrypt(rawText, pkParam);
     // this playlist's own referer is what all of its children expect
     const inheritedReferer = hasRf ? rfParam : refererForHost(target.hostname);
-    allowHostWithReferer(target.hostname, inheritedReferer);
-    // remember hosts of any absolute URLs we are about to hand out
-    for (const line of text.split(/\r?\n/)) {
-      const l = line.trim();
-      if (!l || l.startsWith("#")) continue;
-      try { allowHostWithReferer(new URL(l, target).hostname, inheritedReferer); } catch { /* ignore */ }
+    // learn hosts ONLY from playlists whose own host was already trusted —
+    // an rf-gated (untrusted-origin) playlist used to permanently register
+    // EVERY host its lines mentioned (attacker-controlled), after which those
+    // hosts skipped all shape checks forever. Untrusted flows still play:
+    // every rewritten child carries `rf` and re-passes the shape gate.
+    if (hostAllowed(target.hostname)) {
+      allowHostWithReferer(target.hostname, inheritedReferer);
+      // remember hosts of any absolute URLs we are about to hand out
+      for (const line of text.split(/\r?\n/)) {
+        const l = line.trim();
+        if (!l || l.startsWith("#")) continue;
+        try { allowHostWithReferer(new URL(l, target).hostname, inheritedReferer); } catch { /* ignore */ }
+      }
     }
     // single-variant master? add the CDN's hidden quality siblings (360/480/720/1080)
     const enriched = await enrichMaster(text, target, inheritedReferer).catch(() => null);

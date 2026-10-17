@@ -58,6 +58,9 @@ export default function SearchView({ onSelect }: { onSelect: (a: AnimeLite) => v
       // results under an already-cleared box
       abortRef.current?.abort();
       setCatalog([]);
+      // a keystroke that reached ≥2 chars flipped this on before the
+      // debounce/fetch; without the reset the skeleton stuck forever
+      setLoading(false);
       return;
     }
     setLoading(true);

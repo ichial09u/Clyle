@@ -1,4 +1,5 @@
 import { NextResponse, after } from "next/server";
+import { cronAuthorized } from "@/lib/guard";
 import { syncCatalog, lastSync, syncInProgress } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 
@@ -14,7 +15,10 @@ export const maxDuration = 60;
  * the full one at 07:17 UTC, this one at 19:17 UTC). The client-side loop
  * in page.tsx covers everything in between while the app is open.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  if (!cronAuthorized(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   const startedAt = new Date().toISOString();
   try {
     const result = await syncCatalog();

@@ -37,7 +37,8 @@ export async function POST(req: Request) {
   const p256dh = b.keys?.p256dh ?? "";
   const auth = b.keys?.auth ?? "";
   const malId = Number(b.ann?.malId);
-  if (!/^https:\/\//.test(endpoint) || !p256dh || !auth || !Number.isFinite(malId) || malId <= 0) {
+  // isInteger — fractional malId blows up the Int-column upsert as a raw 500
+  if (!/^https:\/\//.test(endpoint) || !p256dh || !auth || !Number.isInteger(malId) || malId <= 0) {
     return NextResponse.json({ ok: false, error: "endpoint, keys and ann.malId required" }, { status: 400 });
   }
   const ann = {

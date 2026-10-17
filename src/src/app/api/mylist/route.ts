@@ -14,7 +14,8 @@ export async function POST(req: Request) {
   } catch {
     return NextResponse.json({ error: "bad body" }, { status: 400 });
   }
-  const ids = (body.malIds ?? []).filter((n) => Number.isFinite(n)).slice(0, 100);
+  // isInteger, not isFinite — a fractional id throws PrismaClientValidationError (Int column)
+  const ids = (body.malIds ?? []).filter((n) => Number.isInteger(n)).slice(0, 100);
   if (!ids.length) return NextResponse.json({ items: [] });
 
   const rows = await db.anime.findMany({ where: { malId: { in: ids } } });

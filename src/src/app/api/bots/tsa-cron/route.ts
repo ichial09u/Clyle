@@ -15,6 +15,7 @@
  * GET (also via cron) -> { ok, job?, verdict?, stored?, reason? }
  */
 import { NextResponse } from "next/server";
+import { cronAuthorized } from "@/lib/guard";
 import { analyzePlaylist, matchEnvelope, plausibleInterval } from "@/lib/intro-detect";
 import { resolveStream } from "@/lib/zoko-stream";
 import { db } from "@/lib/db";
@@ -96,7 +97,11 @@ async function takeJob(): Promise<Job | null> {
   return g.tsaQueue?.jobs.shift() ?? null;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  // each invocation downloads ~4 minutes of CDN segments — no open trigger
+  if (!cronAuthorized(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   if (g.tsaBusy) return NextResponse.json({ ok: true, reason: "patrol already running" });
   g.tsaBusy = true;
   try {

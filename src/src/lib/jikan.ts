@@ -280,9 +280,12 @@ export function bannerUrl(a: JikanAnime | null | undefined): string | null {
 
 export function durationToMinutes(d: string | null | undefined): number | null {
   if (!d) return null;
-  const m = d.match(/(\d+)\s*min/);
-  if (m) return parseInt(m[1], 10);
+  // "1 hr 55 min" must sum BOTH parts — the min-only match used to truncate
+  // it to 55 and movies imported via Jikan got a bogus durationMin
   const h = d.match(/(\d+)\s*hr/);
+  const m = d.match(/(\d+)\s*min/);
+  if (h && m) return parseInt(h[1], 10) * 60 + parseInt(m[1], 10);
+  if (m) return parseInt(m[1], 10);
   if (h) return parseInt(h[1], 10) * 60;
   return null;
 }

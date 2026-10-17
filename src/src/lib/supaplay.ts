@@ -120,7 +120,19 @@ export async function supaplayDub(
   }
   if (!detailPath) return null; // not mapped — caller falls through to megaplay
 
-  const key = `stream/${detailPath}/${ep}`;
+  // multi-season subjects: one SupaPlay subject carries S1-S3 ("Jujutsu
+  // Kaisen [English] S1-S3") — Anime.supaplaySeason picks the right one
+  // (null = 1). MAL season entries map 1:1 to se numbers.
+  // MUST be resolved BEFORE the cache read: several Anime rows share one
+  // detailPath with different seasons — a season-less key served S1's file
+  // to S2/S3 plays (and poisoned the dub-boundary probes through it).
+  let season = 1;
+  try {
+    const anime = await db.anime.findUnique({ where: { malId }, select: { supaplaySeason: true } });
+    season = anime?.supaplaySeason && anime.supaplaySeason > 0 ? anime.supaplaySeason : 1;
+  } catch { /* default to 1 */ }
+
+  const key = `stream/${detailPath}/${season}/${ep}`;
   if (!opts.fresh) {
     const mem = cache.get(key);
     if (mem && mem.expires > Date.now()) return mem.data;
@@ -135,14 +147,6 @@ export async function supaplayDub(
   try {
     const subjectId = await subjectIdFor(detailPath);
     if (!subjectId) return null;
-    // multi-season subjects: one SupaPlay subject carries S1-S3 ("Jujutsu
-    // Kaisen [English] S1-S3") — Anime.supaplaySeason picks the right one
-    // (null = 1). MAL season entries map 1:1 to se numbers.
-    let season = 1;
-    try {
-      const anime = await db.anime.findUnique({ where: { malId }, select: { supaplaySeason: true } });
-      season = anime?.supaplaySeason && anime.supaplaySeason > 0 ? anime.supaplaySeason : 1;
-    } catch { /* default to 1 */ }
     const url = new URL(FETCH_VIDEO);
     url.searchParams.set("subjectId", String(subjectId));
     url.searchParams.set("se", String(season));

@@ -92,7 +92,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
                   create: { animeId: target, number: f.episode, title: f.title, slug: f.slug, lang: "sub" },
                 });
                 touched.set(target, Math.max(touched.get(target) ?? 0, f.episode));
-              } else {
+              } else if (f.season == null || f.season === 0) {
                 // a new special/movie — append to the Movies & Specials entry
                 if (nextSpecial < 0) {
                   const last = await db.episode.findFirst({
@@ -109,6 +109,11 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
                 });
                 touched.set(999900, nextSpecial);
                 nextSpecial += 1;
+              } else {
+                // a FUTURE season (S30+) — there is no Anime row for it yet;
+                // it used to fall into the specials bucket and masquerade as
+                // a special. Skip loudly instead until the row is provisioned.
+                console.error(`[wco-fresh] S${f.season} episode scraped but no Anime row (9999${(f.season as number) < 10 ? "0" : ""}${f.season}) — skipped`);
               }
             }
             for (const [id, max] of touched) {
@@ -511,7 +516,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ malId: 
             covered,
           });
         }
-      } else {
+      } else if (summary === undefined) {
+        // warm ONLY when the entry is missing or expired: a cached null means
+        // "probed, none found" — re-warming it on every view looped the
+        // background probe forever for shows the network genuinely can't dub
         const title = anime.titleEnglish?.trim() || anime.title;
         after(() => warmBackupDubSummary(malId, title).catch(() => undefined));
       }

@@ -19,9 +19,62 @@ export const ANIWEEB_ECHO_REFERER = "https://play.echovideo.ru/";
 /** empty string = send no Referer/Origin at all (plain signed URLs) */
 export const NO_REFERER = "";
 
-const dynamicHosts = new Set<string>();
+/** hostname -> allowedAt(ms). Bounded + TTL'd: an unbounded Set grew forever
+ *  on a warm instance (rotating CDN families), and a permanently-remembered
+ *  host skipped every shape check for the life of the process. */
+const DYNAMIC_HOST_TTL_MS = 24 * 3600_000;
+const DYNAMIC_HOST_CAP = 600;
+const dynamicHosts = new Map<string, number>();
 /** hostname -> Referer to send (missing entry = Zoko default) */
 const hostReferers = new Map<string, string>();
+
+/** Allow a host for proxying, remembering which Referer it expects. */
+export function allowHostWithReferer(hostname: string, referer: string | undefined): void {
+  const h = hostname.toLowerCase();
+  if (!h) return;
+  if (!dynamicHosts.has(h) && dynamicHosts.size >= DYNAMIC_HOST_CAP) {
+    // evict the oldest-tracked host (insertion order) + its referer to stay
+    // bounded; a still-live family gets re-learned by the next playlist serve
+    const oldest = dynamicHosts.keys().next().value;
+    if (oldest != null) {
+      dynamicHosts.delete(oldest);
+      hostReferers.delete(oldest);
+    }
+  }
+  dynamicHosts.set(h, Date.now());
+  if (referer != null) hostReferers.set(h, referer);
+}
+
+/** Referer the proxy should send for this host (undefined = Zoko default). */
+export function refererForHost(hostname: string): string | undefined {
+  const h = hostname.toLowerCase();
+  const explicit = hostReferers.get(h);
+  if (explicit != null) return explicit;
+  for (const [suffix, referer] of MEGAP_SUFFIX_REFERERS) {
+    if (h.endsWith(suffix)) return referer;
+  }
+  for (const [suffix, referer] of ANIWEEB_SUFFIX_REFERERS) {
+    if (h.endsWith(suffix)) return referer;
+  }
+  for (const [suffix, referer] of NO_REFERER_SUFFIXES) {
+    if (h.endsWith(suffix)) return referer;
+  }
+  return undefined;
+}
+
+/** Was this host explicitly allowed by a resolver (beyond the static suffixes)?
+ *  Entries expire after 24h — a poisoned/rotted host must not stay trusted. */
+export function isAllowedHost(hostname: string): boolean {
+  const h = hostname.toLowerCase();
+  const at = dynamicHosts.get(h);
+  if (at == null) return false;
+  if (Date.now() - at > DYNAMIC_HOST_TTL_MS) {
+    dynamicHosts.delete(h);
+    hostReferers.delete(h);
+    return false;
+  }
+  return true;
+}
 
 /** Megaplay CDN host families observed in the wild (subdomains rotate). */
 const MEGAP_SUFFIX_REFERERS: Array<[string, string]> = [
@@ -85,33 +138,3 @@ export const WCO_NODES_REST = [
   "u24", "u25", "u26", "u27", "u31", "u32", "u33", "u34", "u35", "u36", "u37",
   "u38", "u39", "u40", "u41", "u42", "u43", "u44",
 ];
-
-/** Allow a host for proxying, remembering which Referer it expects. */
-export function allowHostWithReferer(hostname: string, referer: string | undefined): void {
-  const h = hostname.toLowerCase();
-  if (!h) return;
-  dynamicHosts.add(h);
-  if (referer != null) hostReferers.set(h, referer);
-}
-
-/** Referer the proxy should send for this host (undefined = Zoko default). */
-export function refererForHost(hostname: string): string | undefined {
-  const h = hostname.toLowerCase();
-  const explicit = hostReferers.get(h);
-  if (explicit != null) return explicit;
-  for (const [suffix, referer] of MEGAP_SUFFIX_REFERERS) {
-    if (h.endsWith(suffix)) return referer;
-  }
-  for (const [suffix, referer] of ANIWEEB_SUFFIX_REFERERS) {
-    if (h.endsWith(suffix)) return referer;
-  }
-  for (const [suffix, referer] of NO_REFERER_SUFFIXES) {
-    if (h.endsWith(suffix)) return referer;
-  }
-  return undefined;
-}
-
-/** Was this host explicitly allowed by a resolver (beyond the static suffixes)? */
-export function isAllowedHost(hostname: string): boolean {
-  return dynamicHosts.has(hostname.toLowerCase());
-}

@@ -600,9 +600,21 @@ function summaryKey(malId: number): string {
   return `summary:${malId}`;
 }
 
-/** Cache-only read — null means "not probed yet", never blocks the grid. */
+/** Cache-only read — undefined = "not probed yet" or the entry EXPIRED (the
+ *  route re-warms both). null = a fresh "probed, none found" within its TTL.
+ *  The old metadata-less read returned positive summaries forever (stale dub
+ *  lists) and a cached null re-warmed on every single grid view. */
 export async function cachedBackupDubSummary(malId: number): Promise<BackupDubProviderInfo[] | null | undefined> {
-  return cacheGet<BackupDubProviderInfo[]>(summaryKey(malId));
+  const key = summaryKey(malId);
+  const hit = memCache.get(key) as Entry<BackupDubProviderInfo[]> | undefined;
+  if (hit) return Date.now() - hit.at < hit.ttl ? hit.data : undefined;
+  try {
+    const raw = JSON.parse(await readFile(cacheFile(key), "utf8")) as Entry<BackupDubProviderInfo[]>;
+    memCache.set(key, raw);
+    return Date.now() - raw.at < raw.ttl ? raw.data : undefined;
+  } catch {
+    return undefined; // nothing cached (distinct from a cached null)
+  }
 }
 
 /** Fetch + persist the per-provider dub summary (background warming). */

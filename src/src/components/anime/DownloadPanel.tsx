@@ -71,6 +71,11 @@ export default function DownloadPanel({ anime, onClose }: { anime: PanelAnime; o
   const [query, setQuery] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
+  // leaving the details view (or switching title) must stop the download loop —
+  // without this the run() kept fetching + holding episode Blobs for the whole
+  // picked list in the background after the panel was gone
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   // episode grid (same endpoint the player grid uses)
   useEffect(() => {
     let dead = false;

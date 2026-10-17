@@ -134,7 +134,8 @@ export async function POST(req: Request) {
   // background tabs without letting a wild clock inject hours in one POST
   const delta = Math.round(Number(b.delta));
 
-  if (!Number.isFinite(malId) || !DAY_RE.test(day) || !Number.isFinite(delta)) {
+  // isInteger — fractional malId blows up the Int-column upsert as a raw 500
+  if (!Number.isInteger(malId) || !DAY_RE.test(day) || !Number.isFinite(delta)) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
   // reject days outside [today-7, today] — unbounded distinct days let a

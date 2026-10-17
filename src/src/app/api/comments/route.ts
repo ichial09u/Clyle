@@ -122,7 +122,8 @@ export async function POST(req: Request) {
   const fallbackNickname = (body.nickname ?? "Username").replace(/\s+/g, " ").trim().slice(0, 24) || "Username";
   const avatar = sanitizeAvatar(body.avatar);
 
-  if (!Number.isFinite(malId) || !body.userId?.trim() || !text) {
+  // isInteger — fractional malId blows up the Int-column create as a raw 500
+  if (!Number.isInteger(malId) || !body.userId?.trim() || !text) {
     return NextResponse.json({ error: "bad params" }, { status: 400 });
   }
 

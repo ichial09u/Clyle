@@ -48,7 +48,7 @@ type CacheEntry = { data: MegaplayStream | null; expires: number };
 type VerdictEntry = { data: boolean; expires: number };
 const cache = new Map<string, CacheEntry>();
 const verdicts = new Map<string, VerdictEntry>();
-const inFlight = new Map<string, Promise<MegaplayStream | null>>();
+const inFlight = new Map<string, Promise<{ stream: MegaplayStream | null; transient: boolean }>>();
 
 function diskPath(key: string): string {
   const hash = createHash("sha1").update(key).digest("hex").slice(0, 24);
@@ -178,29 +178,34 @@ async function buzzPageDubRaw(malId: number, ep: number): Promise<MegaplayStream
  * ad-stub (0 real segments) falls through to the buzz-page path, whose real
  * stream wins; when that also fails, the flikhub answer is returned as-is so
  * the verification layer can judge it (stub -> verdict false, as before).
+ *
+ * `transient` marks "we don't actually know" — the flikhub leg THREW
+ * (timeout/5xx) and nothing definitive answered after it. A transient null
+ * must never be cached as a definitive "no dub".
  */
-async function resolveMegaplayDubRaw(malId: number, ep: number): Promise<MegaplayStream | null> {
+async function resolveMegaplayDubRaw(malId: number, ep: number): Promise<{ stream: MegaplayStream | null; transient: boolean }> {
   let flikhubStream: MegaplayStream | null = null;
+  let flikhubDown = false;
   try {
     flikhubStream = await flikhubDubRaw(malId, ep);
   } catch {
-    flikhubStream = null; // flikhub down/unmapped — the buzz page may still carry the dub
+    flikhubDown = true; // flikhub down/unmapped — the buzz page may still carry the dub
   }
   if (flikhubStream) {
     const count = await realSegmentCount(flikhubStream.src).catch(() => null);
-    if (count == null || count >= 3) return flikhubStream; // real (or unverifiable — keep old behaviour)
+    if (count == null || count >= 3) return { stream: flikhubStream, transient: false }; // real (or unverifiable — keep old behaviour)
     // count === 0 -> ad-stub mirror; try the buzz page before giving up
   }
   try {
     const buzz = await buzzPageDubRaw(malId, ep);
     if (buzz) {
       const count = await realSegmentCount(buzz.src).catch(() => null);
-      if (count != null && count >= 3) return buzz;
+      if (count != null && count >= 3) return { stream: buzz, transient: false };
     }
   } catch {
     /* fall through */
   }
-  return flikhubStream;
+  return { stream: flikhubStream, transient: flikhubDown && !flikhubStream };
 }
 
 /**
@@ -212,34 +217,53 @@ export async function megaplayDub(
   ep: number,
   opts: { fresh?: boolean } = {},
 ): Promise<MegaplayStream | null> {
+  return (await megaplayDubDetailed(malId, ep, opts)).stream;
+}
+
+/** megaplayDub + the transient flag: a null from a transient resolve failure
+ *  (flikhub leg threw and nothing definitive answered) is NEVER cached and
+ *  never promoted to a 24h "no dub" verdict — mirror of anikoto's contract. */
+async function megaplayDubDetailed(
+  malId: number,
+  ep: number,
+  opts: { fresh?: boolean } = {},
+): Promise<{ stream: MegaplayStream | null; transient: boolean }> {
   const key = `stream/${malId}/${ep}`;
   if (!opts.fresh) {
     const mem = cache.get(key);
-    if (mem && mem.expires > Date.now()) return mem.data;
+    if (mem && mem.expires > Date.now()) return { stream: mem.data, transient: false };
     const disk = (await diskRead<CacheEntry>(key)) as CacheEntry | null;
     if (disk && disk.expires > Date.now()) {
       cache.set(key, disk);
       if (disk.data) registerStreamHosts(disk.data);
-      return disk.data;
+      return { stream: disk.data, transient: false };
     }
   }
 
   const existing = inFlight.get(key);
   if (existing) return existing;
 
-  const job = (async () => {
+  const job = (async (): Promise<{ stream: MegaplayStream | null; transient: boolean }> => {
     try {
-      const data = await resolveMegaplayDubRaw(malId, ep);
+      const { stream: data, transient } = await resolveMegaplayDubRaw(malId, ep);
+      if (!data && transient) {
+        // transient (timeout / 5xx on both legs): serve stale if we have it,
+        // never a fake "no dub" — and never cache the miss
+        const stale = cache.get(key) ?? (await diskRead<CacheEntry>(key));
+        if (stale) return { stream: stale.data, transient: false };
+        console.error("[megaplay] transient resolve failure — miss not cached");
+        return { stream: null, transient: true };
+      }
       const entry: CacheEntry = { data, expires: Date.now() + TTL_MS };
       cache.set(key, entry);
       void diskWrite(key, entry);
-      return data;
+      return { stream: data, transient: false };
     } catch (err) {
       // transient (timeout / 5xx): serve stale if we have it, never a fake "no dub"
       const stale = cache.get(key) ?? (await diskRead<CacheEntry>(key));
-      if (stale) return stale.data;
+      if (stale) return { stream: stale.data, transient: false };
       console.error("[megaplay]", err instanceof Error ? err.message : err);
-      return null;
+      return { stream: null, transient: true };
     } finally {
       inFlight.delete(key);
     }
@@ -300,8 +324,9 @@ export async function verifyRealMegaplayDub(malId: number, ep: number): Promise<
   }
 
   try {
-    const stream = await megaplayDub(malId, ep);
+    const { stream, transient } = await megaplayDubDetailed(malId, ep);
     if (!stream) {
+      if (transient) return null; // couldn't tell right now — no verdict
       await cacheVerdict(key, false); // flikhub answered cleanly: no dub stream
       return false;
     }

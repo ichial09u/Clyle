@@ -199,9 +199,17 @@ export async function importEpisodes(malId: number, count: number): Promise<numb
   const missing: number[] = [];
   for (let n = 1; n <= count; n++) if (!have.has(n)) missing.push(n);
   if (missing.length === 0) return [];
-  await db.episode.createMany({
-    data: missing.map((n) => ({ animeId: malId, number: n, lang: "sub" })),
-  });
+  try {
+    await db.episode.createMany({
+      data: missing.map((n) => ({ animeId: malId, number: n, lang: "sub" })),
+    });
+  } catch {
+    // two instances can pass their per-instance memo at the same moment a new
+    // episode airs — both read the same `missing` set and both INSERT; the
+    // loser hits P2002 (SQLite Prisma has no skipDuplicates). The winner's
+    // rows already landed; report none added so the skip prefetch re-runs.
+    return [];
+  }
   return missing;
 }
 

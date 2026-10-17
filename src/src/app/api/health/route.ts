@@ -26,7 +26,10 @@ export async function GET() {
     cwd: process.cwd(),
     dbPath,
     dbExists: existsSync(dbPath),
-    databaseUrl: (process.env.DATABASE_URL ?? "").slice(0, 80),
+    // DATABASE_URL's first 80 chars used to be world-readable here — with a
+    // future postgres:// URL that leaks user@host (and a credential prefix).
+    // dbExists/animeCount already say whether the URL resolved.
+    databaseUrlScheme: (process.env.DATABASE_URL ?? "").split(":")[0] || null,
     animeCount,
     dbError,
     ts: new Date().toISOString(),

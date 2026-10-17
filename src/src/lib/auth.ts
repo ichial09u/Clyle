@@ -116,7 +116,15 @@ export function sessionFromRequest(req: Request): SessionUser | null {
     .map((c) => c.trim())
     .find((c) => c.startsWith(`${SESSION_COOKIE}=`));
   if (!raw) return null;
-  return verifySession(decodeURIComponent(raw.slice(SESSION_COOKIE.length + 1)));
+  // a hand-tampered cookie value with a bare `%` used to throw URIError out of
+  // decodeURIComponent and 500 every session-touching route for that browser
+  let value: string;
+  try {
+    value = decodeURIComponent(raw.slice(SESSION_COOKIE.length + 1));
+  } catch {
+    return null;
+  }
+  return verifySession(value);
 }
 
 export function sessionCookieOptions(maxAge = SESSION_TTL_S) {
@@ -176,26 +184,29 @@ export async function exchangeGoogleCode(
   code: string,
   redirectUri: string,
 ): Promise<GoogleProfile | null> {
-  const res = await fetch("https://oauth2.googleapis.com/token", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({
-      code,
-      client_id: googleClientId(),
-      client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
-      redirect_uri: redirectUri,
-      grant_type: "authorization_code",
-    }),
-    signal: AbortSignal.timeout(12_000),
-  });
-  if (!res.ok) return null;
-  const tokens = (await res.json()) as { id_token?: string };
-  if (!tokens.id_token) return null;
-  // the id_token comes straight from Google's token endpoint over TLS —
-  // decoding the payload (no JWK round-trip) is the documented shortcut
-  const payloadB64 = tokens.id_token.split(".")[1];
-  if (!payloadB64) return null;
+  // a thrown fetch (the 12s timeout EXISTS to fire on a slow token endpoint)
+  // used to blow out of the callback as a raw 500 instead of the documented
+  // /signin?error=exchange_failed redirect
   try {
+    const res = await fetch("https://oauth2.googleapis.com/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        code,
+        client_id: googleClientId(),
+        client_secret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+        redirect_uri: redirectUri,
+        grant_type: "authorization_code",
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) return null;
+    const tokens = (await res.json()) as { id_token?: string };
+    if (!tokens.id_token) return null;
+    // the id_token comes straight from Google's token endpoint over TLS —
+    // decoding the payload (no JWK round-trip) is the documented shortcut
+    const payloadB64 = tokens.id_token.split(".")[1];
+    if (!payloadB64) return null;
     const payload = JSON.parse(Buffer.from(payloadB64, "base64").toString("utf8")) as GoogleProfile & { exp?: number };
     if (!payload.sub || (payload.exp ?? 0) * 1000 < Date.now()) return null;
     return { sub: payload.sub, email: payload.email ?? null, name: payload.name ?? null, picture: payload.picture ?? null };

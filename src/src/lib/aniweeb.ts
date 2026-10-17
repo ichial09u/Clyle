@@ -384,18 +384,25 @@ export async function warmAniweebCoverage(
   return out;
 }
 
-/** Cache-only coverage read — undefined = not probed yet (never blocks). */
+/** Cache-only coverage read — undefined = not probed yet / expired (never
+ *  blocks; the expired case lets the route's warmer re-probe). A fresh null
+ *  stays a definitive "probed, none". */
 export async function cachedAniweebCoverage(
   malId: number,
   lang: Lang = "dub",
 ): Promise<Partial<Record<AniweebServerId, number[]>> | null | undefined> {
   const key = `coverage/${malId}/${lang}`;
   const mem = coverageCache.get(key);
-  if (mem) return mem.data;
+  if (mem) {
+    // TTL 12h — without this check a warmed entry was returned forever and
+    // Aniweeb's growing dub coverage never refreshed
+    if (mem.expires > Date.now()) return mem.data;
+    coverageCache.delete(key);
+  }
   const disk = (await diskRead<CacheEntry<Partial<Record<AniweebServerId, number[]>>>>(key)) as CacheEntry<
     Partial<Record<AniweebServerId, number[]>>
   > | null;
-  if (disk) {
+  if (disk && disk.expires > Date.now()) {
     coverageCache.set(key, disk);
     return disk.data;
   }

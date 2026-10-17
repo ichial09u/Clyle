@@ -57,6 +57,11 @@ export default function Page() {
   const nonceRef = useRef(0);
   const prevTopRef = useRef<View>(stack[0]);
   const prevLenRef = useRef(1);
+  // synchronous depth guard for the popstate handler: two popstate events can
+  // land in the same tick (before React commits) and both read a stale
+  // stack.length — the user skips a screen. onPop decrements this BEFORE
+  // popping so the second event sees the already-reduced depth.
+  const stackLenRef = useRef(1);
 
   const push = useCallback((v: View) => {
     navKind.current = "push";
@@ -119,7 +124,8 @@ export default function Page() {
   // Android-style hardware back support
   useEffect(() => {
     const onPop = () => {
-      if (stack.length > 1) {
+      if (stackLenRef.current > 1) {
+        stackLenRef.current -= 1;
         pop();
         window.history.pushState(null, "", "");
       }
@@ -127,7 +133,12 @@ export default function Page() {
     window.history.pushState(null, "", "");
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [stack.length, pop]);
+  }, [pop]);
+
+  // keep the depth guard in sync with every other stack change (push, tab reset)
+  useEffect(() => {
+    stackLenRef.current = stack.length;
+  }, [stack.length]);
 
   /** Exit-the-player = homepage (user ask). goTab("home") resets the stack to
    *  the home root and syncs the bottom nav — no episodes view left underneath. */

@@ -1,5 +1,6 @@
 import { NextResponse, after } from "next/server";
 import { db } from "@/lib/db";
+import { cronAuthorized } from "@/lib/guard";
 import { syncCatalog, lastSync } from "@/lib/sync";
 import { prefetchSkipTimes } from "@/lib/skip-times";
 import { runSkipAudit } from "@/lib/skip-audit";
@@ -35,6 +36,9 @@ export const maxDuration = 60;
  * and produce actionable reports for anything that needs a human.
  */
 export async function GET(req: Request) {
+  if (!cronAuthorized(req)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+  }
   const startedAt = new Date().toISOString();
   const checks: Array<{ name: string; ok: boolean; detail?: string }> = [];
   const fixes: string[] = [];
