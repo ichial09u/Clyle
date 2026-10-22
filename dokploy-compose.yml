@@ -1,0 +1,39 @@
+# Clyle on Dokploy — one-paste stack.
+#
+# In Dokploy: Projects → Create Project → + → Docker Compose →
+# "Paste Compose" → drop this file in → Deploy.
+#
+# It runs the exact same public image Render uses
+# (ghcr.io/ichial09u/clyle:latest), so nothing gets built on your server.
+# The named volume keeps the catalog DB, watch progress and every cache
+# alive across restarts and redeploys (the image's entrypoint seeds the
+# volume automatically on first boot).
+#
+# After a new image ships and you want the refreshed catalog pulled in,
+# set DB_RESEED=1 once, redeploy, then remove it again.
+
+services:
+  clyle:
+    image: ghcr.io/ichial09u/clyle:latest
+    restart: unless-stopped
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      # — Google sign-in on this domain (optional; callbacks below) —
+      # - GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+      # - GOOGLE_CLIENT_SECRET=xxxx
+      # - AUTH_SECRET=any-long-random-string
+      # — catalog refresh switch (recopies the packaged DB over the volume) —
+      # - DB_RESEED=1
+    volumes:
+      - clyle-data:/app/db
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  clyle-data:

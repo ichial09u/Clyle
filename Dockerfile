@@ -43,5 +43,14 @@ COPY --from=build /app/.next/standalone ./
 # SQLite file ("no such table").
 COPY --from=build /app/db/custom.db ./db/custom.db
 
+# Seed copy kept OUTSIDE /app/db so a volume mounted at /app/db (Dokploy /
+# Coolify / any VPS) never shadows it. entrypoint.sh copies it into the
+# volume on first boot, or on every boot when DB_RESEED=1 is set (catalog
+# refresh after a new image folds in updated data).
+COPY --from=build /app/db/custom.db /opt/seed/custom.db
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 EXPOSE 3000
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["node", "server.js"]
