@@ -3,6 +3,31 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Self-hosted variable fonts (latin subset) — replaces next/font/google so
+   image builds never depend on a fonts.googleapis.com fetch (the Turbopack
+   font fetch flaked and broke multi-arch image builds). One file per family
+   covers every weight via the wght axis. */
+@font-face {
+  font-family: "Roboto";
+  src: url("/fonts/roboto-latin-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Roboto Slab";
+  src: url("/fonts/roboto-slab-latin-var.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* next/font used to inject these on <body>; define them globally now */
+:root {
+  --font-roboto: "Roboto";
+  --font-roboto-slab: "Roboto Slab";
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

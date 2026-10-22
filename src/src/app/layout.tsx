@@ -1,23 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Roboto, Roboto_Slab } from "next/font/google";
 import RegisterSW from "@/components/pwa/RegisterSW";
 import OfflineManager from "@/components/pwa/OfflineManager";
 import AccountSync from "@/components/account/AccountSync";
 import SignInPrompt from "@/components/account/SignInPrompt";
 import PresenceHeartbeat from "@/components/anime/PresenceHeartbeat";
 import "./globals.css";
-
-const roboto = Roboto({
-  variable: "--font-roboto",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-});
-
-const robotoSlab = Roboto_Slab({
-  variable: "--font-roboto-slab",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
-});
 
 export const metadata: Metadata = {
   title: "Clyle — Anime, everywhere",
@@ -55,7 +42,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
-      <body className={`${roboto.variable} ${robotoSlab.variable} antialiased bg-black text-white`}>
+      <body className="antialiased bg-black text-white">
         {children}
         <RegisterSW />
         <OfflineManager />
