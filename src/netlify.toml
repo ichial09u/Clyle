@@ -1,0 +1,22 @@
+# Monorepo-pattern config: this file lives in the app directory (src/).
+# When Netlify's Base directory is set to "src" (the root netlify.toml sets
+# it, and the UI lets you confirm it), THIS file is the one that is read, so
+# it must mirror the root config minus the "base" key.
+#
+# Free-plan reality check (2026 credit system): 300 credits/month, video
+# bandwidth through /api/stream/proxy costs 20 credits/GB -> ~15 GB of
+# streamed video, and each production deploy costs 15 credits. See
+# NETLIFY.md for the full picture.
+
+[build]
+  # prisma generate explicitly: newer npm builds can skip postinstall
+  # scripts, and the Prisma client must exist before next build prerenders.
+  command = "npx prisma generate && npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Belt-and-braces: db.ts auto-detects Netlify at runtime (NETLIFY=true
+  # plus a directory-writability probe). This also forces the /tmp database
+  # copy during the build's prerender phase, which is correct there anyway.
+  DB_FORCE_TMP_COPY = "1"

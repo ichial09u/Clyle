@@ -11,7 +11,9 @@
 
 [build]
   base = "src"
-  command = "npm run build"
+  # prisma generate explicitly: newer npm builds can skip postinstall
+  # scripts, and the Prisma client must exist before next build prerenders.
+  command = "npx prisma generate && npm run build"
   publish = ".next"
 
 [build.environment]
