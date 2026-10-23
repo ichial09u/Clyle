@@ -1,0 +1,722 @@
+     1→import { NextResponse } from "next/server";
+     2→import { execFile } from "node:child_process";
+     3→import { resolveStream } from "@/lib/zoko-stream";
+     4→import {
+     5→  allowHostWithReferer,
+     6→  refererForHost,
+     7→  isAllowedHost,
+     8→  PROXY_SUFFIXES,
+     9→  WCO_NODES_PRIMARY,
+    10→  WCO_NODES_REST,
+    11→  ZOKO_REFERER,
+    12→} from "@/lib/stream-proxy-registry";
+    13→import { flixStoredMaster, FLIX_REFERER } from "@/lib/flixcloud";
+    14→
+    15→export const dynamic = "force-dynamic";
+    16→
+    17→/**
+    18→ * GET /api/stream/proxy?u=<encoded upstream url>
+    19→ *
+    20→ * Playback proxy — the missing piece that lets OUR player stream Zoko's
+    21→ * content without Zoko's ad-laden page:
+    22→ *
+    23→ *  1. Zoko's HLS CDN only accepts requests carrying Zoko's own Origin, so the
+    24→ *     browser cannot fetch playlists/segments directly. We fetch server-side
+    25→ *     with the right Origin/Referer and re-serve the bytes.
+    26→ *  2. For playlists (.m3u8) every child playlist / segment / key / subtitle
+    27→ *     URL is rewritten to point back at this proxy, so the whole session
+    28→ *     stays inside our origin.
+    29→ *  3. Segments and WebVTT subtitles stream straight through (no buffering).
+    30→ *
+    31→ * Only hosts advertised by a resolved stream (or Zoko's known CDN suffixes)
+    32→ * are fetchable — this is not a general open proxy.
+    33→ */
+    34→
+    35→const ZOKO_ORIGIN = "https://zokoanime.video";
+    36→const UA =
+    37→  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+    38→
+    39→const CDN_SUFFIXES = [".aniwatchtv.uk", ".zokoanime.video", ".1embed.buzz"];
+    40→
+    41→/**
+    42→ * LM2 (lookmovie2) storage — South Park's fallback source — is PARTIALLY
+    43→ * broken: behind srvNNN.horrowing.cyou a rotating pool of nodes serves the
+    44→ * file, and the broken ones answer 200 "WRONG HASH!" text (playlists) or
+    45→ * 4xx (segments/keys) for the SAME signed URL. Per-request retries converge
+    46→ * (~1-in-3 nodes healthy, verified 2026-10-09), so the proxy retries these
+    47→ * hosts aggressively before giving up on a playlist/segment.
+    48→ */
+    49→const LM2_RETRY_SUFFIXES = [".horrowing.cyou"];
+    50→const LM2_MAX_ATTEMPTS = 10;
+    51→const LM2_MIN_SEG_BYTES = 1024; // "WRONG HASH!" is 12 bytes; real media segments are >= tens of KB
+    52→
+    53→/**
+    54→ * Upstream headers for one host: each provider's CDN only accepts the
+    55→ * Referer its own player sends (Zoko -> zokoanime.video, Megaplay ->
+    56→ * megaplay.buzz, SupaPlay -> none). The registry remembers which is which;
+    57→ * hosts resolved before this point fall back to Zoko's headers.
+    58→ */
+    59→function upstreamHeadersFor(hostname: string, refererOverride?: string): Record<string, string> {
+    60→  // a self-described child URL carries the referer its own playlist used —
+    61→  // authoritative across lambda/instance boundaries (the in-memory registry
+    62→  // is per-instance; megaplay's CDN host families rotate past every static
+    63→  // list, so the playlist itself is the only durable source of truth)
+    64→  const referer = refererOverride !== undefined ? refererOverride : refererForHost(hostname);
+    65→  if (referer === "") return { "User-Agent": UA, Accept: "*/*" }; // signed URLs, no referer wanted
+    66→  if (referer) return { "User-Agent": UA, Referer: referer, Accept: "*/*" };
+    67→  return { "User-Agent": UA, Origin: ZOKO_ORIGIN, Referer: `${ZOKO_ORIGIN}/`, Accept: "*/*" };
+    68→}
+    69→
+    70→export function allowHost(hostname: string) {
+    71→  allowHostWithReferer(hostname, undefined);
+    72→}
+    73→
+    74→/* --- unvetted `rf` targets must at least LOOK like streaming media ---
+    75→   rf is client-supplied, so "has rf = trusted" used to turn this route into
+    76→   an open HTTPS relay (any host, any body, 25s, parallel ranges). Requests
+    77→   from rewritten playlists always target segments/playlists/subs, so these
+    78→   shape checks keep rotating CDN families working while refusing arbitrary
+    79→   relay abuse (HTML pages, internal IPs, odd ports). */
+    80→const PRIVATE_HOST_RE = /(^|\.)(localhost|local|internal|home\.arpa)$|^127\.|^10\.|^169\.254\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\.|^0\./;
+    81→const MEDIA_PATH_RE = /\.(m3u8|ts|m4s|mp4|aac|vtt|srt|key|jpg|jpeg|png|webp)($|\?)/i;
+    82→
+    83→function mediaHostPlausible(u: URL): boolean {
+    84→  if (u.username || u.password) return false;
+    85→  // IPv6 literals ([::1], [::ffff:127.0.0.1]) match neither the IPv4 regex
+    86→  // nor PRIVATE_HOST_RE — reject any bracketed/colon host outright
+    87→  if (u.hostname.startsWith("[") || u.hostname.includes(":")) return false;
+    88→  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(u.hostname)) return false; // raw IPv4
+    89→  if (PRIVATE_HOST_RE.test(u.hostname)) return false; // internal vhosts
+    90→  if (u.port && u.port !== "443") return false; // only standard https ports
+    91→  // pathname ONLY — a ".ts" hiding in the query string must not vouch for an
+    92→  // arbitrary host (the shape gate exists to refuse generic relay abuse)
+    93→  return MEDIA_PATH_RE.test(u.pathname);
+    94→}
+    95→
+    96→function hostAllowed(hostname: string): boolean {
+    97→  const h = hostname.toLowerCase();
+    98→  if (CDN_SUFFIXES.some((s) => h.endsWith(s))) return true;
+    99→  if (PROXY_SUFFIXES.some((s) => h.endsWith(s))) return true;
+   100→  if (isAllowedHost(h)) return true;
+   101→  return false;
+   102→}
+   103→
+   104→/** Remember every host mentioned by a resolved stream (called on resolve). */
+   105→async function primeAllowlist(malId: number, ep: number, lang: string, server: string) {
+   106→  const stream = await resolveStream(malId, ep, lang === "dub" ? "dub" : "sub", server === "kiwi" ? "kiwi" : "zoko").catch(() => null);
+   107→  if (!stream) return;
+   108→  const hosts: string[] = [];
+   109→  try { hosts.push(new URL(stream.src).hostname); } catch { /* ignore */ }
+   110→  for (const sub of stream.subtitles ?? []) {
+   111→    try { hosts.push(new URL(sub.src).hostname); } catch { /* ignore */ }
+   112→  }
+   113→  for (const h of hosts) allowHost(h);
+   114→}
+   115→
+   116→function proxied(abs: URL, type: "m3u8" | "seg" | "vtt", referer?: string | null, pk?: string | null): string {
+   117→  // `rf` rides along on every child URL so any later lambda serving it uses
+   118→  // the exact upstream headers the issuing playlist was fetched with
+   119→  const rf = referer != null ? `&rf=${encodeURIComponent(referer)}` : "";
+   120→  // `pk` likewise: FlixCloud child playlists need the same XOR key the master
+   121→  // used (it is static per video, but propagating keeps the flow stateless)
+   122→  const p = pk ? `&pk=${encodeURIComponent(pk)}` : "";
+   123→  return `/api/stream/proxy?type=${type}&u=${encodeURIComponent(abs.toString())}${rf}${p}`;
+   124→}
+   125→
+   126→/**
+   127→ * FlixCloud serves every playlist base64(XOR(bytes, __pk)) — the 32-byte key
+   128→ * their patched hls.js derives from a per-video WASM mixing step. We resolved
+   129→ * that key at stream time (flixcloud.ts); peel the layer here so OUR stock
+   130→ * hls.js sees plaintext playlists. Segments are standard HLS and pass through.
+   131→ */
+   132→function flixDecrypt(text: string, pkHex: string | null): string {
+   133→  if (!pkHex || text.startsWith("#EXTM3U")) return text;
+   134→  const trimmed = text.trim();
+   135→  if (!/^[A-Za-z0-9+\/=]+$/.test(trimmed)) return text; // not a base64 blob
+   136→  try {
+   137→    const bin = Buffer.from(trimmed, "base64");
+   138→    const pk = Buffer.from(pkHex, "hex");
+   139→    if (pk.length < 16) return text;
+   140→    const out = Buffer.from(bin);
+   141→    for (let i = 0; i < out.length; i++) out[i] ^= pk[i % pk.length];
+   142→    const dec = out.toString("utf8");
+   143→    return dec.startsWith("#EXTM3U") ? dec : text;
+   144→  } catch {
+   145→    return text;
+   146→  }
+   147→}
+   148→
+   149→/**
+   150→ * SRT → WebVTT (FlixCloud ships English SDH/dubtitle SRTs). The changes are
+   151→ * tiny: a WEBVTT header, and commas in the timecodes become dots.
+   152→ */
+   153→function srtToVtt(srt: string): string {
+   154→  const body = srt
+   155→    .replace(/\r+/g, "")
+   156→    .replace(/^\uFEFF/, "")
+   157→    .replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, "$1.$2")
+   158→    .replace(/^\d+\s*$/gm, "") // SRT sequence numbers are invalid VTT cues
+   159→    .replace(/\n{3,}/g, "\n\n")
+   160→    .trim();
+   161→  return `WEBVTT\n\n${body}\n`;
+   162→}
+   163→
+   164→/* ------------------------------------------------------------------ *
+   165→ * Hidden-quality discovery.
+   166→ *
+   167→ * Zoko's master playlists advertise only ONE variant (usually 1080p),
+   168→ * but the CDN also hosts the standard ladder at the same path:
+   169→ *   {base}/360/index.m3u8, {base}/480/..., {base}/720/..., {base}/1080/...
+   170→ * We probe the siblings and synthesize a proper multi-variant master so
+   171→ * hls.js gets real levels -> the quality panel lists everything and the
+   172→ * Auto setting can actually adapt between qualities mid-episode.
+   173→ * ------------------------------------------------------------------ */
+   174→
+   175→const VARIANT_HEIGHTS = [360, 480, 720, 1080] as const;
+   176→const VARIANT_META: Record<number, { bandwidth: number; resolution: string }> = {
+   177→  360: { bandwidth: 800_000, resolution: "640x360" },
+   178→  480: { bandwidth: 1_300_000, resolution: "854x480" },
+   179→  720: { bandwidth: 2_600_000, resolution: "1280x720" },
+   180→  1080: { bandwidth: 5_300_000, resolution: "1920x1080" },
+   181→};
+   182→
+   183→// Probe results per master base path (the token dirs rotate with the tokens,
+   184→// so a fresh upload naturally re-probes).
+   185→const probeCache = new Map<string, { expires: number; heights: number[] }>();
+   186→
+   187→async function probeVariant(url: URL, referer?: string): Promise<boolean> {
+   188→  try {
+   189→    const res = await fetch(url.toString(), {
+   190→      headers: upstreamHeadersFor(url.hostname, referer),
+   191→      cache: "no-store",
+   192→      redirect: "follow",
+   193→      signal: AbortSignal.timeout(3_000),
+   194→    });
+   195→    if (!res.ok) return false;
+   196→    const head = await res.text();
+   197→    return head.includes("#EXTM3U");
+   198→  } catch {
+   199→    return false;
+   200→  }
+   201→}
+   202→
+   203→/**
+   204→ * If `text` is a single-variant master playlist, probe the sibling quality
+   205→ * dirs and return a synthesized multi-variant master (still upstream-absolute;
+   206→ * the normal rewrite pass proxies it afterwards). Otherwise return null.
+   207→ */
+   208→async function enrichMaster(text: string, target: URL, inheritedReferer?: string): Promise<string | null> {
+   209→  if (!text.includes("#EXT-X-STREAM-INF")) return null;
+   210→  const lines = text.split(/\r?\n/);
+   211→  const variantUris = lines.filter((l) => l.trim() && !l.startsWith("#"));
+   212→  if (variantUris.length !== 1) return null; // already multi-variant (or odd) — leave alone
+   213→
+   214→  const uri = variantUris[0].trim();
+   215→  const abs = new URL(uri, target);
+   216→  const m = abs.pathname.match(/\/(\d{3,4})\/index\.m3u8$/i);
+   217→  if (!m) return null;
+   218→  const current = parseInt(m[1], 10);
+   219→  if (!VARIANT_HEIGHTS.includes(current as (typeof VARIANT_HEIGHTS)[number])) return null;
+   220→
+   221→  const dir = abs.pathname.slice(0, abs.pathname.lastIndexOf("/")) .replace(/\/\d{3,4}$/, ""); // .../token-dirs
+   222→  const cacheKey = `${abs.origin}${dir}`;
+   223→  const cached = probeCache.get(cacheKey);
+   224→  let heights: number[];
+   225→
+   226→  if (cached && cached.expires > Date.now()) {
+   227→    heights = cached.heights;
+   228→  } else {
+   229→    const siblings = VARIANT_HEIGHTS.filter((h) => h !== current);
+   230→    const results = await Promise.all(
+   231→      siblings.map(async (h) => {
+   232→        const u = new URL(`${abs.origin}${dir}/${h}/index.m3u8`);
+   233→        return (await probeVariant(u, inheritedReferer)) ? h : null;
+   234→      }),
+   235→    );
+   236→    heights = [current, ...(results.filter((h) => h != null) as number[])];
+   237→    heights.sort((a, b) => a - b);
+   238→    // bounded probe cache (token dirs rotate — an unbounded Map grew forever)
+   239→    if (probeCache.size > 400) {
+   240→      const oldest = probeCache.keys().next().value;
+   241→      if (oldest !== undefined) probeCache.delete(oldest);
+   242→    }
+   243→    probeCache.set(cacheKey, { expires: Date.now() + TTL_30MIN, heights });
+   244→  }
+   245→
+   246→  if (heights.length <= 1) return null; // genuinely single-quality source
+   247→
+   248→  // keep the original line's bandwidth/resolution for the current variant when present
+   249→  const infLine = lines.find((l) => l.startsWith("#EXT-X-STREAM-INF")) ?? "";
+   250→  const curBw = Number(/BANDWIDTH=(\d+)/.exec(infLine)?.[1] ?? VARIANT_META[current].bandwidth);
+   251→  const curRes = /RESOLUTION=(\S+)/.exec(infLine)?.[1] ?? VARIANT_META[current].resolution;
+   252→
+   253→  const out: string[] = ["#EXTM3U", "#EXT-X-VERSION:4"];
+   254→  for (const h of heights) {
+   255→    const meta = VARIANT_META[h] ?? { bandwidth: 2_000_000, resolution: `${h}p` };
+   256→    const isCurrent = h === current;
+   257→    out.push(
+   258→      `#EXT-X-STREAM-INF:BANDWIDTH=${isCurrent ? curBw : meta.bandwidth},RESOLUTION=${isCurrent ? curRes : meta.resolution}`,
+   259→    );
+   260→    out.push(`${abs.origin}${dir}/${h}/index.m3u8`);
+   261→  }
+   262→  return out.join("\n");
+   263→}
+   264→
+   265→const TTL_30MIN = 30 * 60 * 1000;
+   266→
+   267→/* ------------------------------------------------------------------ *
+   268→ * Parallel segment acceleration (the "every anime struggles to load" fix).
+   269→ *
+   270→ * Measured on the Zoko/Kiwi CDN (hls.dramahot.top family): each HTTP
+   271→ * connection is throttled to roughly 300 KB/s regardless of origin — a
+   272→ * single-connection 720p segment (~680 KB) takes ~2.3 s (barely above
+   273→ * real-time for its 4 s of video) and a 1080p segment (~1.4 MB) takes
+   274→ * ~4.7 s — BELOW real-time, so playback stalls no matter the title.
+   275→ *
+   276→ * The CDN throttles PER CONNECTION, not per client, so the proxy fetches
+   277→ * each large segment as 4 concurrent byte-range requests and stitches
+   278→ * them: ~4x effective throughput (~1.2 MB/s) — 1080p lands in ~1.2 s.
+   279→ * Any failure (no Range support, non-206, timeout) falls back to the
+   280→ * plain single-connection stream, so this can only speed things up.
+   281→ * ------------------------------------------------------------------ */
+   282→
+   283→const SEG_PARALLEL_MIN = 384 * 1024; // below this a single fetch is already fast
+   284→const SEG_PARALLEL_MAX = 8 * 1024 * 1024; // progressive MP4s etc. must keep streaming
+   285→const SEG_CONNECTIONS = 4;
+   286→
+   287→async function fetchSegmentRanges(
+   288→  target: URL,
+   289→  headers: Record<string, string>,
+   290→  total: number,
+   291→): Promise<Buffer | null> {
+   292→  const chunkSize = Math.ceil(total / SEG_CONNECTIONS);
+   293→  const ranges: Array<[number, number]> = [];
+   294→  for (let i = 0; i < SEG_CONNECTIONS; i++) {
+   295→    const start = i * chunkSize;
+   296→    if (start >= total) break;
+   297→    ranges.push([start, Math.min(start + chunkSize - 1, total - 1)]);
+   298→  }
+   299→  if (ranges.length < 2) return null;
+   300→  const parts = await Promise.all(
+   301→    ranges.map(async ([start, end]) => {
+   302→      const res = await fetch(target.toString(), {
+   303→        headers: { ...headers, Range: `bytes=${start}-${end}` },
+   304→        cache: "no-store",
+   305→        redirect: "follow",
+   306→        signal: AbortSignal.timeout(12_000),
+   307→      });
+   308→      if (res.status !== 206) throw new Error(`range ${res.status}`); // CDN ignored Range
+   309→      const buf = Buffer.from(await res.arrayBuffer());
+   310→      if (buf.length !== end - start + 1) throw new Error("short range");
+   311→      return buf;
+   312→    }),
+   313→  );
+   314→  return Buffer.concat(parts);
+   315→}
+   316→
+   317→function rewritePlaylist(text: string, baseUrl: URL, inheritedReferer?: string, pk?: string | null): string {
+   318→  const out: string[] = [];
+   319→  for (const rawLine of text.split(/\r?\n/)) {
+   320→    const line = rawLine.trim();
+   321→    if (!line) {
+   322→      out.push("");
+   323→      continue;
+   324→    }
+   325→    if (line.startsWith("#")) {
+   326→      // rewrite URI="..." attributes (EXT-X-KEY / EXT-X-MAP / EXT-X-MEDIA)
+   327→      const rewritten = line.replace(/URI="([^"]+)"/g, (_m, uri: string) => {
+   328→        try {
+   329→          const abs = new URL(uri, baseUrl);
+   330→          const isPlaylist = /\.m3u8($|\?)/i.test(abs.pathname);
+   331→          return `URI="${proxied(abs, isPlaylist ? "m3u8" : "seg", inheritedReferer, pk)}"`;
+   332→        } catch {
+   333→          return _m;
+   334→        }
+   335→      });
+   336→      out.push(rewritten);
+   337→      continue;
+   338→    }
+   339→    try {
+   340→      const abs = new URL(line, baseUrl);
+   341→      const isPlaylist = /\.m3u8($|\?)/i.test(abs.pathname);
+   342→      const isVtt = /\.vtt($|\?)/i.test(abs.pathname);
+   343→      out.push(proxied(abs, isVtt ? "vtt" : isPlaylist ? "m3u8" : "seg", inheritedReferer, pk));
+   344→    } catch {
+   345→      out.push(line);
+   346→    }
+   347→  }
+   348→  return out.join("\n");
+   349→}
+   350→
+   351→/** curl transport (Cloudflare 403-challenges undici on some FlixCloud paths —
+   352→ *  the AES-128 key files — while curl's TLS fingerprint passes). Returns the
+   353→ *  raw body on HTTP 200, else null. referer=null sends NO Referer header at
+   354→ *  all (LM2's signed URLs). */
+   355→function curlBuffer(url: string, referer: string | null, timeoutMs = 25_000): Promise<Buffer | null> {
+   356→  return new Promise((resolve) => {
+   357→    const args = ["-sS", "--max-time", String(Math.ceil(timeoutMs / 1000)), "-A", UA, "-H", "Accept: */*"];
+   358→    if (referer != null) args.push("-H", `Referer: ${referer}`);
+   359→    args.push("-w", "\n__STATUS__%{http_code}", url);
+   360→    execFile(
+   361→      "curl",
+   362→      args,
+   363→      { maxBuffer: 64 * 1024 * 1024, timeout: timeoutMs + 5_000, encoding: "buffer" },
+   364→      (err, stdout) => {
+   365→        try {
+   366→          const out = stdout as Buffer;
+   367→          const marker = Buffer.from("\n__STATUS__");
+   368→          const idx = out.lastIndexOf(marker);
+   369→          if (idx < 0) return resolve(null);
+   370→          const code = parseInt(out.subarray(idx + marker.length).toString("utf8"), 10);
+   371→          resolve(code === 200 ? out.subarray(0, idx) : null);
+   372→        } catch {
+   373→          resolve(null);
+   374→        }
+   375→      },
+   376→    );
+   377→  });
+   378→}
+   379→
+   380→export async function GET(req: Request) {
+   381→  const sp = new URL(req.url).searchParams;
+   382→
+   383→  // ---- FlixCloud stored master: served from the resolver's cache ----------
+   384→  // The stream route already fetched + decrypted + absolutized the master
+   385→  // (in the same invocation that burned the one-time token, so the JWT's
+   386→  // client-IP binding was satisfied). We just hand the stored text out and
+   387→  // let the normal rewrite pass proxy its JWT-less children.
+   388→  const fkey = sp.get("fkey");
+   389→  if (fkey) {
+   390→    const malId = parseInt(sp.get("malId") ?? "", 10);
+   391→    const ep = parseInt(sp.get("ep") ?? "", 10);
+   392→    if (Number.isFinite(malId) && Number.isFinite(ep)) {
+   393→      const stored = await flixStoredMaster(malId, ep).catch(() => null);
+   394→      if (stored) {
+   395→        const pk = sp.get("pk") ?? undefined;
+   396→        const rf = sp.get("rf") ?? undefined;
+   397→        const target = sp.get("u");
+   398→        let base: URL;
+   399→        try {
+   400→          base = target ? new URL(target) : new URL("https://fetch9.flixcloud.cc/master.m3u8");
+   401→        } catch {
+   402→          return new NextResponse("bad u", { status: 400 });
+   403→        }
+   404→        return new NextResponse(rewritePlaylist(stored, base, rf, pk), {
+   405→          headers: {
+   406→            "Content-Type": "application/vnd.apple.mpegurl",
+   407→            "Cache-Control": "public, max-age=30",
+   408→            "Access-Control-Allow-Origin": "*",
+   409→          },
+   410→        });
+   411→      }
+   412→      // fall through to the u fallback below when the store went cold
+   413→    }
+   414→  }
+   415→
+   416→  const raw = sp.get("u");
+   417→  if (!raw) return new NextResponse("missing u", { status: 400 });
+   418→
+   419→  // self-described child URL: `rf` is the exact Referer its issuing playlist
+   420→  // was fetched with (rotating megaplay families outrun any static list, and
+   421→  // Vercel lambdas share no memory — the URL itself is the source of truth)
+   422→  const hasRf = sp.has("rf");
+   423→  const rfParam = sp.get("rf") ?? "";
+   424→  // FlixCloud playlist XOR key (hex) — present only on flix-backed streams
+   425→  const pkParam = sp.get("pk");
+   426→
+   427→  let target: URL;
+   428→  try {
+   429→    target = new URL(raw);
+   430→  } catch {
+   431→    return new NextResponse("bad u", { status: 400 });
+   432→  }
+   433→  // a rewritten child was already vetted when its playlist was served — but
+   434→  // `rf` is client-supplied, so it can NEVER be the sole trust signal: an
+   435→  // unknown host must still be a plausible media target (see helper above)
+   436→  if (target.protocol !== "https:") {
+   437→    return new NextResponse("host not allowed", { status: 403 });
+   438→  }
+   439→  if (!hostAllowed(target.hostname) && !(hasRf && mediaHostPlausible(target))) {
+   440→    return new NextResponse("host not allowed", { status: 403 });
+   441→  }
+   442→
+   443→  const upstreamHeaders = upstreamHeadersFor(target.hostname, hasRf ? rfParam : undefined);
+   444→  const isM3u8Path = /\.m3u8($|\?)/i.test(target.pathname);
+   445→  // ---- Range passthrough (the "seeking resets me" fix, proxy half) --------
+   446→  // The <video> element seeks progressive files by sending `Range: bytes=…`.
+   447→  // The proxy used to swallow it and answer a 200 FULL body, which Chrome
+   448→  // reads as "this connection can't seek" — every forward seek into
+   449→  // unbuffered territory reset the media element (progress bar / Skip Intro
+   450→  // snapping back to 0). Forward the Range upstream (except for playlists
+   451→  // and subtitles — they must always be fetched whole) and relay the 206.
+   452→  // Chrome also OPENS playback with an open-ended range (`bytes=0-`), which
+   453→  // upstream would stream unbounded — bound every window at RANGE_WINDOW so
+   454→  // each proxy fetch is finite; Chrome asks for the next window as it plays.
+   455→  const RANGE_WINDOW = 8 * 1024 * 1024;
+   456→  const clientRange = req.headers.get("range");
+   457→  let forwardRange: string | null = null;
+   458→  if (clientRange && !isM3u8Path && !/\.vtt($|\?)/i.test(target.pathname) && !/\.srt($|\?)/i.test(target.pathname)) {
+   459→    const m = /^bytes=(\d+)-(\d*)/.exec(clientRange.trim());
+   460→    if (m) {
+   461→      const start = parseInt(m[1], 10);
+   462→      const endReq = m[2] ? parseInt(m[2], 10) : NaN;
+   463→      if (Number.isFinite(start) && start >= 0) {
+   464→        const end = Number.isFinite(endReq) && endReq >= start ? endReq : start + RANGE_WINDOW - 1;
+   465→        forwardRange = `bytes=${start}-${Math.min(end, start + RANGE_WINDOW - 1)}`;
+   466→      }
+   467→    }
+   468→  }
+   469→  if (forwardRange) upstreamHeaders.Range = forwardRange;
+   470→  const lm2Retry = LM2_RETRY_SUFFIXES.some((s) => target.hostname.toLowerCase().endsWith(s));
+   471→  const attempts = lm2Retry ? LM2_MAX_ATTEMPTS : 1;
+   472→
+   473→  let upstream: Response | null = null;
+   474→  let m3u8Text: string | null = null; // playlists pre-read during the retry loop
+   475→  let lm2Buffer: Buffer | null = null; // LM2 segments/keys land here
+   476→  for (let i = 0; i < attempts; i++) {
+   477→    if (lm2Retry) {
+   478→      // undici's TLS fingerprint is routed to LM2's broken nodes (6/6
+   479→      // "WRONG HASH!" vs curl's ~1-in-3 healthy) — these hosts go through
+   480→      // curl, and only a verified-good answer ends the loop.
+   481→      const buf = await curlBuffer(target.toString(), hasRf ? rfParam : null);
+   482→      if (!buf) {
+   483→        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+   484→        continue;
+   485→      }
+   486→      if (isM3u8Path) {
+   487→        const text = buf.toString("utf8");
+   488→        if (!text.trimStart().startsWith("#EXTM")) {
+   489→          await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+   490→          continue;
+   491→        }
+   492→        m3u8Text = text;
+   493→      } else if (buf.length < LM2_MIN_SEG_BYTES && !/\.key($|\?)/i.test(target.pathname)) {
+   494→        // a 200-wrapped "WRONG HASH!" body — another broken node, go again
+   495→        await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+   496→        continue;
+   497→      } else {
+   498→        lm2Buffer = buf;
+   499→      }
+   500→      upstream = new NextResponse(null, {
+   501→        status: 200,
+   502→        headers: { "content-type": isM3u8Path ? "application/vnd.apple.mpegurl" : "video/mp2t" },
+   503→      }) as unknown as Response;
+   504→      break;
+   505→    }
+   506→    const res = await fetch(target.toString(), {
+   507→      headers: upstreamHeaders,
+   508→      cache: "no-store",
+   509→      redirect: "follow",
+   510→      signal: AbortSignal.timeout(25_000),
+   511→    }).catch(() => null);
+   512→    if (!res) continue; // transient transport failure — retry
+   513→    // WCO video gateways: ~80% of the uNN pool 403s datacenter IPs (where
+   514→    // this lambda and the cast receiver live), and getvid&json pins the URL
+   515→    // to one gateway at random. Tokens are NODE-AGNOSTIC (same evid serves
+   516→    // from any gateway — verified 2026-10-09), so on a dead gateway retry
+   517→    // the same evid across the healthy-first pool instead of handing the
+   518→    // player/TV a 502 (the "cast stuck loading, remote dead" report).
+   519→    // Blocked nodes answer 403 in ~300ms, so the sweep costs ~2-3s worst case.
+   520→    if (
+   521→      /\.wcostream\.com$/i.test(target.hostname) &&
+   522→      /^\/getvid$/i.test(target.pathname) &&
+   523→      (res.status === 403 || res.status === 404 || res.status >= 500)
+   524→    ) {
+   525→      void res.body?.cancel().catch(() => undefined);
+   526→      const current = target.hostname.replace(/\.wcostream\.com$/i, "");
+   527→      const pool = [...WCO_NODES_PRIMARY, ...WCO_NODES_REST.slice(0, 3)].filter((n) => n !== current);
+   528→      let recovered: Response | null = null;
+   529→      let winner: URL | null = null;
+   530→      for (const node of pool) {
+   531→        const candidate = new URL(target.toString());
+   532→        candidate.hostname = `${node}.wcostream.com`;
+   533→        const retry = await fetch(candidate.toString(), {
+   534→          headers: upstreamHeaders,
+   535→          cache: "no-store",
+   536→          redirect: "follow",
+   537→          signal: AbortSignal.timeout(25_000),
+   538→        }).catch(() => null);
+   539→        if (retry && retry.status !== 403 && retry.status !== 404 && retry.status < 500) {
+   540→          recovered = retry;
+   541→          winner = candidate;
+   542→          break;
+   543→        }
+   544→        void retry?.body?.cancel().catch(() => undefined);
+   545→        if (retry && retry.status === 404) break; // token invalid for this client — hosts won't help
+   546→      }
+   547→      if (recovered && winner) {
+   548→        target = winner;
+   549→        upstream = recovered;
+   550→        break;
+   551→      }
+   552→    }
+   553→    upstream = res;
+   554→    break;
+   555→  }
+   556→
+   557→  // LM2 segment/key bytes came through the curl transport — hand them out directly
+   558→  if (lm2Buffer) {
+   559→    return new NextResponse(new Uint8Array(lm2Buffer), {
+   560→      headers: {
+   561→        "Cache-Control": "public, max-age=86400, immutable",
+   562→        "Access-Control-Allow-Origin": "*",
+   563→        "Content-Type": "video/mp2t",
+   564→      },
+   565→    });
+   566→  }
+   567→
+   568→  // FlixCloud-backed session and undici got challenged (403 challenge page on
+   569→  // the AES-128 key files) — retry with curl's transport before giving up
+   570→  if (pkParam && (!upstream || upstream.status === 403)) {
+   571→    const buf = await curlBuffer(target.toString(), hasRf && rfParam ? rfParam : FLIX_REFERER);
+   572→    if (buf && buf.length > 0) {
+   573→      const isM3u8Path = /\.m3u8($|\?)/i.test(target.pathname);
+   574→      if (isM3u8Path) {
+   575→        const text = flixDecrypt(buf.toString("utf8"), pkParam);
+   576→        const inheritedReferer = hasRf ? rfParam : refererForHost(target.hostname);
+   577→        return new NextResponse(rewritePlaylist(text, target, inheritedReferer, pkParam), {
+   578→          headers: {
+   579→            "Content-Type": "application/vnd.apple.mpegurl",
+   580→            "Cache-Control": "public, max-age=30",
+   581→            "Access-Control-Allow-Origin": "*",
+   582→          },
+   583→        });
+   584→      }
+   585→      return new NextResponse(new Uint8Array(buf), {
+   586→        headers: {
+   587→          "Cache-Control": "public, max-age=86400, immutable",
+   588→          "Access-Control-Allow-Origin": "*",
+   589→          "Content-Type": "application/octet-stream",
+   590→        },
+   591→      });
+   592→    }
+   593→  }
+   594→
+   595→  if (!upstream || !upstream.ok) {
+   596→    return new NextResponse(`upstream ${upstream ? upstream.status : "unreachable"}`, { status: 502 });
+   597→  }
+   598→
+   599→  const contentType = upstream.headers.get("content-type") ?? "";
+   600→  const isM3u8 = isM3u8Path || contentType.includes("mpegurl");
+   601→
+   602→  if (isM3u8) {
+   603→    const rawText = m3u8Text ?? (await upstream.text());
+   604→    // FlixCloud: peel the XOR layer before any rewriting happens
+   605→    const text = flixDecrypt(rawText, pkParam);
+   606→    // this playlist's own referer is what all of its children expect
+   607→    const inheritedReferer = hasRf ? rfParam : refererForHost(target.hostname);
+   608→    // learn hosts ONLY from playlists whose own host was already trusted —
+   609→    // an rf-gated (untrusted-origin) playlist used to permanently register
+   610→    // EVERY host its lines mentioned (attacker-controlled), after which those
+   611→    // hosts skipped all shape checks forever. Untrusted flows still play:
+   612→    // every rewritten child carries `rf` and re-passes the shape gate.
+   613→    if (hostAllowed(target.hostname)) {
+   614→      allowHostWithReferer(target.hostname, inheritedReferer);
+   615→      // remember hosts of any absolute URLs we are about to hand out
+   616→      for (const line of text.split(/\r?\n/)) {
+   617→        const l = line.trim();
+   618→        if (!l || l.startsWith("#")) continue;
+   619→        try { allowHostWithReferer(new URL(l, target).hostname, inheritedReferer); } catch { /* ignore */ }
+   620→      }
+   621→    }
+   622→    // single-variant master? add the CDN's hidden quality siblings (360/480/720/1080)
+   623→    const enriched = await enrichMaster(text, target, inheritedReferer).catch(() => null);
+   624→    return new NextResponse(rewritePlaylist(enriched ?? text, target, inheritedReferer, pkParam), {
+   625→      headers: {
+   626→        "Content-Type": "application/vnd.apple.mpegurl",
+   627→        // playlists: 30s edge/browser cache — tokens rotate, but 30s is well
+   628→        // inside their lifetime and kills the double-fetch on seek-backs
+   629→        "Cache-Control": "public, max-age=30",
+   630→        "Access-Control-Allow-Origin": "*",
+   631→      },
+   632→    });
+   633→  }
+   634→
+   635→  const type = sp.get("type");
+   636→  const headers: Record<string, string> = {
+   637→    "Cache-Control": "no-store",
+   638→    "Access-Control-Allow-Origin": "*",
+   639→  };
+   640→  if (type === "vtt" || contentType.includes("vtt")) {
+   641→    const text = await upstream.text();
+   642→    // FlixCloud subtitles are SRT — browsers only render WebVTT tracks
+   643→    const isSrt = /\.srt($|\?)/i.test(target.pathname) || contentType.includes("subrip");
+   644→    return new NextResponse(isSrt ? srtToVtt(text) : text, {
+   645→      headers: { ...headers, "Content-Type": "text/vtt; charset=utf-8" },
+   646→    });
+   647→  }
+   648→
+   649→  // segments: stream the body straight through — unless it is a big one, in
+   650→  // which case the parallel range fetch above beats the single throttled
+   651→  // connection by ~4x (the per-connection CDN throttle was the stall).
+   652→  // The already-open single fetch stays open as the fallback; it is only
+   653→  // discarded once the parallel fetch has actually succeeded.
+   654→  const contentLength = parseInt(upstream.headers.get("content-length") ?? "", 10);
+   655→  if (
+   656→    !forwardRange && // a range fetch must be relayed as-is, never stitched
+   657→    upstream.status === 200 &&
+   658→    Number.isFinite(contentLength) &&
+   659→    contentLength >= SEG_PARALLEL_MIN &&
+   660→    contentLength <= SEG_PARALLEL_MAX
+   661→  ) {
+   662→    const stitched = await fetchSegmentRanges(target, upstreamHeaders, contentLength).catch(() => null);
+   663→    if (stitched) {
+   664→      void upstream.body?.cancel().catch(() => undefined);
+   665→      return new NextResponse(new Uint8Array(stitched), {
+   666→        headers: {
+   667→          ...headers,
+   668→          // segments are immutable at a given (tokened) URL — a day of browser
+   669→          // caching means seek-backs and ABR down-switches hit memory, not the
+   670→          // proxy lambda again (overrides the no-store default above)
+   671→          "Cache-Control": "public, max-age=86400, immutable",
+   672→          "Content-Type": contentType || "video/mp2t",
+   673→          "Content-Length": String(contentLength),
+   674→        },
+   675→      });
+   676→    }
+   677→  }
+   678→
+   679→  // Range honored upstream — relay the 206 faithfully (status + Content-Range
+   680→  // + Accept-Ranges). Positional responses must never be cached either: a
+   681→  // 206 for one range served for another would corrupt playback.
+   682→  if (forwardRange && upstream.status === 206) {
+   683→    const contentRange = upstream.headers.get("content-range");
+   684→    return new NextResponse(upstream.body, {
+   685→      status: 206,
+   686→      headers: {
+   687→        ...headers,
+   688→        "Cache-Control": "no-store",
+   689→        "Content-Type": contentType || "video/mp2t",
+   690→        ...(contentRange ? { "Content-Range": contentRange, "Accept-Ranges": "bytes" } : {}),
+   691→        ...(Number.isFinite(contentLength) ? { "Content-Length": String(contentLength) } : {}),
+   692→      },
+   693→    });
+   694→  }
+   695→
+   696→  return new NextResponse(upstream.body, {
+   697→    headers: {
+   698→      ...headers,
+   699→      // segments are immutable at a given (tokened) URL — a day of browser
+   700→      // caching means seek-backs and ABR down-switches hit memory, not the
+   701→      // proxy lambda again (overrides the no-store default above)
+   702→      "Cache-Control": "public, max-age=86400, immutable",
+   703→      "Content-Type": contentType || "video/mp2t",
+   704→      ...(Number.isFinite(contentLength) ? { "Content-Length": String(contentLength) } : {}),
+   705→    },
+   706→  });
+   707→}
+   708→
+   709→/**
+   710→ * Warm the allowlist for an episode before the player starts fetching.
+   711→ * GET /api/stream/proxy?prime=1&malId=21&ep=1&lang=sub&server=zoko
+   712→ */
+   713→export async function POST(req: Request) {
+   714→  const sp = new URL(req.url).searchParams;
+   715→  if (sp.get("prime") !== "1") return new NextResponse("noop", { status: 400 });
+   716→  const malId = parseInt(sp.get("malId") ?? "", 10);
+   717→  const ep = parseInt(sp.get("ep") ?? "1", 10);
+   718→  if (!Number.isFinite(malId)) return new NextResponse("bad params", { status: 400 });
+   719→  await primeAllowlist(malId, ep, sp.get("lang") ?? "sub", sp.get("server") ?? "zoko");
+   720→  return new NextResponse("ok");
+   721→}
+   722→
