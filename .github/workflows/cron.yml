@@ -1,0 +1,38 @@
+# Daily catalog refresh + ANN news fetch, for hosts that have no built-in
+# scheduler (Netlify, Render, Fly, Dokploy — none of them read vercel.json).
+#
+# Setup: repo Settings -> Secrets and variables -> Actions
+#   - Variable  CLYLE_URL   = base URL to ping (e.g. https://clyle.onrender.com)
+#   - Secret    CRON_SECRET = the deployment's CRON_SECRET, if it sets one
+# Without CLYLE_URL every run skips itself: zero cost, zero noise.
+
+name: daily-refresh
+
+on:
+  schedule:
+    - cron: "17 7 * * *" # 07:17 UTC — the slots the Vercel crons used
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    if: ${{ vars.CLYLE_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Catalog cron (/api/cron)
+        env:
+          CLYLE_URL: ${{ vars.CLYLE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          auth=()
+          if [ -n "$CRON_SECRET" ]; then
+            auth=(-H "Authorization: Bearer $CRON_SECRET")
+          fi
+          curl --max-time 120 -fsS "${auth[@]}" "$CLYLE_URL/api/cron"
+
+      - name: ANN news refresh (/api/ann-news)
+        env:
+          CLYLE_URL: ${{ vars.CLYLE_URL }}
+        run: curl --max-time 60 -fsS "$CLYLE_URL/api/ann-news"

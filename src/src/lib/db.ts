@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaLibSQL } from '@prisma/adapter-libsql'
-import { copyFileSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { accessSync, constants as fsConstants, copyFileSync, existsSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 /**
@@ -17,6 +17,11 @@ import { tmpdir } from 'node:os'
  *   live catalog data always comes from the Jikan (MyAnimeList) API and the
  *   player streams from Zoko, so a fresh instance simply re-imports.
  *
+ * - Netlify (same Lambda-style read-only bundle filesystem): identical
+ *   /tmp copy, detected automatically — Netlify injects NETLIFY=true, and
+ *   a writability check on the database directory covers any other
+ *   read-only runtime even if that var ever disappears.
+ *
  * - Turso (libSQL cloud — set TURSO_DATABASE_URL): the whole app talks to
  *   the always-on cloud database instead of any local file. This is the $0
  *   hosting fix for ephemeral-disk platforms (Render free, Vercel): user
@@ -26,12 +31,27 @@ import { tmpdir } from 'node:os'
  */
 const PACKAGED_DB = join(process.cwd(), 'db', 'custom.db')
 
+/** SQLite must create journal/WAL files next to the database file, so the
+ *  directory itself needs write access — a read-only bundle directory
+ *  (Vercel/Netlify functions) cannot host a live database. */
+function isWritableDir(p: string): boolean {
+  try {
+    accessSync(p, fsConstants.W_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
 function resolveDatabaseUrl(): string {
   // default: the packaged database inside the project
   process.env.DATABASE_URL ??= `file:${PACKAGED_DB}`
 
   const onReadOnlyFs =
-    process.env.VERCEL === '1' || process.env.DB_FORCE_TMP_COPY === '1'
+    process.env.VERCEL === '1' ||
+    process.env.NETLIFY === 'true' ||
+    process.env.DB_FORCE_TMP_COPY === '1' ||
+    !isWritableDir(dirname(PACKAGED_DB))
 
   if (onReadOnlyFs && existsSync(PACKAGED_DB)) {
     const tmpDb = join(tmpdir(), 'anime-custom.db')

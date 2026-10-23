@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "standalone",
+  // Standalone is for the Docker/Render/Fly server bundle. Netlify builds
+  // through its own OpenNext adapter, which produces its own output —
+  // disable standalone there (NETLIFY=true is set for every Netlify build).
+  output: process.env.NETLIFY ? undefined : "standalone",
   // WCO (South Park's source) hotlink-filters its video CDN by Referer:
   // any request carrying a foreign origin (e.g. ours) gets 404 while the
   // same URL with no referer streams fine (verified 2026-10-09). The

@@ -1,0 +1,22 @@
+# Clyle on Netlify — full Next.js (SSR + every API route + the video proxy)
+# via Netlify's OpenNext adapter, which is applied automatically for Next
+# projects. This file only pins the layout: the Next app lives in src/, so
+# base points there and command/publish are relative to it.
+#
+# Free-plan reality check (2026 credit system): 300 credits/month, video
+# bandwidth through /api/stream/proxy costs 20 credits/GB -> ~15 GB of
+# streamed video, and each production deploy costs 15 credits. Light
+# personal use fits comfortably; heavy streaming pauses the site — see
+# NETLIFY.md (Render free / Fly absorb far more traffic).
+
+[build]
+  base = "src"
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # Belt-and-braces: db.ts auto-detects Netlify at runtime (NETLIFY=true
+  # plus a directory-writability probe). This also forces the /tmp database
+  # copy during the build's prerender phase, which is correct there anyway.
+  DB_FORCE_TMP_COPY = "1"
