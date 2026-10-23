@@ -1,0 +1,44 @@
+# fly.toml — Clyle on Fly.io
+#
+# The public GHCR image already contains everything: Next.js standalone
+# server + the 38 MB seeded catalog DB + the entrypoint that seeds the
+# mounted volume on first boot. No env vars required to boot.
+#
+# One-time setup (see FLY.md):
+#   fly auth signup
+#   fly launch --image ghcr.io/ichial09u/clyle:latest --region ord --no-deploy
+#   fly volumes create clyle_data --region ord --size 3
+#   fly deploy
+
+app = "clyle"
+primary_region = "ord"
+
+[build]
+  image = "ghcr.io/ichial09u/clyle:latest"
+
+[env]
+  PORT = "3000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # sleep when idle (pennies), wake in seconds on the next request —
+  # far faster than Render's 30-60s cold start
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "60s"
+    method = "GET"
+    path = "/api/health"
+
+[vm]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[mounts]
+  source = "clyle_data"
+  destination = "/app/db"
