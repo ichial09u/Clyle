@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { PrismaLibSQL } from '@prisma/adapter-libsql'
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -15,6 +16,13 @@ import { tmpdir } from 'node:os'
  *   instance recycles. Nothing user-facing depends on those writes — the
  *   live catalog data always comes from the Jikan (MyAnimeList) API and the
  *   player streams from Zoko, so a fresh instance simply re-imports.
+ *
+ * - Turso (libSQL cloud — set TURSO_DATABASE_URL): the whole app talks to
+ *   the always-on cloud database instead of any local file. This is the $0
+ *   hosting fix for ephemeral-disk platforms (Render free, Vercel): user
+ *   writes survive sleeps, redeploys and instance recycling because the
+ *   data no longer lives on the host at all. Opt-in and zero-risk — unset
+ *   the two TURSO_* vars and the packaged-SQLite behavior takes over.
  */
 const PACKAGED_DB = join(process.cwd(), 'db', 'custom.db')
 
@@ -54,10 +62,22 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined
 }
 
-export const db =
-  globalForPrisma.prisma ??
-  new PrismaClient({
+function createClient(): PrismaClient {
+  const tursoUrl = process.env.TURSO_DATABASE_URL
+  if (tursoUrl) {
+    return new PrismaClient({
+      adapter: new PrismaLibSQL({
+        url: tursoUrl,
+        authToken: process.env.TURSO_AUTH_TOKEN,
+      }),
+      log: ['warn', 'error'],
+    })
+  }
+  return new PrismaClient({
     log: ['warn', 'error'],
   })
+}
+
+export const db = globalForPrisma.prisma ?? createClient()
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
