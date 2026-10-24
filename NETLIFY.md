@@ -30,7 +30,10 @@ next billing cycle — no surprise bills, no credit card on file.
 2. **Import** — "Add new site" → "Import an existing project" → GitHub →
    pick **ichial09u/Clyle**, branch `main`. Build settings auto-load from
    `netlify.toml` (the app lives in `src/`; base/command/publish are
-   already pinned). First build ≈ 5–8 minutes.
+   already pinned, and the Next.js adapter is forced explicitly via
+   `[[plugins]]` — with a `src/` monorepo, relying on auto-detection can
+   build "successfully" into a static-only deploy where every route 404s).
+   First build ≈ 5–8 minutes.
 3. **Verify** — open `https://<site>.netlify.app/api/health` →
    `"ok": true`, `animeCount` > 0.
 

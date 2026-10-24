@@ -20,3 +20,9 @@
   # plus a directory-writability probe). This also forces the /tmp database
   # copy during the build's prerender phase, which is correct there anyway.
   DB_FORCE_TMP_COPY = "1"
+
+# Force the Next.js adapter (OpenNext) even when framework detection misses
+# this subdirectory — otherwise the raw .next folder gets published as a
+# static site and every route 404s (verified 2026-10-24).
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
