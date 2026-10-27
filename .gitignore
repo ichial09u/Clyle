@@ -77,3 +77,8 @@ src/db/anilist-cache/
 src/db/anikoto/
 src/db/megaplay/
 src/db/zoko-stream/
+
+# local @netlify/build reproduction artifacts (sandbox-only)
+src/.netlify/
+scripts/nlbuild/
+scripts/nlbuild-log.txt

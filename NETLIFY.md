@@ -33,6 +33,9 @@ next billing cycle — no surprise bills, no credit card on file.
    already pinned, and the Next.js adapter is forced explicitly via
    `[[plugins]]` — with a `src/` monorepo, relying on auto-detection can
    build "successfully" into a static-only deploy where every route 404s).
+   The adapter is also vendored as a devDependency
+   (`@netlify/plugin-nextjs` in `src/package.json`), so Netlify uses the
+   lockfile-installed copy instead of auto-installing it mid-build.
    First build ≈ 5–8 minutes.
 3. **Verify** — open `https://<site>.netlify.app/api/health` →
    `"ok": true`, `animeCount` > 0.
